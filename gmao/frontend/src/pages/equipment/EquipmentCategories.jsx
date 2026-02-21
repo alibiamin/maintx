@@ -10,22 +10,32 @@ import {
   TableCell,
   TableHead,
   TableRow,
-  IconButton,
   CircularProgress,
   Chip
 } from '@mui/material';
-import { Edit, Delete, MoreVert } from '@mui/icons-material';
 import api from '../../services/api';
-import { useActionPanelHelpers } from '../../hooks/useActionPanel';
+import { useActionPanel } from '../../context/ActionPanelContext';
 
 export default function EquipmentCategories() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { openEntityPanel, openListPanel } = useActionPanelHelpers();
+  const [selectedId, setSelectedId] = useState(null);
+  const { setContext } = useActionPanel();
 
   useEffect(() => {
     loadCategories();
   }, []);
+
+  useEffect(() => {
+    setContext({ type: 'list', entityType: 'equipment' });
+    return () => setContext(null);
+  }, [setContext]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const cat = categories.find((c) => c.id === selectedId);
+    setContext(cat ? { type: 'list', entityType: 'equipment', selectedEntity: cat } : { type: 'list', entityType: 'equipment' });
+  }, [selectedId, categories, setContext]);
 
   const loadCategories = async () => {
     try {
@@ -49,12 +59,7 @@ export default function EquipmentCategories() {
             Gestion des catégories et sous-catégories
           </Typography>
         </Box>
-        <Box display="flex" gap={1}>
-          <Button variant="outlined" onClick={() => openListPanel('equipment')}>
-            Actions
-          </Button>
-          <Typography variant="body2" color="text.secondary">Création dans le menu Création</Typography>
-        </Box>
+        <Typography variant="body2" color="text.secondary">Actions dans la barre à droite</Typography>
       </Box>
 
       <Card sx={{ borderRadius: 2 }}>
@@ -75,22 +80,21 @@ export default function EquipmentCategories() {
                   <TableCell>Description</TableCell>
                   <TableCell>Catégorie parente</TableCell>
                   <TableCell>Équipements</TableCell>
-                  <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {categories.map((cat) => (
-                  <TableRow key={cat.id}>
+                  <TableRow
+                    key={cat.id}
+                    selected={selectedId === cat.id}
+                    onClick={() => setSelectedId(selectedId === cat.id ? null : cat.id)}
+                    sx={{ cursor: 'pointer' }}
+                  >
                     <TableCell>{cat.name}</TableCell>
                     <TableCell>{cat.description || '-'}</TableCell>
                     <TableCell>{cat.parentName || '-'}</TableCell>
                     <TableCell>
                       <Chip label={cat.equipmentCount || 0} size="small" />
-                    </TableCell>
-                    <TableCell align="right">
-                      <IconButton size="small" onClick={() => openEntityPanel('equipment', cat)}>
-                        <MoreVert fontSize="small" />
-                      </IconButton>
                     </TableCell>
                   </TableRow>
                 ))}

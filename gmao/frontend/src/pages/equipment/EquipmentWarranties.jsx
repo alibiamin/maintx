@@ -12,22 +12,33 @@ import {
   TableHead,
   TableRow,
   Chip,
-  IconButton,
   CircularProgress
 } from '@mui/material';
-import { Edit, Delete, MoreVert, Warning } from '@mui/icons-material';
+import { Warning } from '@mui/icons-material';
 import api from '../../services/api';
-import { useActionPanelHelpers } from '../../hooks/useActionPanel';
+import { useActionPanel } from '../../context/ActionPanelContext';
 
 export default function EquipmentWarranties() {
   const { id } = useParams();
   const [warranties, setWarranties] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { openEntityPanel } = useActionPanelHelpers();
+  const [selectedId, setSelectedId] = useState(null);
+  const { setContext } = useActionPanel();
 
   useEffect(() => {
     loadWarranties();
   }, [id]);
+
+  useEffect(() => {
+    setContext({ type: 'list', entityType: 'warranties' });
+    return () => setContext(null);
+  }, [setContext]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const w = warranties.find((x) => x.id === selectedId);
+    setContext(w ? { type: 'list', entityType: 'warranties', selectedEntity: w } : { type: 'list', entityType: 'warranties' });
+  }, [selectedId, warranties, setContext]);
 
   const loadWarranties = async () => {
     try {
@@ -74,7 +85,6 @@ export default function EquipmentWarranties() {
                   <TableCell>Date fin</TableCell>
                   <TableCell>Fournisseur</TableCell>
                   <TableCell>Statut</TableCell>
-                  <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -82,7 +92,12 @@ export default function EquipmentWarranties() {
                   const isExpiring = new Date(w.end_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
                   const isExpired = new Date(w.end_date) < new Date();
                   return (
-                    <TableRow key={w.id}>
+                    <TableRow
+                      key={w.id}
+                      selected={selectedId === w.id}
+                      onClick={() => setSelectedId(selectedId === w.id ? null : w.id)}
+                      sx={{ cursor: 'pointer' }}
+                    >
                       <TableCell>{w.warranty_number}</TableCell>
                       <TableCell>
                         <Chip label={w.warranty_type} size="small" />
@@ -102,11 +117,6 @@ export default function EquipmentWarranties() {
                           color={w.is_active && !isExpired ? 'success' : 'default'}
                           size="small"
                         />
-                      </TableCell>
-                      <TableCell align="right">
-                        <IconButton size="small" onClick={() => openEntityPanel('warranties', w)}>
-                          <MoreVert fontSize="small" />
-                        </IconButton>
                       </TableCell>
                     </TableRow>
                   );

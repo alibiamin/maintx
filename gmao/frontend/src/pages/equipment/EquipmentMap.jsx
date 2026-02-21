@@ -25,11 +25,10 @@ import {
   Warning as WarningIcon,
   Error as ErrorIcon,
   CheckCircle as OkIcon,
-  Info as InfoIcon,
-  MoreVert
+  Info as InfoIcon
 } from '@mui/icons-material';
 import api from '../../services/api';
-import { useActionPanelHelpers } from '../../hooks/useActionPanel';
+import { useActionPanel } from '../../context/ActionPanelContext';
 
 const STATUS_CONFIG = {
   operational: { color: '#10b981', icon: OkIcon, label: 'Opérationnel' },
@@ -56,7 +55,12 @@ export default function EquipmentMap() {
   const navigate = useNavigate();
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
-  const { openEntityPanel } = useActionPanelHelpers();
+  const { setContext } = useActionPanel();
+
+  useEffect(() => {
+    setContext({ type: 'list', entityType: 'equipment' });
+    return () => setContext(null);
+  }, [setContext]);
 
   useEffect(() => {
     setError(null);
@@ -133,7 +137,6 @@ export default function EquipmentMap() {
     alertCount = 0,
     isCritical = false,
     onClick,
-    onMenuClick,
     expandIcon,
     childNodes
   }) => (
@@ -191,11 +194,6 @@ export default function EquipmentMap() {
             <Chip size="small" icon={<WarningIcon sx={{ fontSize: 12 }} />} label={`${alertCount} OT`} color={isCritical ? 'error' : 'warning'} sx={{ height: 20, fontSize: '0.65rem' }} />
           )}
         </Box>
-        {onMenuClick && (
-          <IconButton size="small" onClick={(e) => { e.stopPropagation(); onMenuClick(e); }}>
-            <MoreVert fontSize="small" />
-          </IconButton>
-        )}
       </Box>
       {childNodes && childNodes.length > 0 && (
         <Box sx={{ ml: 3, pl: 2, borderLeft: '2px dashed', borderColor: 'divider' }}>
@@ -224,7 +222,6 @@ export default function EquipmentMap() {
         alertCount={(eq.alertPending || 0) + (eq.alertInProgress || 0)}
         isCritical={(eq.alertCritical || 0) > 0}
         onClick={(e) => { e?.stopPropagation?.(); navigate(`/equipment/${eq.id}`); }}
-        onMenuClick={() => openEntityPanel('equipment', eq)}
         childNodes={children.length > 0 ? children.map(child => <EquipmentTreeBranch key={child.id} eq={child} depth={depth + 1} />) : null}
       />
     );

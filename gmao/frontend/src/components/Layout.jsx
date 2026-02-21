@@ -61,6 +61,7 @@ import {
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
+import { ActionBar } from '../context/ActionPanelContext';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import api from '../services/api';
 import { LogoCompact } from './Logo';
@@ -1101,6 +1102,9 @@ export default function Layout() {
             </Suspense>
           </Box>
         </Box>
+
+        {/* Barre d'actions à droite : toujours affichée, l'utilisateur peut l'épingler ou la masquer */}
+        <ActionBar />
       </Box>
     </Box>
   );

@@ -20,10 +20,10 @@ import {
   InputLabel,
   CircularProgress
 } from '@mui/material';
-import { Search, Visibility, AccountTree, MoreVert } from '@mui/icons-material';
+import { Search, AccountTree } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { useActionPanelHelpers } from '../../hooks/useActionPanel';
+import { useActionPanel } from '../../context/ActionPanelContext';
 
 const statusColors = { operational: 'success', maintenance: 'warning', out_of_service: 'error', retired: 'default' };
 
@@ -43,8 +43,27 @@ export default function EquipmentList() {
   const [sortOrder, setSortOrder] = useState('asc');
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { openEntityPanel, openListPanel } = useActionPanelHelpers();
+  const { setContext } = useActionPanel();
+  const [selectedId, setSelectedId] = useState(null);
   const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+
+  useEffect(() => {
+    setContext({ type: 'list', entityType: 'equipment' });
+    return () => setContext(null);
+  }, [setContext]);
+
+  useEffect(() => {
+    if (!selectedId) {
+      setContext({ type: 'list', entityType: 'equipment' });
+      return;
+    }
+    const eq = equipment.find((e) => e.id === selectedId);
+    setContext(eq ? { type: 'list', entityType: 'equipment', selectedEntity: eq } : { type: 'list', entityType: 'equipment' });
+  }, [selectedId, equipment, setContext]);
+
+  useEffect(() => {
+    if (selectedId && !equipment.some((e) => e.id === selectedId)) setSelectedId(null);
+  }, [equipment, selectedId]);
 
   useEffect(() => {
     Promise.all([
@@ -83,18 +102,9 @@ export default function EquipmentList() {
           <h2 style={{ margin: 0 }}>Équipements</h2>
           <p style={{ margin: '4px 0 0', color: '#64748b' }}>Gestion des actifs et fiches techniques</p>
         </Box>
-        <Box display="flex" gap={1}>
-          <Button variant="outlined" startIcon={<AccountTree />} onClick={() => navigate('/equipment/map')}>
-            Carte hiérarchie
-          </Button>
-          <Button 
-            variant="outlined" 
-            startIcon={<MoreVert />} 
-            onClick={() => openListPanel('equipment')}
-          >
-            Actions
-          </Button>
-        </Box>
+        <Button variant="outlined" startIcon={<AccountTree />} onClick={() => navigate('/equipment/map')}>
+          Carte hiérarchie
+        </Button>
       </Box>
 
       <Card sx={{ mb: 2 }}>
@@ -162,12 +172,17 @@ export default function EquipmentList() {
                 <TableCell>Criticité</TableCell>
                 <TableCell>Statut</TableCell>
                 <TableCell>Localisation</TableCell>
-                <TableCell align="right">Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {equipment.map((eq) => (
-                <TableRow key={eq.id} hover>
+                <TableRow
+                  key={eq.id}
+                  hover
+                  selected={selectedId === eq.id}
+                  onClick={() => setSelectedId(selectedId === eq.id ? null : eq.id)}
+                  sx={{ cursor: 'pointer' }}
+                >
                   <TableCell>{eq.code}</TableCell>
                   <TableCell>{eq.name}</TableCell>
                   <TableCell>{eq.categoryName || '-'}</TableCell>
@@ -175,22 +190,6 @@ export default function EquipmentList() {
                   <TableCell><Chip label={eq.criticite || 'B'} size="small" color={eq.criticite === 'A' ? 'error' : eq.criticite === 'B' ? 'warning' : 'default'} /></TableCell>
                   <TableCell><Chip label={eq.status} size="small" color={statusColors[eq.status] || 'default'} /></TableCell>
                   <TableCell>{eq.location || '-'}</TableCell>
-                  <TableCell align="right">
-                    <IconButton 
-                      size="small" 
-                      onClick={() => navigate(`/equipment/${eq.id}`)}
-                      title="Voir les détails"
-                    >
-                      <Visibility />
-                    </IconButton>
-                    <IconButton 
-                      size="small" 
-                      onClick={() => openEntityPanel('equipment', eq)}
-                      title="Actions"
-                    >
-                      <MoreVert />
-                    </IconButton>
-                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

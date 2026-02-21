@@ -11,21 +11,31 @@ import {
   TableRow,
   Button,
   Chip,
-  CircularProgress,
-  IconButton
+  CircularProgress
 } from '@mui/material';
-import { Edit, Delete, MoreVert } from '@mui/icons-material';
 import api from '../services/api';
-import { useActionPanelHelpers } from '../hooks/useActionPanel';
+import { useActionPanel } from '../context/ActionPanelContext';
 
 export default function SettingsRoles() {
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { openEntityPanel } = useActionPanelHelpers();
+  const [selectedId, setSelectedId] = useState(null);
+  const { setContext } = useActionPanel();
 
   useEffect(() => {
     loadRoles();
   }, []);
+
+  useEffect(() => {
+    setContext({ type: 'list', entityType: 'roles' });
+    return () => setContext(null);
+  }, [setContext]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const role = roles.find((r) => r.id === selectedId);
+    setContext(role ? { type: 'list', entityType: 'roles', selectedEntity: role } : { type: 'list', entityType: 'roles' });
+  }, [selectedId, roles, setContext]);
 
   const loadRoles = async () => {
     try {
@@ -70,12 +80,16 @@ export default function SettingsRoles() {
                   <TableCell>Description</TableCell>
                   <TableCell>Utilisateurs</TableCell>
                   <TableCell>Permissions</TableCell>
-                  <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {roles.map((role) => (
-                  <TableRow key={role.id}>
+                  <TableRow
+                    key={role.id}
+                    selected={selectedId === role.id}
+                    onClick={() => setSelectedId(selectedId === role.id ? null : role.id)}
+                    sx={{ cursor: 'pointer' }}
+                  >
                     <TableCell>
                       <Typography fontWeight={600}>{role.name}</Typography>
                     </TableCell>
@@ -85,11 +99,6 @@ export default function SettingsRoles() {
                     </TableCell>
                     <TableCell>
                       <Chip label={`${role.permissionCount || 0} permissions`} size="small" variant="outlined" />
-                    </TableCell>
-                    <TableCell align="right">
-                      <IconButton size="small" onClick={() => openEntityPanel('roles', role)}>
-                        <MoreVert fontSize="small" />
-                      </IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
