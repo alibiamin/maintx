@@ -9,17 +9,28 @@ import {
   Typography,
   Alert,
   alpha,
-  useTheme
+  useTheme,
+  Tooltip,
+  Link
 } from '@mui/material';
 import {
   Build,
   Assignment,
   Inventory,
   CalendarMonth,
-  Security
+  Security,
+  Email
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
 import Logo from '../components/Logo';
+
+// Liens sociaux — à personnaliser avec vos URLs
+const SOCIAL_LINKS = [
+  { id: 'facebook', label: 'Facebook', href: 'https://www.facebook.com/maintx', icon: 'fb', color: '#1877f2' },
+  { id: 'linkedin', label: 'LinkedIn', href: 'https://www.linkedin.com/company/maintx', icon: 'in', color: '#0a66c2' },
+  { id: 'x', label: 'X (Twitter)', href: 'https://x.com/maintx', icon: 'x', color: '#000' },
+  { id: 'mail', label: 'Email', href: 'mailto:contact@maintx.org', icon: 'mail', color: '#2EB23E' }
+];
 
 const features = [
   { icon: Build, label: 'Équipements & suivi' },
@@ -27,6 +38,34 @@ const features = [
   { icon: CalendarMonth, label: 'Planning préventif' },
   { icon: Inventory, label: 'Stock & pièces' }
 ];
+
+/** Icônes sociales (SVG) pour Facebook, LinkedIn, X, Mail */
+function SocialIcon({ icon, color, size = 24 }) {
+  const s = size;
+  const common = { width: s, height: s, fill: color };
+  if (icon === 'fb') {
+    return (
+      <Box component="svg" viewBox="0 0 24 24" sx={common}>
+        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+      </Box>
+    );
+  }
+  if (icon === 'in') {
+    return (
+      <Box component="svg" viewBox="0 0 24 24" sx={common}>
+        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+      </Box>
+    );
+  }
+  if (icon === 'x') {
+    return (
+      <Box component="svg" viewBox="0 0 24 24" sx={common}>
+        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+      </Box>
+    );
+  }
+  return <Email sx={{ fontSize: s, color }} />;
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -51,6 +90,24 @@ export default function LoginPage() {
     }
   };
 
+  const fadeInUp = {
+    '@keyframes fadeInUp': {
+      from: { opacity: 0, transform: 'translateY(12px)' },
+      to: { opacity: 1, transform: 'translateY(0)' }
+    }
+  };
+  const socialEntrance = {
+    animation: 'fadeInUp 0.6s ease-out forwards',
+    ...fadeInUp
+  };
+  const brandFadeIn = {
+    '@keyframes brandFadeIn': {
+      from: { opacity: 0, transform: 'translateY(8px)' },
+      to: { opacity: 1, transform: 'translateY(0)' }
+    },
+    animation: 'brandFadeIn 0.8s ease-out forwards'
+  };
+
   return (
     <Box
       sx={{
@@ -71,7 +128,7 @@ export default function LoginPage() {
           position: 'relative'
         }}
       >
-        <Box sx={{ position: 'relative', zIndex: 1 }}>
+        <Box sx={{ position: 'relative', zIndex: 1, ...brandFadeIn }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 3 }}>
             <Box component="img" src="/maintx-logo.png" alt="MAINTX" sx={{ maxWidth: 'min(280px, 100%)', height: 'auto' }} />
           </Box>
@@ -79,7 +136,7 @@ export default function LoginPage() {
             <Logo variant="dark" size="medium" showText={false} logoSrc={null} sx={{ flexShrink: 0 }} />
             <Box sx={{ borderLeft: '1px solid', borderColor: 'divider', pl: 2 }}>
               <Typography variant="body1" sx={{ color: 'text.primary', fontWeight: 500, letterSpacing: '0.02em' }}>
-                Gestion de maintenance — xmaint.org
+                Solution GMAO pour la maintenance industrielle et préventive
               </Typography>
             </Box>
           </Box>
@@ -108,6 +165,45 @@ export default function LoginPage() {
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
             Connexion sécurisée
           </Typography>
+        </Box>
+
+        {/* Raccourcis réseaux sociaux — panneau gauche */}
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'center',
+            gap: 2,
+            pt: 2,
+            ...socialEntrance
+          }}
+        >
+          {SOCIAL_LINKS.map((link) => (
+            <Tooltip key={link.id} title={link.label} placement="top">
+              <Link
+                href={link.href}
+                target={link.id === 'mail' ? '_self' : '_blank'}
+                rel={link.id === 'mail' ? undefined : 'noopener noreferrer'}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 44,
+                  height: 44,
+                  borderRadius: '50%',
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
+                  color: 'text.secondary',
+                  transition: 'all 0.25s ease',
+                  '&:hover': {
+                    bgcolor: alpha(theme.palette.primary.main, 0.18),
+                    transform: 'scale(1.1)',
+                    color: link.color
+                  }
+                }}
+              >
+                <SocialIcon icon={link.icon} color="currentColor" size={22} />
+              </Link>
+            </Tooltip>
+          ))}
         </Box>
 
         <Box
@@ -204,10 +300,6 @@ export default function LoginPage() {
                 {loading ? 'Connexion...' : 'Se connecter'}
               </Button>
             </form>
-
-            <Typography variant="caption" display="block" sx={{ mt: 2.5 }} color="text.secondary" align="center">
-              Démo : admin@maintenix.com / Password123!
-            </Typography>
           </CardContent>
         </Card>
 
