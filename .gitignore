@@ -23,3 +23,7 @@ Thumbs.db
 # Build
 dist/
 build/
+
+# Archives (éviter fichiers > 50 Mo sur GitHub)
+*.zip
+*.rar
