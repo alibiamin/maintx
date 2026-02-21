@@ -57,13 +57,10 @@ import {
   ChevronRight,
   Notifications as NotificationsIcon,
   Warning as WarningIcon,
-  Info as InfoIcon,
-  DarkMode as DarkModeIcon,
-  LightMode as LightModeIcon
+  Info as InfoIcon
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
-import { useThemeMode } from '../theme';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import api from '../services/api';
 import { LogoCompact } from './Logo';
@@ -316,8 +313,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
-  const isDark = theme.palette.mode === 'dark';
-  const { mode: themeMode, toggleTheme } = useThemeMode();
+  const isDark = false; // Mode clair uniquement
 
   // Déterminer le menu sélectionné basé sur la route actuelle (pathname + chemins des sous-items)
   const currentMenuId = useMemo(() => {
@@ -591,9 +587,6 @@ export default function Layout() {
 
           {/* Infos utilisateur et icônes */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <IconButton size="small" onClick={toggleTheme} aria-label={themeMode === 'dark' ? 'Mode clair' : 'Mode sombre'}>
-              {themeMode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
-            </IconButton>
             <IconButton
               size="small"
               onClick={(e) => setLangAnchorEl(e.currentTarget)}

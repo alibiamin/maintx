@@ -1,35 +1,14 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 
-const ThemeModeContext = createContext();
-
-function getInitialTheme() {
-  const current = localStorage.getItem('xmaint-theme');
-  if (current === 'light' || current === 'dark') return current;
-  const legacy = localStorage.getItem('gmao-theme');
-  if (legacy === 'light' || legacy === 'dark') {
-    localStorage.setItem('xmaint-theme', legacy);
-    return legacy;
-  }
-  return 'light';
-}
+const ThemeModeContext = createContext({ mode: 'light', toggleTheme: () => {} });
 
 export function ThemeModeProvider({ children }) {
-  const [mode, setMode] = useState(getInitialTheme);
-
-  const toggleTheme = () => {
-    setMode((prev) => {
-      const next = prev === 'light' ? 'dark' : 'light';
-      localStorage.setItem('xmaint-theme', next);
-      return next;
-    });
-  };
-
-  const theme = useMemo(() => createAppTheme(mode), [mode]);
+  const theme = useMemo(() => createAppTheme(), []);
 
   return (
-    <ThemeModeContext.Provider value={{ mode, toggleTheme }}>
+    <ThemeModeContext.Provider value={{ mode: 'light', toggleTheme: () => {} }}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
         {children}
@@ -55,22 +34,18 @@ export const THEME_COLORS = {
   textSecondary: '#64748b'
 };
 
-export function createAppTheme(mode) {
-  const isDark = mode === 'dark';
-  const bgBase = isDark ? THEME_COLORS.background : '#f5f7fa';
-  const cardBg = isDark ? 'rgba(30, 35, 45, 0.95)' : THEME_COLORS.paper;
-
+export function createAppTheme() {
   return createTheme({
     palette: {
-      mode,
+      mode: 'light',
       primary: { main: THEME_COLORS.primary, light: THEME_COLORS.primaryLight, dark: THEME_COLORS.primaryDark },
       secondary: { main: THEME_COLORS.secondary, light: '#e8f4ff', dark: '#b8d4e8' },
       success: { main: THEME_COLORS.primary },
       warning: { main: THEME_COLORS.accent },
       error: { main: '#ef4444' },
       background: {
-        default: bgBase,
-        paper: cardBg
+        default: '#f5f7fa',
+        paper: THEME_COLORS.paper
       }
     },
     typography: {
@@ -89,10 +64,10 @@ export function createAppTheme(mode) {
       MuiCard: {
         styleOverrides: {
           root: {
-            background: isDark ? 'rgba(15, 23, 42, 0.7)' : 'rgba(255,255,255,0.9)',
+            background: 'rgba(255,255,255,0.9)',
             backdropFilter: 'blur(12px)',
-            border: isDark ? '1px solid rgba(148, 163, 184, 0.1)' : '1px solid rgba(0,0,0,0.06)',
-            boxShadow: isDark ? '0 4px 24px rgba(0,0,0,0.4)' : '0 4px 24px rgba(0,0,0,0.06)'
+            border: '1px solid rgba(0,0,0,0.06)',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.06)'
           }
         }
       },
@@ -101,7 +76,7 @@ export function createAppTheme(mode) {
           root: {
             backgroundImage: 'none',
             backdropFilter: 'blur(12px)',
-            border: isDark ? '1px solid rgba(148, 163, 184, 0.08)' : '1px solid rgba(0,0,0,0.06)'
+            border: '1px solid rgba(0,0,0,0.06)'
           }
         }
       }
