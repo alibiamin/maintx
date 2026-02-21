@@ -21,9 +21,14 @@ router.get('/kpis', (req, res) => {
   const since = `date('now', '-${parseInt(period) || 30} days')`;
 
   const equipment = db.prepare('SELECT COUNT(*) as total FROM equipment WHERE status != "retired"').get();
-  const operational = db.prepare('SELECT COUNT(*) as c FROM equipment WHERE status = "operational"').get();
   const total = equipment.total || 1;
-  const availabilityRate = ((operational.c / total) * 100).toFixed(2);
+  // Disponibilité : équipements opérationnels sans OT en cours (pending / in_progress)
+  const available = db.prepare(`
+    SELECT COUNT(*) as c FROM equipment e
+    WHERE e.status = 'operational'
+      AND e.id NOT IN (SELECT equipment_id FROM work_orders WHERE status IN ('pending', 'in_progress') AND equipment_id IS NOT NULL)
+  `).get();
+  const availabilityRate = ((available.c / total) * 100).toFixed(2);
 
   // MTTR moyen (heures)
   const mttrRow = db.prepare(`
@@ -119,7 +124,7 @@ router.get('/kpis', (req, res) => {
     mttr: mttr ? parseFloat(mttr) : null,
     mtbf: mtbf ? parseFloat(mtbf) : null,
     totalEquipment: total,
-    operationalCount: operational.c,
+    operationalCount: available.c,
     totalCostPeriod: parseFloat((totalCost).toFixed(2)),
     partsCost: parseFloat((partsCost).toFixed(2)),
     laborCost: parseFloat((laborCost).toFixed(2)),
