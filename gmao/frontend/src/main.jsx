@@ -2,18 +2,19 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './i18n';
 import './App.css';
-import { BrowserRouter } from 'react-router-dom';
 import App from './App';
+import EncodedHashRouter from './components/EncodedHashRouter';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeModeProvider } from './theme';
 import { ActionPanelProvider } from './context/ActionPanelContext';
 import { SnackbarProvider } from './context/SnackbarContext';
 import { CurrencyProvider } from './context/CurrencyContext';
 
+// EncodedHashRouter : le hash affiche un lien crypté (base64url), pas le chemin réel.
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <EncodedHashRouter>
       <AuthProvider>
         <ThemeModeProvider>
           <CurrencyProvider>
@@ -25,6 +26,6 @@ root.render(
           </CurrencyProvider>
         </ThemeModeProvider>
       </AuthProvider>
-    </BrowserRouter>
+    </EncodedHashRouter>
   </React.StrictMode>
 );

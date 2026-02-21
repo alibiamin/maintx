@@ -15,8 +15,10 @@ import {
 } from '@mui/material';
 import { ArrowBack, Save } from '@mui/icons-material';
 import api from '../../services/api';
+import { useTranslation } from 'react-i18next';
 
 export default function WorkOrderForm() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const [equipment, setEquipment] = useState([]);
@@ -131,10 +133,10 @@ export default function WorkOrderForm() {
                 <FormControl fullWidth>
                   <InputLabel>Priorite</InputLabel>
                   <Select value={form.priority} label="Priorite" onChange={(e) => handleChange('priority', e.target.value)}>
-                    <MenuItem value="low">Basse</MenuItem>
-                    <MenuItem value="medium">Moyenne</MenuItem>
-                    <MenuItem value="high">Haute</MenuItem>
-                    <MenuItem value="critical">Critique</MenuItem>
+                    <MenuItem value="low">{t('priority.low')}</MenuItem>
+                    <MenuItem value="medium">{t('priority.medium')}</MenuItem>
+                    <MenuItem value="high">{t('priority.high')}</MenuItem>
+                    <MenuItem value="critical">{t('priority.critical')}</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>

@@ -13,10 +13,20 @@
     "user": "Utilisateur",
     "pin": "Épingler",
     "unpin": "Désépingler",
-    "language": "Langue"
+    "language": "Langue",
+    "all": "Tous"
+  },
+  "flow": {
+    "demande": "Demande",
+    "demande_sublabel": "Déclaration panne",
+    "assigned": "Affectation",
+    "assigned_sublabel": "Équipe assignée",
+    "in_progress_sublabel": "Intervention terrain"
   },
   "path": {
     "_home": "Tableau de bord",
+    "_detail": "Détail",
+    "_unknown": "Page",
     "dashboard": "Tableau de bord",
     "dashboard/kpis": "KPIs",
     "dashboard/activity": "Activité",
@@ -143,5 +153,20 @@
     "submit": "Se connecter",
     "submitting": "Connexion...",
     "error": "Email ou mot de passe incorrect."
+  },
+  "status": {
+    "pending": "En attente",
+    "in_progress": "En cours",
+    "completed": "Terminé",
+    "cancelled": "Annulé",
+    "deferred": "Reporté",
+    "draft": "Brouillon",
+    "completed_closed": "Terminé (clôturé)"
+  },
+  "priority": {
+    "low": "Basse",
+    "medium": "Moyenne",
+    "high": "Haute",
+    "critical": "Critique"
   }
 }

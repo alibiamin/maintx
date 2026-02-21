@@ -1080,7 +1080,18 @@ export default function Layout() {
               </Link>
               {location.pathname.split('/').filter(Boolean).map((segment, i, arr) => {
                 const path = arr.slice(0, i + 1).join('/');
-                const label = path ? (t(`path.${path}`) || segment) : t('path._home');
+                const pathKey = `path.${path}`;
+                const segmentKey = `path.${segment}`;
+                const translatedPath = t(pathKey);
+                const translatedSegment = t(segmentKey);
+                const isId = /^\d+$/.test(segment) || /^[0-9a-f-]{20,}$/i.test(segment);
+                const label = path
+                  ? (translatedPath && translatedPath !== pathKey
+                    ? translatedPath
+                    : isId
+                      ? t('path._detail')
+                      : (translatedSegment && translatedSegment !== segmentKey ? translatedSegment : t('path._unknown')))
+                  : t('path._home');
                 const isLast = i === arr.length - 1;
                 return isLast ? (
                   <Typography key={path} color="text.primary" sx={{ fontSize: '0.875rem', fontWeight: 600 }}>

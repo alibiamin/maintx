@@ -13,10 +13,20 @@
     "user": "User",
     "pin": "Pin",
     "unpin": "Unpin",
-    "language": "Language"
+    "language": "Language",
+    "all": "All"
+  },
+  "flow": {
+    "demande": "Request",
+    "demande_sublabel": "Failure report",
+    "assigned": "Assignment",
+    "assigned_sublabel": "Team assigned",
+    "in_progress_sublabel": "Field intervention"
   },
   "path": {
     "_home": "Dashboard",
+    "_detail": "Detail",
+    "_unknown": "Page",
     "dashboard": "Dashboard",
     "dashboard/kpis": "KPIs",
     "dashboard/activity": "Activity",
@@ -143,5 +153,20 @@
     "submit": "Sign in",
     "submitting": "Signing in...",
     "error": "Invalid email or password."
+  },
+  "status": {
+    "pending": "Pending",
+    "in_progress": "In progress",
+    "completed": "Completed",
+    "cancelled": "Cancelled",
+    "deferred": "Deferred",
+    "draft": "Draft",
+    "completed_closed": "Completed (closed)"
+  },
+  "priority": {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "critical": "Critical"
   }
 }

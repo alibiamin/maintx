@@ -22,11 +22,13 @@ import { Add, Visibility } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import InterventionFlow from '../../components/InterventionFlow';
+import { useTranslation } from 'react-i18next';
 
 const statusColors = { pending: 'warning', in_progress: 'info', completed: 'success', cancelled: 'default', deferred: 'default' };
 const priorityColors = { low: 'default', medium: 'primary', high: 'warning', critical: 'error' };
 
 export default function WorkOrderList() {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const statusFromUrl = searchParams.get('status') || '';
   const [orders, setOrders] = useState([]);
@@ -82,12 +84,12 @@ export default function WorkOrderList() {
           <FormControl size="small" sx={{ minWidth: 180 }}>
             <InputLabel>Statut</InputLabel>
             <Select value={filterStatus} label="Statut" onChange={(e) => setFilterStatus(e.target.value)}>
-              <MenuItem value="">Tous</MenuItem>
-              <MenuItem value="pending">En attente</MenuItem>
-              <MenuItem value="in_progress">En cours</MenuItem>
-              <MenuItem value="completed">Termine</MenuItem>
-              <MenuItem value="cancelled">Annule</MenuItem>
-              <MenuItem value="deferred">Reporte</MenuItem>
+              <MenuItem value="">{t('common.all', 'Tous')}</MenuItem>
+              <MenuItem value="pending">{t('status.pending')}</MenuItem>
+              <MenuItem value="in_progress">{t('status.in_progress')}</MenuItem>
+              <MenuItem value="completed">{t('status.completed')}</MenuItem>
+              <MenuItem value="cancelled">{t('status.cancelled')}</MenuItem>
+              <MenuItem value="deferred">{t('status.deferred')}</MenuItem>
             </Select>
           </FormControl>
           <FormControl size="small" sx={{ minWidth: 160 }}>
@@ -132,8 +134,8 @@ export default function WorkOrderList() {
                   <TableCell>{wo.number}</TableCell>
                   <TableCell>{wo.title}</TableCell>
                   <TableCell>{wo.equipmentName || '-'}</TableCell>
-                  <TableCell><Chip label={wo.status} size="small" color={statusColors[wo.status]} /></TableCell>
-                  <TableCell><Chip label={wo.priority} size="small" color={priorityColors[wo.priority]} variant="outlined" /></TableCell>
+                  <TableCell><Chip label={t(`status.${wo.status}`, wo.status)} size="small" color={statusColors[wo.status]} /></TableCell>
+                  <TableCell><Chip label={t(`priority.${wo.priority}`, wo.priority)} size="small" color={priorityColors[wo.priority]} variant="outlined" /></TableCell>
                   <TableCell>{wo.assignedName || '-'}</TableCell>
                   <TableCell>{new Date(wo.createdAt).toLocaleDateString('fr-FR')}</TableCell>
                   <TableCell align="right">

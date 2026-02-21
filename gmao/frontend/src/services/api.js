@@ -3,6 +3,7 @@
  */
 
 import axios from 'axios';
+import { encodePath, getPathFromHash } from '../utils/encodedPath';
 
 /** Déduplique un tableau d'objets par clé id (ou première clé unique) pour éviter affichages répétés */
 function deduplicateList(arr) {
@@ -46,8 +47,11 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       localStorage.removeItem('xmaint-token');
       delete api.defaults.headers.common['Authorization'];
-      if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
+      const currentPath = getPathFromHash();
+      const isLogin = currentPath === '/login' || currentPath === '/';
+      if (!isLogin) {
+        const enc = encodePath('/login', '');
+        window.location.href = window.location.pathname + window.location.search + (enc ? `#/${enc}` : '#/');
       }
     }
     return Promise.reject(err);

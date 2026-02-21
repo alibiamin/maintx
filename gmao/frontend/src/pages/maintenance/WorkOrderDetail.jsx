@@ -31,17 +31,12 @@ import { ArrowBack, PlayArrow, Stop, PersonSearch, Star, Schedule, Checklist, In
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useSnackbar } from '../../context/SnackbarContext';
+import { useTranslation } from 'react-i18next';
 
-const statusLabels = {
-  pending: 'En attente',
-  in_progress: 'En cours',
-  completed: 'Terminé (clôturé)',
-  cancelled: 'Annulé',
-  deferred: 'Reporté'
-};
 const statusColors = { pending: 'warning', in_progress: 'info', completed: 'success', cancelled: 'default', deferred: 'default' };
 
 export default function WorkOrderDetail() {
+  const { t } = useTranslation();
   const { id } = useParams();
   const navigate = useNavigate();
   const [order, setOrder] = useState(null);
@@ -231,11 +226,11 @@ export default function WorkOrderDetail() {
   if (loading || !order) return <Box p={4}><CircularProgress /></Box>;
 
   const statusOptions = [
-    { value: 'pending', label: statusLabels.pending },
-    { value: 'in_progress', label: statusLabels.in_progress },
-    ...(canClose ? [{ value: 'completed', label: statusLabels.completed }] : []),
-    { value: 'cancelled', label: statusLabels.cancelled },
-    { value: 'deferred', label: statusLabels.deferred }
+    { value: 'pending', label: t('status.pending') },
+    { value: 'in_progress', label: t('status.in_progress') },
+    ...(canClose ? [{ value: 'completed', label: t('status.completed_closed') }] : []),
+    { value: 'cancelled', label: t('status.cancelled') },
+    { value: 'deferred', label: t('status.deferred') }
   ];
 
   return (
@@ -253,8 +248,8 @@ export default function WorkOrderDetail() {
               <Typography variant="h5">{order.number}</Typography>
               <Typography variant="h6">{order.title}</Typography>
               <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                <Chip label={statusLabels[order.status] || order.status} color={statusColors[order.status]} size="small" />
-                <Chip label={order.priority} size="small" variant="outlined" />
+                <Chip label={t(`status.${order.status}`, order.status)} color={statusColors[order.status]} size="small" />
+                <Chip label={t(`priority.${order.priority}`, order.priority)} size="small" variant="outlined" />
                 {order.typeName && <Chip label={order.typeName} size="small" variant="outlined" />}
               </Box>
             </Box>
@@ -289,7 +284,7 @@ export default function WorkOrderDetail() {
               )}
               {order.status === 'completed' && (order.completedAt || order.signatureName) && (
                 <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
-                  Clôturé{order.completedAt ? ` le ${new Date(order.completedAt).toLocaleString('fr-FR')}` : ''}
+                  {t('status.completed')}{order.completedAt ? ` ${new Date(order.completedAt).toLocaleString()}` : ''}
                   {order.signatureName ? ` — Signé par ${order.signatureName}` : ''}
                 </Typography>
               )}

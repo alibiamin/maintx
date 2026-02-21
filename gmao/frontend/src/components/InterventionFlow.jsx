@@ -16,13 +16,16 @@ import {
   Build as ProgressIcon,
   DoneAll as DoneIcon
 } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 
-const FLOW_STEPS = [
-  { key: 'demande', label: 'Demande', sublabel: 'Déclaration panne', icon: AssignmentIcon, color: '#f59e0b' },
-  { key: 'assigned', label: 'Affectation', sublabel: 'Équipe assignée', icon: AssignIcon, color: '#8b5cf6' },
-  { key: 'in_progress', label: 'En cours', sublabel: 'Intervention terrain', icon: ProgressIcon, color: '#06b6d4' },
-  { key: 'completed', label: 'Clôture', sublabel: 'Terminé', icon: DoneIcon, color: '#10b981' }
-];
+function getFlowSteps(t) {
+  return [
+    { key: 'demande', label: t('flow.demande', 'Demande'), sublabel: t('flow.demande_sublabel', 'Déclaration panne'), icon: AssignmentIcon, color: '#f59e0b' },
+    { key: 'assigned', label: t('flow.assigned', 'Affectation'), sublabel: t('flow.assigned_sublabel', 'Équipe assignée'), icon: AssignIcon, color: '#8b5cf6' },
+    { key: 'in_progress', label: t('status.in_progress'), sublabel: t('flow.in_progress_sublabel', 'Intervention terrain'), icon: ProgressIcon, color: '#06b6d4' },
+    { key: 'completed', label: t('status.completed'), sublabel: t('status.completed'), icon: DoneIcon, color: '#10b981' }
+  ];
+}
 
 const mapStatusToStep = (wo) => {
   if (wo.status === 'completed') return 'completed';
@@ -35,8 +38,10 @@ const mapStatusToStep = (wo) => {
 const priorityColors = { low: 'default', medium: 'primary', high: 'warning', critical: 'error' };
 
 export default function InterventionFlow({ workOrders = [] }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const theme = useTheme();
+  const FLOW_STEPS = getFlowSteps(t);
 
   const byStep = FLOW_STEPS.reduce((acc, s) => {
     acc[s.key] = workOrders.filter(wo => mapStatusToStep(wo) === s.key);
@@ -138,7 +143,7 @@ export default function InterventionFlow({ workOrders = [] }) {
                         <Box sx={{ mt: 1, display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
                           <Chip
                             size="small"
-                            label={wo.priority}
+                            label={t(`priority.${wo.priority}`, wo.priority)}
                             color={priorityColors[wo.priority]}
                             sx={{ height: 20, fontSize: '0.7rem' }}
                           />

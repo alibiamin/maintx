@@ -13,10 +13,20 @@
     "user": "المستخدم",
     "pin": "تثبيت",
     "unpin": "إلغاء التثبيت",
-    "language": "اللغة"
+    "language": "اللغة",
+    "all": "الكل"
+  },
+  "flow": {
+    "demande": "طلب",
+    "demande_sublabel": "إعلان عطل",
+    "assigned": "تعيين",
+    "assigned_sublabel": "فريق معين",
+    "in_progress_sublabel": "تدخل ميداني"
   },
   "path": {
     "_home": "لوحة التحكم",
+    "_detail": "تفاصيل",
+    "_unknown": "صفحة",
     "dashboard": "لوحة التحكم",
     "dashboard/kpis": "مؤشرات الأداء",
     "dashboard/activity": "النشاط",
@@ -143,5 +153,20 @@
     "submit": "تسجيل الدخول",
     "submitting": "جاري تسجيل الدخول...",
     "error": "البريد الإلكتروني أو كلمة المرور غير صحيحة."
+  },
+  "status": {
+    "pending": "قيد الانتظار",
+    "in_progress": "قيد التنفيذ",
+    "completed": "مكتمل",
+    "cancelled": "ملغى",
+    "deferred": "مؤجل",
+    "draft": "مسودة",
+    "completed_closed": "مكتمل (مغلق)"
+  },
+  "priority": {
+    "low": "منخفضة",
+    "medium": "متوسطة",
+    "high": "عالية",
+    "critical": "حرجة"
   }
 }

@@ -16,8 +16,10 @@ import {
 } from '@mui/material';
 import { Search, Person } from '@mui/icons-material';
 import api from '../services/api';
+import { useTranslation } from 'react-i18next';
 
 export default function PlanningAssignments() {
+  const { t } = useTranslation();
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -104,7 +106,7 @@ export default function PlanningAssignments() {
                     <TableCell>{new Date(assignment.scheduled_date).toLocaleDateString('fr-FR')}</TableCell>
                     <TableCell>{assignment.estimated_duration || '-'}</TableCell>
                     <TableCell>
-                      <Chip label={assignment.status} size="small" color={assignment.status === 'completed' ? 'success' : 'default'} />
+                      <Chip label={t(`status.${assignment.status}`, assignment.status)} size="small" color={assignment.status === 'completed' ? 'success' : 'default'} />
                     </TableCell>
                   </TableRow>
                 ))}

@@ -13,10 +13,20 @@
     "user": "Usuario",
     "pin": "Fijar",
     "unpin": "Desfijar",
-    "language": "Idioma"
+    "language": "Idioma",
+    "all": "Todos"
+  },
+  "flow": {
+    "demande": "Solicitud",
+    "demande_sublabel": "Declaración de avería",
+    "assigned": "Asignación",
+    "assigned_sublabel": "Equipo asignado",
+    "in_progress_sublabel": "Intervención en campo"
   },
   "path": {
     "_home": "Panel de control",
+    "_detail": "Detalle",
+    "_unknown": "Página",
     "dashboard": "Panel de control",
     "dashboard/kpis": "KPIs",
     "dashboard/activity": "Actividad",
@@ -143,5 +153,20 @@
     "submit": "Iniciar sesión",
     "submitting": "Conectando...",
     "error": "Email o contraseña incorrectos."
+  },
+  "status": {
+    "pending": "Pendiente",
+    "in_progress": "En curso",
+    "completed": "Completado",
+    "cancelled": "Cancelado",
+    "deferred": "Diferido",
+    "draft": "Borrador",
+    "completed_closed": "Completado (cerrado)"
+  },
+  "priority": {
+    "low": "Baja",
+    "medium": "Media",
+    "high": "Alta",
+    "critical": "Crítica"
   }
 }

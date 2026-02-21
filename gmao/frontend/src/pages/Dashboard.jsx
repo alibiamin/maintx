@@ -67,6 +67,7 @@ import api from '../services/api';
 import { useTheme } from '@mui/material/styles';
 import { useCurrency } from '../context/CurrencyContext';
 import { CHART_COLORS } from '../shared/chartTheme';
+import { useTranslation } from 'react-i18next';
 
 // Format date relative (il y a X min, hier, date)
 function formatRelative(dateStr) {
@@ -84,10 +85,6 @@ function formatRelative(dateStr) {
   if (diffD < 7) return `Il y a ${diffD} j`;
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 }
-
-// Labels statuts français
-const STATUS_LABELS = { pending: 'En attente', in_progress: 'En cours', completed: 'Terminé', cancelled: 'Annulé', deferred: 'Reporté' };
-const PRIORITY_LABELS = { low: 'Basse', medium: 'Moyenne', high: 'Haute', critical: 'Critique' };
 
 // Formater le libellé de semaine pour l'axe X (ex: "2024-W12" -> "S.12", "2024-03" -> "Mars")
 function formatWeekLabel(weekStr) {
@@ -128,6 +125,7 @@ export default function Dashboard() {
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [customLayout, setCustomLayout] = useState([...DEFAULT_DASHBOARD_LAYOUT]);
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const muiTheme = useTheme();
   const currency = useCurrency();
   const isDark = muiTheme.palette.mode === 'dark';
@@ -184,8 +182,8 @@ export default function Dashboard() {
   const resetDashboardLayout = () => setCustomLayout([...DEFAULT_DASHBOARD_LAYOUT]);
 
   const statusColors = { pending: 'warning', in_progress: 'info', completed: 'success', cancelled: 'default', deferred: 'default' };
-  const byStatusData = (charts?.byStatus || []).map(s => ({ ...s, label: STATUS_LABELS[s.status] || s.status }));
-  const byPriorityData = (charts?.byPriority || []).map((p, i) => ({ name: PRIORITY_LABELS[p.priority] || p.priority, value: p.count, fill: CHART_COLORS[i % CHART_COLORS.length] }));
+  const byStatusData = (charts?.byStatus || []).map(s => ({ ...s, label: t(`status.${s.status}`, s.status) }));
+  const byPriorityData = (charts?.byPriority || []).map((p, i) => ({ name: t(`priority.${p.priority}`, p.priority), value: p.count, fill: CHART_COLORS[i % CHART_COLORS.length] }));
   const statuses = ['pending', 'in_progress', 'completed'];
   const weeks = [...new Set((charts?.weeklyOT || []).map(w => w.week))].sort();
   const areaEvolutionData = weeks.map(w => {
@@ -658,11 +656,11 @@ export default function Dashboard() {
                       <YAxis tick={tickStyle} tickLine={false} axisLine={false} width={32} allowDecimals={false} />
                       <Tooltip
                         contentStyle={{ borderRadius: 12, border: `1px solid ${tooltipBorder}`, backgroundColor: tooltipBg, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}
-                        formatter={(value, name) => [value, STATUS_LABELS[name] || name]}
+                        formatter={(value, name) => [value, t(`status.${name}`, name)]}
                         labelFormatter={(label) => `Période ${formatWeekLabel(label)}`}
                         itemStyle={{ padding: '4px 0' }}
                       />
-                      <Legend formatter={(v) => STATUS_LABELS[v] || v} wrapperStyle={{ paddingTop: 8 }} iconType="circle" iconSize={8} />
+                      <Legend formatter={(v) => t(`status.${v}`, v)} wrapperStyle={{ paddingTop: 8 }} iconType="circle" iconSize={8} />
                       {statuses.map((status, i) => (
                         <Area key={status} type="monotone" dataKey={status} stackId="1" stroke={CHART_COLORS[i]} strokeWidth={2.5} fill={`url(#areaGradEvol${i})`} isAnimationActive animationDuration={600} />
                       ))}
@@ -864,8 +862,8 @@ export default function Dashboard() {
                       <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }} noWrap>{wo.title}</Typography>
                       {wo.equipment_name && <Typography variant="caption" color="text.secondary" noWrap sx={{ maxWidth: 120 }}>{wo.equipment_name}</Typography>}
                       <Typography variant="caption" color="text.secondary">{formatRelative(wo.created_at)}</Typography>
-                      <Chip label={STATUS_LABELS[wo.status] || wo.status} size="small" color={statusColors[wo.status] || 'default'} sx={{ fontWeight: 600 }} />
-                      <Chip label={PRIORITY_LABELS[wo.priority] || wo.priority} size="small" variant="outlined" />
+                      <Chip label={t(`status.${wo.status}`, wo.status)} size="small" color={statusColors[wo.status] || 'default'} sx={{ fontWeight: 600 }} />
+                      <Chip label={t(`priority.${wo.priority}`, wo.priority)} size="small" variant="outlined" />
                     </Box>
                   ))}
                 </Box>

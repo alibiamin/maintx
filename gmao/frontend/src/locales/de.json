@@ -13,10 +13,20 @@
     "user": "Benutzer",
     "pin": "Anheften",
     "unpin": "Lösen",
-    "language": "Sprache"
+    "language": "Sprache",
+    "all": "Alle"
+  },
+  "flow": {
+    "demande": "Anfrage",
+    "demande_sublabel": "Störungsmeldung",
+    "assigned": "Zuweisung",
+    "assigned_sublabel": "Team zugewiesen",
+    "in_progress_sublabel": "Einsatz vor Ort"
   },
   "path": {
     "_home": "Dashboard",
+    "_detail": "Detail",
+    "_unknown": "Seite",
     "dashboard": "Dashboard",
     "dashboard/kpis": "KPIs",
     "dashboard/activity": "Aktivität",
@@ -143,5 +153,20 @@
     "submit": "Anmelden",
     "submitting": "Anmeldung...",
     "error": "E-Mail oder Passwort ungültig."
+  },
+  "status": {
+    "pending": "Ausstehend",
+    "in_progress": "In Bearbeitung",
+    "completed": "Abgeschlossen",
+    "cancelled": "Abgebrochen",
+    "deferred": "Zurückgestellt",
+    "draft": "Entwurf",
+    "completed_closed": "Abgeschlossen (geschlossen)"
+  },
+  "priority": {
+    "low": "Niedrig",
+    "medium": "Mittel",
+    "high": "Hoch",
+    "critical": "Kritisch"
   }
 }

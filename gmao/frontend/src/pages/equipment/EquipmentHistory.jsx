@@ -17,8 +17,10 @@ import {
 } from '@mui/material';
 import { Search, Build, Assignment } from '@mui/icons-material';
 import api from '../../services/api';
+import { useTranslation } from 'react-i18next';
 
 export default function EquipmentHistory() {
+  const { t } = useTranslation();
   const { id } = useParams();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -105,7 +107,7 @@ export default function EquipmentHistory() {
                     <TableCell>{item.technicianName || '-'}</TableCell>
                     <TableCell>{item.duration || '-'}</TableCell>
                     <TableCell>
-                      <Chip label={item.status} size="small" color={item.status === 'completed' ? 'success' : 'default'} />
+                      <Chip label={t(`status.${item.status}`, item.status)} size="small" color={item.status === 'completed' ? 'success' : 'default'} />
                     </TableCell>
                   </TableRow>
                 ))}

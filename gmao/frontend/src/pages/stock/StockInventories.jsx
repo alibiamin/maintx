@@ -22,10 +22,10 @@ import {
 import { Add, CheckCircle, Schedule, Visibility, Done } from '@mui/icons-material';
 import api from '../../services/api';
 import { useSnackbar } from '../../context/SnackbarContext';
-
-const STATUS_LABELS = { draft: 'Brouillon', in_progress: 'En cours', completed: 'Clôturé', cancelled: 'Annulé' };
+import { useTranslation } from 'react-i18next';
 
 export default function StockInventories() {
+  const { t } = useTranslation();
   const [inventories, setInventories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
@@ -182,7 +182,7 @@ export default function StockInventories() {
                     <TableCell>
                       <Chip
                         icon={inv.status === 'completed' ? <CheckCircle /> : <Schedule />}
-                        label={STATUS_LABELS[inv.status] || inv.status}
+                        label={t(`status.${inv.status}`, inv.status)}
                         size="small"
                         color={inv.status === 'completed' ? 'success' : 'warning'}
                       />
@@ -242,7 +242,7 @@ export default function StockInventories() {
         <DialogTitle>
           Inventaire {detail?.reference}
           {detail?.status !== 'completed' && (
-            <Chip label={STATUS_LABELS[detail?.status] || detail?.status} size="small" sx={{ ml: 1 }} color="warning" />
+            <Chip label={detail?.status ? t(`status.${detail.status}`, detail.status) : ''} size="small" sx={{ ml: 1 }} color="warning" />
           )}
         </DialogTitle>
         <DialogContent>

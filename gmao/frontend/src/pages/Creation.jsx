@@ -20,6 +20,7 @@ import {
 import { Save } from '@mui/icons-material';
 import api from '../services/api';
 import { useCurrency } from '../context/CurrencyContext';
+import { useTranslation } from 'react-i18next';
 
 const CATEGORIES = [
   { id: 'hierarchie', label: 'Hiérarchie' },
@@ -94,6 +95,7 @@ const getDefaultForm = (type) => {
 };
 
 export default function Creation() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const currency = useCurrency();
   const [categoryId, setCategoryId] = useState('hierarchie');
@@ -552,7 +554,7 @@ export default function Creation() {
                 <Grid item xs={12}><TextField fullWidth multiline label="Description" value={form.description ?? ''} onChange={(e) => handleChange('description', e.target.value)} /></Grid>
                 <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Équipement</InputLabel><Select value={form.equipmentId ?? ''} label="Équipement" onChange={(e) => handleChange('equipmentId', e.target.value)}><MenuItem value="">—</MenuItem>{equipment.map(eq => <MenuItem key={eq.id} value={eq.id}>{eq.code} — {eq.name}</MenuItem>)}</Select></FormControl></Grid>
                 <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Type</InputLabel><Select value={form.typeId ?? ''} label="Type" onChange={(e) => handleChange('typeId', e.target.value)}><MenuItem value="">—</MenuItem>{workOrderTypes.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}</Select></FormControl></Grid>
-                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Priorité</InputLabel><Select value={form.priority ?? 'medium'} label="Priorité" onChange={(e) => handleChange('priority', e.target.value)}><MenuItem value="low">Basse</MenuItem><MenuItem value="medium">Moyenne</MenuItem><MenuItem value="high">Haute</MenuItem><MenuItem value="critical">Critique</MenuItem></Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Priorité</InputLabel><Select value={form.priority ?? 'medium'} label="Priorité" onChange={(e) => handleChange('priority', e.target.value)}><MenuItem value="low">{t('priority.low')}</MenuItem><MenuItem value="medium">{t('priority.medium')}</MenuItem><MenuItem value="high">{t('priority.high')}</MenuItem><MenuItem value="critical">{t('priority.critical')}</MenuItem></Select></FormControl></Grid>
               </Grid>
             )}
 

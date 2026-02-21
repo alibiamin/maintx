@@ -23,15 +23,9 @@ import {
   Schedule
 } from '@mui/icons-material';
 import api from '../services/api';
+import { useTranslation } from 'react-i18next';
 
 const priorityColors = { low: 'default', medium: 'primary', high: 'warning', critical: 'error' };
-const statusLabels = {
-  pending: 'En attente',
-  in_progress: 'En cours',
-  completed: 'Terminé',
-  cancelled: 'Annulé',
-  deferred: 'Reporté'
-};
 
 function getDaysInRange(startDate, numDays) {
   const days = [];
@@ -55,6 +49,7 @@ function getWeekStart(date) {
 }
 
 export default function Planning() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const theme = useTheme();
   const [rangeStart, setRangeStart] = useState(() => getWeekStart(new Date()));
@@ -375,7 +370,7 @@ export default function Planning() {
             )}
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5 }}>
               <Chip size="small" label={selectedItem.type_name || (selectedItem.type === 'preventive' ? 'Préventif' : 'Correctif')} color={selectedItem.type === 'preventive' ? 'info' : 'default'} />
-              <Chip size="small" label={statusLabels[selectedItem.status] || selectedItem.status} />
+              <Chip size="small" label={t(`status.${selectedItem.status}`, selectedItem.status)} />
               <Chip size="small" label={selectedItem.priority} color={priorityColors[selectedItem.priority]} />
             </Box>
             <Typography variant="caption" display="block" color="text.secondary" sx={{ mb: 0.5 }}>
