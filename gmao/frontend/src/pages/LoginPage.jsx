@@ -72,14 +72,7 @@ function SocialIcon({ icon, color, size = 24 }) {
   return <Email sx={{ fontSize: s, color }} />;
 }
 
-const LANGUAGES = [
-  { code: 'fr', label: 'Français' },
-  { code: 'en', label: 'English' },
-  { code: 'ar', label: 'العربية' },
-  { code: 'es', label: 'Español' },
-  { code: 'pt', label: 'Português' },
-  { code: 'de', label: 'Deutsch' }
-];
+import { LANGUAGES } from '../constants/languages';
 
 export default function LoginPage() {
   const { t, i18n } = useTranslation();
@@ -264,6 +257,7 @@ export default function LoginPage() {
               selected={i18n.language === lang.code}
               onClick={() => { i18n.changeLanguage(lang.code); setLangAnchor(null); }}
             >
+              <Box component="span" sx={{ mr: 1.5, fontSize: '1.25rem' }}>{lang.flag}</Box>
               {lang.label}
             </MenuItem>
           ))}

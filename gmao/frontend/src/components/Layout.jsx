@@ -62,15 +62,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import api from '../services/api';
 import { LogoCompact } from './Logo';
-
-const LANGUAGES = [
-  { code: 'fr', label: 'Français' },
-  { code: 'en', label: 'English' },
-  { code: 'ar', label: 'العربية' },
-  { code: 'es', label: 'Español' },
-  { code: 'pt', label: 'Português' },
-  { code: 'de', label: 'Deutsch' }
-];
+import { LANGUAGES } from '../constants/languages';
 
 function getMenuStructure() {
   return [
@@ -485,9 +477,9 @@ export default function Layout() {
               size="small"
               onClick={(e) => setLangAnchorEl(e.currentTarget)}
               aria-label={t('common.language')}
-              sx={{ fontSize: '1rem' }}
+              sx={{ fontSize: '1.25rem' }}
             >
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>{i18n.language.toUpperCase().slice(0, 2)}</Typography>
+              {LANGUAGES.find((l) => l.code === i18n.language)?.flag || '🌐'}
             </IconButton>
             <IconButton
               size="small"
@@ -607,6 +599,7 @@ export default function Layout() {
             selected={i18n.language === lang.code}
             onClick={() => { i18n.changeLanguage(lang.code); setLangAnchorEl(null); }}
           >
+            <Box component="span" sx={{ mr: 1.5, fontSize: '1.25rem' }}>{lang.flag}</Box>
             {lang.label}
           </MenuItem>
         ))}
