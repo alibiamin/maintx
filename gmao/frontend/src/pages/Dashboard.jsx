@@ -60,7 +60,8 @@ import {
   RadialBar,
   LineChart,
   Line,
-  ComposedChart
+  ComposedChart,
+  CartesianGrid
 } from 'recharts';
 import api from '../services/api';
 import { useTheme } from '@mui/material/styles';
@@ -87,6 +88,20 @@ function formatRelative(dateStr) {
 // Labels statuts français
 const STATUS_LABELS = { pending: 'En attente', in_progress: 'En cours', completed: 'Terminé', cancelled: 'Annulé', deferred: 'Reporté' };
 const PRIORITY_LABELS = { low: 'Basse', medium: 'Moyenne', high: 'Haute', critical: 'Critique' };
+
+// Formater le libellé de semaine pour l'axe X (ex: "2024-W12" -> "S.12", "2024-03" -> "Mars")
+function formatWeekLabel(weekStr) {
+  if (!weekStr) return weekStr;
+  const wMatch = String(weekStr).match(/W?(\d+)$/);
+  if (wMatch) return `S.${wMatch[1]}`;
+  const mMatch = String(weekStr).match(/-(\d{2})$/);
+  if (mMatch) {
+    const months = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
+    const m = parseInt(mMatch[1], 10);
+    return months[m - 1] || weekStr;
+  }
+  return weekStr.length > 8 ? weekStr.slice(-5) : weekStr;
+}
 
 const DEFAULT_DASHBOARD_LAYOUT = ['alerts', 'kpis', 'summary', 'charts', 'recent', 'topFailures'];
 const WIDGET_LABELS = {
@@ -589,42 +604,65 @@ export default function Dashboard() {
           </Card>
         </Grid>
 
-        {/* Évolution des OT — graphique zone avec dégradé */}
+        {/* Évolution des OT — graphique zone empilé, présentation professionnelle */}
         <Grid item xs={12}>
-          <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden' }}>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
-                <Typography variant="h6" fontWeight={700}>
-                  <Timeline sx={{ verticalAlign: 'middle', mr: 1, color: 'primary.main' }} />
-                  Évolution des OT ({period} jours)
-                </Typography>
+          <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
+            <CardContent sx={{ pb: 0 }}>
+              <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2} sx={{ mb: 2 }}>
+                <Box>
+                  <Typography variant="h6" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Timeline sx={{ color: 'primary.main', fontSize: 28 }} />
+                    Évolution des OT
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Répartition par statut sur les {period} derniers jours
+                    {areaEvolutionData.length > 0 && (
+                      <> · Total : <strong>{areaEvolutionData.reduce((s, r) => s + (r.total || 0), 0)}</strong> OT</>
+                    )}
+                  </Typography>
+                </Box>
+                {weeks.length > 0 && (
+                  <Chip size="small" label={`${weeks.length} période${weeks.length > 1 ? 's' : ''}`} sx={{ fontWeight: 600 }} variant="outlined" />
+                )}
               </Box>
               {weeks.length > 0 ? (
-                <Box sx={{ height: 300 }}>
+                <Box sx={{ height: 340 }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={areaEvolutionData} margin={{ top: 12, right: 12, left: 0, bottom: 8 }}>
+                    <AreaChart data={areaEvolutionData} margin={{ top: 16, right: 16, left: 8, bottom: 24 }}>
                       <defs>
                         {statuses.map((_, i) => (
-                          <linearGradient key={i} id={`areaGrad${i}`} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor={CHART_COLORS[i]} stopOpacity={0.5} />
-                            <stop offset="100%" stopColor={CHART_COLORS[i]} stopOpacity={0.05} />
+                          <linearGradient key={i} id={`areaGradEvol${i}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={CHART_COLORS[i]} stopOpacity={0.6} />
+                            <stop offset="100%" stopColor={CHART_COLORS[i]} stopOpacity={0.08} />
                           </linearGradient>
                         ))}
                       </defs>
-                      <XAxis dataKey="week" tick={tickStyle} tickLine={false} />
-                      <YAxis tick={tickStyle} tickLine={false} axisLine={false} />
-                      <Tooltip contentStyle={{ borderRadius: 12, border: `1px solid ${tooltipBorder}`, backgroundColor: tooltipBg }} />
-                      <Legend formatter={(v) => STATUS_LABELS[v] || v} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={alpha(muiTheme.palette.divider, 0.5)} vertical={false} />
+                      <XAxis
+                        dataKey="week"
+                        tick={{ ...tickStyle, fontSize: 11 }}
+                        tickFormatter={formatWeekLabel}
+                        tickLine={false}
+                        axisLine={{ stroke: alpha(muiTheme.palette.divider, 0.6) }}
+                      />
+                      <YAxis tick={tickStyle} tickLine={false} axisLine={false} width={32} allowDecimals={false} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: 12, border: `1px solid ${tooltipBorder}`, backgroundColor: tooltipBg, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}
+                        formatter={(value, name) => [value, STATUS_LABELS[name] || name]}
+                        labelFormatter={(label) => `Période ${formatWeekLabel(label)}`}
+                        itemStyle={{ padding: '4px 0' }}
+                      />
+                      <Legend formatter={(v) => STATUS_LABELS[v] || v} wrapperStyle={{ paddingTop: 8 }} iconType="circle" iconSize={8} />
                       {statuses.map((status, i) => (
-                        <Area key={status} type="monotone" dataKey={status} stackId="1" stroke={CHART_COLORS[i]} strokeWidth={2} fill={`url(#areaGrad${i})`} />
+                        <Area key={status} type="monotone" dataKey={status} stackId="1" stroke={CHART_COLORS[i]} strokeWidth={2.5} fill={`url(#areaGradEvol${i})`} isAnimationActive animationDuration={600} />
                       ))}
                     </AreaChart>
                   </ResponsiveContainer>
                 </Box>
               ) : (
-                <Box sx={{ py: 6, textAlign: 'center' }}>
-                  <Timeline sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
-                  <Typography color="text.secondary">Aucune donnée sur la période</Typography>
+                <Box sx={{ py: 8, textAlign: 'center' }}>
+                  <Timeline sx={{ fontSize: 56, color: 'text.disabled', mb: 1.5, opacity: 0.5 }} />
+                  <Typography color="text.secondary">Aucune donnée sur la période sélectionnée</Typography>
                 </Box>
               )}
             </CardContent>
@@ -662,50 +700,65 @@ export default function Dashboard() {
         </Grid>
         {visibleOrder.includes('topFailures') && (
         <Grid item xs={12} md={6}>
-          <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden' }}>
+          <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
-                <Typography variant="h6" fontWeight={700}>Équipements les plus en panne (90 j)</Typography>
-                <Chip label="Voir tout" size="small" onClick={() => navigate('/equipment')} sx={{ cursor: 'pointer' }} variant="outlined" icon={<ArrowForward sx={{ fontSize: 16 }} />} />
+                <Box>
+                  <Typography variant="h6" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <BugReport sx={{ color: 'warning.main', fontSize: 26 }} />
+                    Équipements les plus en panne
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">Sur les 90 derniers jours</Typography>
+                </Box>
+                <Button size="small" endIcon={<ArrowForward />} onClick={() => navigate('/equipment')} sx={{ textTransform: 'none', fontWeight: 600 }}>
+                  Voir tout
+                </Button>
               </Box>
               {topFailures.length === 0 ? (
                 <Box sx={{ py: 6, textAlign: 'center' }}>
-                  <BugReport sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
-                  <Typography color="text.secondary">Aucune donnée</Typography>
+                  <BugReport sx={{ fontSize: 48, color: 'text.disabled', mb: 1, opacity: 0.5 }} />
+                  <Typography color="text.secondary">Aucune intervention enregistrée sur la période</Typography>
                 </Box>
               ) : (
                 <Box display="flex" flexDirection="column" gap={1.5}>
                   {topFailures.map((e, idx) => {
-                    const maxCount = topFailures[0]?.failure_count || 1;
-                    const pct = (e.failure_count / maxCount) * 100;
+                    const maxCount = Math.max(...topFailures.map(x => x.failure_count || 0), 1);
+                    const pct = Math.round((e.failure_count / maxCount) * 100);
+                    const rankStyle = idx === 0 ? { bgcolor: '#f59e0b', color: '#fff' } : idx === 1 ? { bgcolor: '#94a3b8', color: '#fff' } : idx === 2 ? { bgcolor: '#b45309', color: '#fff' } : { bgcolor: alpha(muiTheme.palette.primary.main, 0.12), color: 'primary.main' };
                     return (
                       <Box
                         key={e.id}
                         sx={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 1.5,
-                          p: 1.25,
-                          borderRadius: 1.5,
-                          bgcolor: alpha(muiTheme.palette.warning.main, 0.06),
-                          border: `1px solid ${alpha(muiTheme.palette.warning.main, 0.2)}`,
+                          p: 1.5,
+                          borderRadius: 2,
+                          bgcolor: alpha(muiTheme.palette.background.paper, 0.8),
+                          border: `1px solid ${alpha(muiTheme.palette.divider, 0.4)}`,
                           cursor: 'pointer',
-                          transition: 'all 0.2s',
-                          '&:hover': { bgcolor: alpha(muiTheme.palette.warning.main, 0.12) }
+                          transition: 'all 0.25s ease',
+                          '&:hover': {
+                            bgcolor: alpha(muiTheme.palette.warning.main, 0.06),
+                            borderColor: alpha(muiTheme.palette.warning.main, 0.3),
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
+                          }
                         }}
                         onClick={() => navigate(`/equipment/${e.id}`)}
                       >
-                        <Typography variant="body2" fontWeight={700} color="text.secondary" sx={{ minWidth: 20 }}>#{idx + 1}</Typography>
-                        <BugReport sx={{ fontSize: 20, color: 'warning.main' }} />
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography variant="body2" fontWeight={600} noWrap>{e.code}</Typography>
-                          <Typography variant="caption" color="text.secondary" noWrap>{e.name}</Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                          <Box sx={{ width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, ...rankStyle }}>
+                            <Typography variant="caption" fontWeight={800}>{idx + 1}</Typography>
+                          </Box>
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography variant="body2" fontWeight={600} noWrap>{e.code}</Typography>
+                            <Typography variant="caption" color="text.secondary" noWrap display="block">{e.name}</Typography>
+                          </Box>
+                          <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
+                            <Typography variant="body1" fontWeight={700} color="warning.dark">{e.failure_count}</Typography>
+                            <Typography variant="caption" color="text.secondary">interv.</Typography>
+                          </Box>
                         </Box>
-                        <Box sx={{ width: 60, textAlign: 'right' }}>
-                          <Typography variant="body2" fontWeight={700} color="warning.main">{e.failure_count}</Typography>
-                          <Typography variant="caption" color="text.secondary">interv.</Typography>
+                        <Box sx={{ height: 8, borderRadius: 1, bgcolor: alpha(muiTheme.palette.warning.main, 0.2), overflow: 'hidden' }}>
+                          <Box sx={{ height: '100%', width: `${pct}%`, bgcolor: 'warning.main', borderRadius: 1, transition: 'width 0.5s ease' }} />
                         </Box>
-                        <LinearProgress variant="determinate" value={pct} sx={{ width: 48, height: 6, borderRadius: 1, bgcolor: alpha(muiTheme.palette.warning.main, 0.2), '& .MuiLinearProgress-bar': { bgcolor: 'warning.main' } }} />
                       </Box>
                     );
                   })}
