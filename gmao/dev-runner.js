@@ -9,12 +9,16 @@ const { spawn } = require('child_process');
 const root = __dirname;
 const colors = { back: '\x1b[34m', front: '\x1b[32m', reset: '\x1b[0m' };
 
+const isWin = process.platform === 'win32';
+
 function run(name, cmd, args, cwd) {
   const c = colors[name] || '';
-  const child = spawn(cmd, args, {
+  const opts = {
     cwd: path.join(root, cwd),
     stdio: ['ignore', 'pipe', 'pipe']
-  });
+  };
+  if (isWin) opts.shell = true;
+  const child = spawn(cmd, args, opts);
   child.stdout.on('data', (d) => process.stdout.write(`${c}[${name}] ${d}${colors.reset}`));
   child.stderr.on('data', (d) => process.stderr.write(`${c}[${name}] ${d}${colors.reset}`));
   child.on('error', (err) => console.error(`[${name}] error:`, err));
@@ -23,5 +27,5 @@ function run(name, cmd, args, cwd) {
 }
 
 console.log('Starting backend and frontend...\n');
-run('back', process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'dev'], 'backend');
-run('front', process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'dev'], 'frontend');
+run('back', isWin ? 'npm' : 'npm', ['run', 'dev'], 'backend');
+run('front', isWin ? 'npm' : 'npm', ['run', 'dev'], 'frontend');

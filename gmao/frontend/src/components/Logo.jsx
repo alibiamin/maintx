@@ -118,31 +118,41 @@ export default function Logo({ variant = 'dark', size = 'medium', showText = tru
   );
 }
 
-/** Logo compact (icône + maintx) pour le header */
-export function LogoCompact({ variant = 'light', size = 40, logoSrc = LOGO_IMAGE_SRC, sx = {} }) {
+/** Logo compact header : nom seul avec animation */
+const headerLogoKeyframes = `
+  @keyframes maintxShine {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.88; }
+  }
+  @keyframes maintxBreath {
+    0%, 100% { letter-spacing: -0.03em; transform: scale(1); }
+    50% { letter-spacing: 0.01em; transform: scale(1.02); }
+  }
+`;
+
+/** Logo compact (nom seul, animé) pour le header */
+export function LogoCompact({ variant = 'light', size = 40, sx = {} }) {
   const colors = LOGO_COLORS[variant] || LOGO_COLORS.light;
-  const useImage = Boolean(logoSrc);
+  const fontSize = Math.max(size * 0.5, 18);
   return (
     <Box
       sx={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 1,
         ...sx
       }}
     >
-      {useImage ? (
-        <Box component="img" src={logoSrc} alt="maintx" sx={{ width: size, height: size, flexShrink: 0, objectFit: 'contain' }} />
-      ) : (
-        <LogoIcon size={size} colors={colors} />
-      )}
+      <style>{headerLogoKeyframes}</style>
       <Typography
         component="span"
         sx={{
-          fontSize: size * 0.45,
+          fontSize,
           fontWeight: 800,
           letterSpacing: '-0.02em',
-          color: colors.main
+          color: colors.main,
+          animation: 'maintxShine 2.5s ease-in-out infinite, maintxBreath 5s ease-in-out infinite',
+          textTransform: 'lowercase',
+          fontFamily: '"Outfit", "Segoe UI", system-ui, sans-serif'
         }}
       >
         maintx
