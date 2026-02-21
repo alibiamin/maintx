@@ -293,14 +293,20 @@ router.get('/:id/counters', param('id').isInt(), (req, res) => {
  */
 router.put('/:id/counters', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), [
   body('counterType').isIn(['hours', 'cycles', 'km', 'other']),
-  body('value').isFloat({ min: 0 })
+  body('value').custom((v) => {
+    const n = parseFloat(v);
+    if (Number.isNaN(n) || n < 0) throw new Error('Valeur invalide');
+    return true;
+  })
 ], (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const id = req.params.id;
   const eq = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
   if (!eq) return res.status(404).json({ error: 'Équipement non trouvé' });
-  const { counterType, value, unit } = req.body;
+  const { counterType, unit } = req.body;
+  const value = parseFloat(req.body.value);
+  if (Number.isNaN(value) || value < 0) return res.status(400).json({ error: 'Valeur invalide' });
   try {
     const existing = db.prepare('SELECT id FROM equipment_counters WHERE equipment_id = ? AND counter_type = ?').get(id, counterType);
     if (existing) {
@@ -348,7 +354,11 @@ router.get('/:id/thresholds', param('id').isInt(), (req, res) => {
  */
 router.post('/:id/thresholds', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), [
   body('metric').isIn(['temperature', 'vibrations', 'hours', 'cycles', 'pressure', 'custom']),
-  body('thresholdValue').isFloat(),
+  body('thresholdValue').custom((v) => {
+    const n = parseFloat(v);
+    if (Number.isNaN(n)) throw new Error('Valeur seuil invalide');
+    return true;
+  }),
   body('operator').optional().isIn(['>', '<', '>=', '<=', '=', '!='])
 ], (req, res) => {
   const errors = validationResult(req);
@@ -356,12 +366,14 @@ router.post('/:id/thresholds', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param(
   const id = req.params.id;
   const eq = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
   if (!eq) return res.status(404).json({ error: 'Équipement non trouvé' });
-  const { metric, thresholdValue, operator, createWoOnBreach } = req.body;
+  const { metric, operator, createWoOnBreach } = req.body;
+  const thresholdValue = parseFloat(req.body.thresholdValue);
+  if (Number.isNaN(thresholdValue)) return res.status(400).json({ error: 'Valeur seuil invalide' });
   try {
     db.prepare(`
       INSERT INTO equipment_thresholds (equipment_id, metric, threshold_value, operator, create_wo_on_breach)
       VALUES (?, ?, ?, ?, ?)
-    `).run(id, metric, parseFloat(thresholdValue), operator || '>=', createWoOnBreach ? 1 : 0);
+    `).run(id, metric, thresholdValue, operator || '>=', createWoOnBreach ? 1 : 0);
     const row = db.prepare('SELECT * FROM equipment_thresholds WHERE equipment_id = ? AND metric = ?').get(id, metric);
     res.status(201).json({
       id: row.id,

@@ -126,6 +126,30 @@ export default function LoginPage() {
     animation: 'brandFadeIn 0.8s ease-out forwards'
   };
 
+  // Animations dédiées MAINTX et GMAO (entrée échelonnée + léger rebond)
+  const maintxKeyframes = {
+    '@keyframes maintxEntrance': {
+      '0%': { opacity: 0, transform: 'translateY(20px) scale(0.98)' },
+      '70%': { transform: 'translateY(-4px) scale(1.01)' },
+      '100%': { opacity: 1, transform: 'translateY(0) scale(1)' }
+    }
+  };
+  const gmaoKeyframes = {
+    '@keyframes gmaoEntrance': {
+      '0%': { opacity: 0, transform: 'translateY(16px)' },
+      '100%': { opacity: 1, transform: 'translateY(0)' }
+    }
+  };
+  const maintxAnimation = {
+    ...maintxKeyframes,
+    animation: 'maintxEntrance 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards'
+  };
+  const gmaoAnimation = {
+    ...gmaoKeyframes,
+    animation: 'gmaoEntrance 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.2s forwards',
+    opacity: 0
+  };
+
   return (
     <Box
       sx={{
@@ -134,29 +158,126 @@ export default function LoginPage() {
         overflow: 'hidden'
       }}
     >
-      {/* Panneau gauche — Blanc avec image logo */}
+      {/* Panneau gauche — fond blanc + arrière-plan thématique GMAO (grille technique, orbes douces) */}
       <Box
         sx={{
           display: { xs: 'none', md: 'flex' },
           flex: 1,
           flexDirection: 'column',
           justifyContent: 'space-between',
-          bgcolor: '#fff',
+          backgroundColor: '#ffffff',
           p: 4,
-          position: 'relative'
+          position: 'relative',
+          overflow: 'hidden'
         }}
       >
+        {/* Arrière-plan créatif : grille type plan technique + orbes douces (thème maintenance / équipements) */}
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 0,
+            pointerEvents: 'none',
+            backgroundImage: `
+              linear-gradient(${alpha(theme.palette.primary.main, 0.06)} 1px, transparent 1px),
+              linear-gradient(90deg, ${alpha(theme.palette.primary.main, 0.06)} 1px, transparent 1px)
+            `,
+            backgroundSize: '28px 28px'
+          }}
+        />
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 0,
+            pointerEvents: 'none',
+            background: `
+              radial-gradient(ellipse 80% 50% at 20% 20%, ${alpha(theme.palette.primary.main, 0.06)} 0%, transparent 50%),
+              radial-gradient(ellipse 60% 40% at 85% 80%, ${alpha(theme.palette.primary.main, 0.05)} 0%, transparent 45%)
+            `
+          }}
+        />
         <Box sx={{ position: 'relative', zIndex: 1, ...brandFadeIn }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 3 }}>
-            <Box component="img" src="/maintx-logo.png" alt="MAINTX" sx={{ maxWidth: 'min(280px, 100%)', height: 'auto' }} />
-          </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-            <Logo variant="dark" size="medium" showText={false} logoSrc={null} sx={{ flexShrink: 0 }} />
-            <Box sx={{ borderLeft: '1px solid', borderColor: 'divider', pl: 2 }}>
-              <Typography variant="body1" sx={{ color: 'text.primary', fontWeight: 500, letterSpacing: '0.02em' }}>
-                {t('login.tagline')}
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', mb: 3, gap: 0.25 }}>
+            <Box sx={maintxAnimation}>
+              <Typography
+                component="span"
+                sx={{
+                  fontSize: { xs: '3.5rem', sm: '4.25rem', md: '5rem' },
+                  fontWeight: 800,
+                  letterSpacing: '-0.03em',
+                  color: '#1a1a1a',
+                  lineHeight: 1.1,
+                  textShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                  display: 'block',
+                  textAlign: 'center'
+                }}
+              >
+                MAINT<Box component="span" sx={{ color: theme.palette.primary.main }}>X</Box>
               </Typography>
             </Box>
+            <Box
+              sx={{
+                ...gmaoAnimation,
+                borderBottom: '2px solid',
+                borderColor: alpha(theme.palette.primary.main, 0.9),
+                pb: 0.4,
+                alignSelf: 'center'
+              }}
+            >
+              <Typography
+                component="span"
+                sx={{
+                  fontSize: { xs: '2.75rem', sm: '3.5rem', md: '4rem' },
+                  fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  color: theme.palette.primary.main,
+                  lineHeight: 1.2,
+                  textShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                  display: 'block',
+                  textAlign: 'center'
+                }}
+              >
+                GMAO
+              </Typography>
+            </Box>
+          </Box>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              mb: 2,
+              pl: 2,
+              borderLeft: '3px solid',
+              borderColor: theme.palette.primary.main,
+              maxWidth: 360
+            }}
+          >
+            <Typography
+              variant="subtitle1"
+              sx={{
+                color: 'text.primary',
+                fontWeight: 500,
+                letterSpacing: '0.02em',
+                lineHeight: 1.5,
+                fontSize: '1.05rem'
+              }}
+            >
+              {(() => {
+                const tagline = t('login.tagline');
+                const parts = tagline.split('GMAO');
+                if (parts.length === 2) {
+                  return (
+                    <>
+                      {parts[0]}
+                      <Box component="span" sx={{ color: theme.palette.primary.main, fontWeight: 700 }}>GMAO</Box>
+                      {parts[1]}
+                    </>
+                  );
+                }
+                return tagline;
+              })()}
+            </Typography>
           </Box>
         </Box>
 
@@ -164,16 +285,71 @@ export default function LoginPage() {
           <Typography variant="subtitle2" sx={{ color: 'text.secondary', mb: 2, textTransform: 'uppercase', letterSpacing: '0.12em' }}>
             Au cœur de votre maintenance
           </Typography>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: 2
+            }}
+          >
             {features.map(({ icon: Icon, label }) => (
-              <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Box sx={{ width: 36, height: 36, borderRadius: 1.5, bgcolor: alpha(theme.palette.primary.main, 0.12), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Icon sx={{ fontSize: 20, color: 'primary.main' }} />
-                </Box>
-                <Typography variant="body1" sx={{ color: 'text.primary', fontWeight: 500 }}>
-                  {label}
-                </Typography>
-              </Box>
+              <Card
+                key={label}
+                elevation={0}
+                sx={{
+                  position: 'relative',
+                  borderRadius: '16px',
+                  overflow: 'hidden',
+                  background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.08)} 0%, ${alpha('#fff', 0.98)} 50%, ${alpha(theme.palette.primary.main, 0.05)} 100%)`,
+                  border: '1px solid',
+                  borderColor: alpha(theme.palette.primary.main, 0.22),
+                  boxShadow: `0 0 0 1px ${alpha(theme.palette.primary.main, 0.1)} inset, 0 4px 14px ${alpha('#000', 0.06)}`,
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: '3px',
+                    background: `linear-gradient(90deg, transparent, ${theme.palette.primary.main}, transparent)`,
+                    opacity: 0.6
+                  }
+                }}
+              >
+                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Box
+                      sx={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: '14px',
+                        background: `linear-gradient(145deg, ${alpha(theme.palette.primary.main, 0.22)} 0%, ${alpha(theme.palette.primary.main, 0.08)} 100%)`,
+                        border: '1px solid',
+                        borderColor: alpha(theme.palette.primary.main, 0.4),
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        boxShadow: `0 0 12px ${alpha(theme.palette.primary.main, 0.15)}`
+                      }}
+                    >
+                      <Icon sx={{ fontSize: 24, color: 'primary.main', filter: 'drop-shadow(0 0 6px rgba(46, 178, 62, 0.25))' }} />
+                    </Box>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: 'text.primary',
+                        fontWeight: 700,
+                        letterSpacing: '0.04em',
+                        lineHeight: 1.25,
+                        textShadow: `0 1px 2px ${alpha('#fff', 0.8)}`
+                      }}
+                    >
+                      {label}
+                    </Typography>
+                  </Box>
+                </CardContent>
+              </Card>
             ))}
           </Box>
         </Box>
@@ -223,15 +399,6 @@ export default function LoginPage() {
             </Tooltip>
           ))}
         </Box>
-
-        <Box
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            opacity: 0.04,
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 5 L35 20 L50 25 L35 30 L30 45 L25 30 L10 25 L25 20 Z' fill='%23000' fill-opacity='1'/%3E%3C/svg%3E")`
-          }}
-        />
       </Box>
 
       {/* Panneau droit — Vert avec formulaire */}
@@ -347,7 +514,9 @@ export default function LoginPage() {
         </Card>
 
         <Typography variant="caption" sx={{ position: 'absolute', bottom: 16, left: 16, right: 16, textAlign: 'center', color: 'rgba(255,255,255,0.85)' }}>
-          © MaintX — Gestion de Maintenance
+          © MaintX{' '}
+          <Box component="span" sx={{ color: '#2EB23E', fontWeight: 700 }}>GMAO</Box>
+          {' '}— Gestion de Maintenance
         </Typography>
       </Box>
     </Box>

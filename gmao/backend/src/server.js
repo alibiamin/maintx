@@ -1,5 +1,5 @@
 /**
- * xmaint Backend - Serveur Express (xmaint.org)
+ * xmaint Backend - Serveur Express (maintx.org)
  * API REST pour la Gestion de Maintenance
  */
 

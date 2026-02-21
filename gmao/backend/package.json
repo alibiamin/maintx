@@ -1,7 +1,7 @@
 {
   "name": "xmaint-backend",
   "version": "1.0.0",
-  "description": "API xmaint - Gestion de Maintenance (xmaint.org)",
+  "description": "API xmaint - Gestion de Maintenance (maintx.org)",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

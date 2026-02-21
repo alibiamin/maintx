@@ -44,7 +44,7 @@ function getTransporter() {
 async function sendEmail(to, subject, text, html) {
   const transport = getTransporter();
   if (!transport || !to) return;
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@xmaint.org';
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@maintx.org';
   try {
     await transport.sendMail({
       from,

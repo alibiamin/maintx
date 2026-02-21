@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  Alert,
   Box,
   Card,
   Table,
@@ -43,6 +44,8 @@ export default function EquipmentList() {
   const [sortOrder, setSortOrder] = useState('asc');
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const view = searchParams.get('view'); // 'history' | 'documents' | 'warranties' depuis le menu Gestion
   const { setContext } = useActionPanel();
   const [selectedId, setSelectedId] = useState(null);
   const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
@@ -106,6 +109,14 @@ export default function EquipmentList() {
           Carte hiérarchie
         </Button>
       </Box>
+
+      {view && ['history', 'documents', 'warranties'].includes(view) && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {view === 'history' && 'Sélectionnez un équipement dans la liste pour afficher son historique.'}
+          {view === 'documents' && 'Sélectionnez un équipement dans la liste pour afficher ses documents.'}
+          {view === 'warranties' && 'Sélectionnez un équipement dans la liste pour afficher ses garanties.'}
+        </Alert>
+      )}
 
       <Card sx={{ mb: 2 }}>
         <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
@@ -180,7 +191,12 @@ export default function EquipmentList() {
                   key={eq.id}
                   hover
                   selected={selectedId === eq.id}
-                  onClick={() => setSelectedId(selectedId === eq.id ? null : eq.id)}
+                  onClick={() => {
+                    if (view === 'history') navigate(`/equipment/${eq.id}/history`);
+                    else if (view === 'documents') navigate(`/equipment/${eq.id}/documents`);
+                    else if (view === 'warranties') navigate(`/equipment/${eq.id}/warranties`);
+                    else setSelectedId(selectedId === eq.id ? null : eq.id);
+                  }}
                   sx={{ cursor: 'pointer' }}
                 >
                   <TableCell>{eq.code}</TableCell>

@@ -1,7 +1,7 @@
 {
   "name": "xmaint",
   "version": "1.0.0",
-  "description": "maintx - Gestion de Maintenance (xmaint.org)",
+  "description": "maintx - Gestion de Maintenance (maintx.org)",
   "private": true,
   "scripts": {
     "dev": "node dev-runner.js",

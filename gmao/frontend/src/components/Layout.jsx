@@ -87,9 +87,9 @@ function getMenuStructure() {
         { labelKey: 'item.equipment_technical', path: '/equipment/technical' }
       ]},
       { titleKey: 'section.equipment_1', items: [
-        { labelKey: 'item.management_history', path: '/equipment' },
-        { labelKey: 'item.management_documents', path: '/equipment' },
-        { labelKey: 'item.management_warranties', path: '/equipment' }
+        { labelKey: 'item.management_history', path: '/equipment?view=history' },
+        { labelKey: 'item.management_documents', path: '/equipment?view=documents' },
+        { labelKey: 'item.management_warranties', path: '/equipment?view=warranties' }
       ]}
     ]},
     { id: 'maintenance', labelKey: 'menu.maintenance', icon: <AssignmentIcon />, path: '/work-orders', sections: [

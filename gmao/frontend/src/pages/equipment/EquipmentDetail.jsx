@@ -15,57 +15,138 @@ import {
   TableHead,
   TableRow,
   Divider,
-  TextField
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  IconButton
 } from '@mui/material';
-import { ArrowBack } from '@mui/icons-material';
+import { ArrowBack, Delete } from '@mui/icons-material';
 import api from '../../services/api';
+import { useSnackbar } from '../../context/SnackbarContext';
 
 const statusColors = { operational: 'success', maintenance: 'warning', out_of_service: 'error', retired: 'default' };
 const COUNTER_TYPES = [{ value: 'hours', label: 'Heures' }, { value: 'cycles', label: 'Cycles' }, { value: 'km', label: 'km' }];
+const THRESHOLD_METRICS = [
+  { value: 'hours', label: 'Heures' },
+  { value: 'cycles', label: 'Cycles' },
+  { value: 'temperature', label: 'Température' },
+  { value: 'vibrations', label: 'Vibrations' },
+  { value: 'pressure', label: 'Pression' },
+  { value: 'custom', label: 'Personnalisé' }
+];
+const THRESHOLD_OPERATORS = [
+  { value: '>=', label: '≥ (supérieur ou égal)' },
+  { value: '>', label: '> (supérieur)' },
+  { value: '<=', label: '≤ (inférieur ou égal)' },
+  { value: '<', label: '< (inférieur)' },
+  { value: '=', label: '= (égal)' }
+];
 
 export default function EquipmentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const snackbar = useSnackbar();
   const [equipment, setEquipment] = useState(null);
   const [history, setHistory] = useState([]);
   const [counters, setCounters] = useState([]);
   const [counterForm, setCounterForm] = useState({ type: 'hours', value: '' });
   const [thresholds, setThresholds] = useState([]);
+  const [thresholdForm, setThresholdForm] = useState({ metric: 'hours', thresholdValue: '', operator: '>=' });
   const [loading, setLoading] = useState(true);
+  const [counterSubmitting, setCounterSubmitting] = useState(false);
+  const [thresholdSubmitting, setThresholdSubmitting] = useState(false);
+
+  const numId = id != null && /^\d+$/.test(String(id)) ? String(id) : null;
+
+  const fetchCounters = () => {
+    if (!numId) return;
+    api.get(`/equipment/${numId}/counters`).then((r) => setCounters(Array.isArray(r.data) ? r.data : [])).catch(() => setCounters([]));
+  };
+  const fetchThresholds = () => {
+    if (!numId) return;
+    api.get(`/equipment/${numId}/thresholds`).then((r) => setThresholds(Array.isArray(r.data) ? r.data : [])).catch(() => setThresholds([]));
+  };
 
   useEffect(() => {
     if (id === 'new') {
       navigate('/creation', { replace: true });
       return;
     }
-    const numId = id != null && /^\d+$/.test(String(id)) ? id : null;
     if (!numId) {
       setLoading(false);
       navigate('/equipment');
       return;
     }
+    setLoading(true);
     Promise.all([
       api.get(`/equipment/${numId}`),
       api.get(`/equipment/${numId}/history`),
       api.get(`/equipment/${numId}/counters`).catch(() => ({ data: [] })),
       api.get(`/equipment/${numId}/thresholds`).catch(() => ({ data: [] }))
-    ]).then(([eq, hist, cnt, th]) => {
-      setEquipment(eq.data);
-      setHistory(Array.isArray(hist.data) ? hist.data : []);
-      setCounters(Array.isArray(cnt.data) ? cnt.data : []);
-      setThresholds(Array.isArray(th.data) ? th.data : []);
-    }).catch(() => navigate('/equipment')).finally(() => setLoading(false));
-  }, [id, navigate]);
+    ])
+      .then(([eq, hist, cnt, th]) => {
+        setEquipment(eq.data);
+        setHistory(Array.isArray(hist.data) ? hist.data : []);
+        setCounters(Array.isArray(cnt?.data) ? cnt.data : []);
+        setThresholds(Array.isArray(th?.data) ? th.data : []);
+      })
+      .catch((err) => {
+        if (err.response?.status === 404) navigate('/equipment');
+        else setEquipment(null);
+      })
+      .finally(() => setLoading(false));
+  }, [id, numId, navigate]);
 
   const updateCounter = (counterType, value) => {
-    const numId = id != null && /^\d+$/.test(String(id)) ? id : null;
     if (!numId) return;
-    api.put(`/equipment/${numId}/counters`, { counterType, value: parseFloat(value) })
-      .then((r) => setCounters((prev) => {
-        const rest = prev.filter((c) => c.counterType !== counterType);
-        return [...rest, r.data];
-      }))
-      .catch(() => {});
+    const v = parseFloat(value);
+    if (Number.isNaN(v) || v < 0) {
+      snackbar.showError('Valeur invalide');
+      return;
+    }
+    setCounterSubmitting(true);
+    api.put(`/equipment/${numId}/counters`, { counterType, value: v })
+      .then(() => {
+        snackbar.showSuccess('Compteur enregistré');
+        setCounterForm((f) => ({ ...f, value: '' }));
+        fetchCounters();
+      })
+      .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur lors de l\'enregistrement'))
+      .finally(() => setCounterSubmitting(false));
+  };
+
+  const addThreshold = () => {
+    if (!numId) return;
+    const v = parseFloat(thresholdForm.thresholdValue);
+    if (Number.isNaN(v)) {
+      snackbar.showError('Valeur du seuil invalide');
+      return;
+    }
+    setThresholdSubmitting(true);
+    api.post(`/equipment/${numId}/thresholds`, {
+      metric: thresholdForm.metric,
+      thresholdValue: v,
+      operator: thresholdForm.operator
+    })
+      .then(() => {
+        snackbar.showSuccess('Seuil ajouté');
+        setThresholdForm({ metric: 'hours', thresholdValue: '', operator: '>=' });
+        fetchThresholds();
+      })
+      .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur lors de l\'ajout'))
+      .finally(() => setThresholdSubmitting(false));
+  };
+
+  const deleteThreshold = (tid) => {
+    if (!numId || !tid) return;
+    api.delete(`/equipment/${numId}/thresholds/${tid}`)
+      .then(() => {
+        snackbar.showSuccess('Seuil supprimé');
+        fetchThresholds();
+      })
+      .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'));
   };
 
   if (loading || !equipment) return <Box p={4}><CircularProgress /></Box>;
@@ -122,10 +203,12 @@ export default function EquipmentDetail() {
               {COUNTER_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </TextField>
             <TextField type="number" size="small" label="Valeur" value={counterForm.value} onChange={(e) => setCounterForm((f) => ({ ...f, value: e.target.value }))} inputProps={{ min: 0, step: 0.1 }} sx={{ width: 120 }} />
-            <Button variant="outlined" size="small" onClick={() => { const v = parseFloat(counterForm.value); if (!Number.isNaN(v) && v >= 0) { updateCounter(counterForm.type, v); setCounterForm((f) => ({ ...f, value: '' })); } }}>Mettre à jour</Button>
+            <Button variant="outlined" size="small" onClick={() => updateCounter(counterForm.type, counterForm.value)} disabled={counterSubmitting || counterForm.value === ''}>
+              Mettre à jour
+            </Button>
           </Box>
           {counters.length === 0 ? (
-            <Typography color="text.secondary">Aucun compteur enregistré. Saisissez une valeur ci-dessus pour créer un compteur (heures, cycles, km).</Typography>
+            <Typography color="text.secondary">Aucun compteur enregistré. Choisissez un type (heures, cycles, km), saisissez une valeur ci-dessus puis cliquez sur « Mettre à jour ».</Typography>
           ) : (
             <Table size="small">
               <TableHead>
@@ -154,8 +237,26 @@ export default function EquipmentDetail() {
       <Card sx={{ mb: 2 }}>
         <CardContent>
           <Typography variant="h6" sx={{ mb: 2 }}>Seuils IoT / prévisionnel</Typography>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel>Métrique</InputLabel>
+              <Select value={thresholdForm.metric} label="Métrique" onChange={(e) => setThresholdForm((f) => ({ ...f, metric: e.target.value }))}>
+                {THRESHOLD_METRICS.map((m) => <MenuItem key={m.value} value={m.value}>{m.label}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Opérateur</InputLabel>
+              <Select value={thresholdForm.operator} label="Opérateur" onChange={(e) => setThresholdForm((f) => ({ ...f, operator: e.target.value }))}>
+                {THRESHOLD_OPERATORS.map((o) => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <TextField type="number" size="small" label="Valeur seuil" value={thresholdForm.thresholdValue} onChange={(e) => setThresholdForm((f) => ({ ...f, thresholdValue: e.target.value }))} inputProps={{ min: 0, step: 0.01 }} sx={{ width: 120 }} />
+            <Button variant="contained" size="small" onClick={addThreshold} disabled={thresholdSubmitting || thresholdForm.thresholdValue === ''}>
+              Ajouter un seuil
+            </Button>
+          </Box>
           {thresholds.length === 0 ? (
-            <Typography color="text.secondary">Aucun seuil. Les seuils (heures, cycles, etc.) déclenchent des alertes lorsqu'ils sont dépassés.</Typography>
+            <Typography color="text.secondary">Aucun seuil. Ajoutez un seuil ci-dessus (ex. heures ≥ 5000) ; les alertes seront créées lorsqu'ils sont dépassés.</Typography>
           ) : (
             <Table size="small">
               <TableHead>
@@ -164,15 +265,19 @@ export default function EquipmentDetail() {
                   <TableCell>Opérateur</TableCell>
                   <TableCell>Seuil</TableCell>
                   <TableCell>Dernier déclenchement</TableCell>
+                  <TableCell align="right">Action</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {thresholds.map((t) => (
                   <TableRow key={t.id}>
-                    <TableCell>{t.metric}</TableCell>
+                    <TableCell>{THRESHOLD_METRICS.find((m) => m.value === t.metric)?.label || t.metric}</TableCell>
                     <TableCell>{t.operator}</TableCell>
                     <TableCell>{t.thresholdValue}</TableCell>
                     <TableCell>{t.lastTriggeredAt ? new Date(t.lastTriggeredAt).toLocaleString('fr-FR') : '—'}</TableCell>
+                    <TableCell align="right">
+                      <IconButton size="small" color="error" onClick={() => deleteThreshold(t.id)} title="Supprimer"><Delete /></IconButton>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

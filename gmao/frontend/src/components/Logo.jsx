@@ -31,7 +31,8 @@ const SIZES = {
   small: { icon: 32, main: '1rem', sub: '0.65rem', gap: 0.75 },
   medium: { icon: 44, main: '1.25rem', sub: '0.75rem', gap: 1 },
   large: { icon: 52, main: '1.5rem', sub: '0.85rem', gap: 1.25 },
-  xlarge: { icon: 112, main: '3.5rem', sub: '1.75rem', gap: 2.5 }
+  xlarge: { icon: 112, main: '3.5rem', sub: '1.75rem', gap: 2.5 },
+  xxlarge: { icon: 112, main: '5rem', sub: '3.25rem', gap: 0.5 }
 };
 
 function LogoIcon({ size, colors, sx = {} }) {
@@ -68,7 +69,11 @@ function LogoIcon({ size, colors, sx = {} }) {
   );
 }
 
-export default function Logo({ variant = 'dark', size = 'medium', showText = true, logoSrc = LOGO_IMAGE_SRC, sx = {} }) {
+/**
+ * @param {React.ReactNode} [secondLine] - Ligne sous MAINTX (ex: "GMAO" ou "maintx.org" par défaut)
+ * @param {boolean} [showIcon=true] - Afficher l’icône M (image ou vectorielle) à gauche du texte
+ */
+export default function Logo({ variant = 'dark', size = 'medium', showText = true, showIcon = true, logoSrc = LOGO_IMAGE_SRC, secondLine, sx = {} }) {
   const colors = LOGO_COLORS[variant] || LOGO_COLORS.dark;
   const dim = SIZES[size] || SIZES.medium;
   const useImage = Boolean(logoSrc);
@@ -82,7 +87,7 @@ export default function Logo({ variant = 'dark', size = 'medium', showText = tru
         ...sx
       }}
     >
-      {useImage ? (
+      {showIcon && (useImage ? (
         <Box
           component="img"
           src={logoSrc}
@@ -91,9 +96,9 @@ export default function Logo({ variant = 'dark', size = 'medium', showText = tru
         />
       ) : (
         <LogoIcon size={dim.icon} colors={colors} />
-      )}
+      ))}
       {showText && (
-        <Box sx={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, alignItems: secondLine !== undefined ? 'center' : 'flex-start' }}>
           <Typography
             component="span"
             sx={{
@@ -105,17 +110,21 @@ export default function Logo({ variant = 'dark', size = 'medium', showText = tru
           >
             MAINT<Box component="span" sx={{ color: colors.xGreen || colors.sub }}>X</Box>
           </Typography>
-          <Typography
-            component="span"
-            sx={{
-              fontSize: dim.sub,
-              fontWeight: 600,
-              letterSpacing: '0.08em',
-              color: colors.sub
-            }}
-          >
-            xmaint.org
-          </Typography>
+          {secondLine !== undefined ? (
+            secondLine
+          ) : (
+            <Typography
+              component="span"
+              sx={{
+                fontSize: dim.sub,
+                fontWeight: 600,
+                letterSpacing: '0.08em',
+                color: colors.sub
+              }}
+            >
+              maintx.org
+            </Typography>
+          )}
         </Box>
       )}
     </Box>
