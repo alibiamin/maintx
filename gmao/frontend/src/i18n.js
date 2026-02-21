@@ -21,12 +21,27 @@ const resources = {
 const savedLang = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
 const lng = savedLang && resources[savedLang] ? savedLang : 'fr';
 
+// Réduire le message console "i18next is maintained with support from Locize"
+if (typeof i18n.logger !== 'undefined') {
+  const orig = i18n.logger;
+  i18n.logger = {
+    log: (...args) => {
+      const msg = args.join(' ');
+      if (msg.includes('Locize') || msg.includes('i18next is maintained')) return;
+      if (orig && orig.log) orig.log(...args);
+    },
+    warn: orig?.warn ? (...a) => orig.warn(...a) : () => {},
+    error: orig?.error ? (...a) => orig.error(...a) : () => {},
+  };
+}
+
 i18n.use(initReactI18next).init({
   resources,
   lng,
   fallbackLng: 'fr',
   interpolation: { escapeValue: false },
-  react: { useSuspense: false }
+  react: { useSuspense: false },
+  debug: false,
 });
 
 i18n.on('languageChanged', (lng) => {
