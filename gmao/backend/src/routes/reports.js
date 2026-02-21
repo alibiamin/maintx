@@ -1,0 +1,302 @@
+/**
+ * API Rapports et statistiques - Export PDF/Excel
+ */
+
+const express = require('express');
+const ExcelJS = require('exceljs');
+const PDFDocument = require('pdfkit');
+const db = require('../database/db');
+const { authenticate, authorize, ROLES } = require('../middleware/auth');
+
+function writePdfTable(doc, headers, rows, colWidths) {
+  let y = doc.y;
+  doc.fontSize(9).font('Helvetica-Bold');
+  headers.forEach((h, i) => doc.text(h, 50 + colWidths.slice(0, i).reduce((a, w) => a + w, 0), y));
+  y += 18;
+  doc.font('Helvetica');
+  rows.forEach((row) => {
+    const vals = Array.isArray(row) ? row : [];
+    vals.forEach((val, i) => doc.text(String(val ?? '').substring(0, 35), 50 + colWidths.slice(0, i).reduce((a, w) => a + w, 0), y));
+    y += 16;
+  });
+  doc.y = y + 10;
+}
+
+const router = express.Router();
+router.use(authenticate);
+
+/**
+ * GET /api/reports/maintenance-costs
+ * Analyse des coûts de maintenance (filtres optionnels: siteId, equipmentId)
+ */
+router.get('/maintenance-costs', (req, res) => {
+  const { startDate, endDate, siteId, equipmentId } = req.query;
+  const start = startDate || '2020-01-01';
+  const end = endDate || '2100-12-31';
+  let sql = `
+    SELECT e.code, e.name, e.id as equipment_id, COUNT(wo.id) as interventions,
+           SUM(COALESCE(i.quantity_used * sp.unit_price, 0)) as parts_cost
+    FROM work_orders wo
+    JOIN equipment e ON wo.equipment_id = e.id
+    LEFT JOIN interventions i ON i.work_order_id = wo.id
+    LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id
+    WHERE wo.status = 'completed' AND wo.actual_end BETWEEN ? AND ?
+  `;
+  const params = [start, end];
+  if (siteId) {
+    sql += ' AND e.ligne_id IN (SELECT id FROM lignes WHERE site_id = ?)';
+    params.push(siteId);
+  }
+  if (equipmentId) {
+    sql += ' AND e.id = ?';
+    params.push(equipmentId);
+  }
+  sql += ' GROUP BY wo.equipment_id ORDER BY parts_cost DESC';
+  const byEquipment = db.prepare(sql).all(...params);
+  res.json(byEquipment);
+});
+
+/**
+ * GET /api/reports/availability
+ * Disponibilité par équipement / période (filtres optionnels: siteId, equipmentId)
+ */
+router.get('/availability', (req, res) => {
+  const { startDate, endDate, siteId, equipmentId } = req.query;
+  const start = startDate || '2020-01-01';
+  const end = endDate || '2100-12-31';
+  let where = "e.status != 'retired'";
+  const params = [start, end, start, end];
+  if (siteId) {
+    where += ' AND e.ligne_id IN (SELECT id FROM lignes WHERE site_id = ?)';
+    params.push(siteId);
+  }
+  if (equipmentId) {
+    where += ' AND e.id = ?';
+    params.push(equipmentId);
+  }
+  const rows = db.prepare(`
+    SELECT e.code, e.name, e.status,
+           (SELECT COUNT(*) FROM work_orders w WHERE w.equipment_id = e.id AND w.actual_end BETWEEN ? AND ?) as intervention_count,
+           (SELECT COALESCE(SUM((julianday(w.actual_end) - julianday(w.actual_start)) * 24), 0)
+            FROM work_orders w WHERE w.equipment_id = e.id AND w.status = 'completed'
+            AND w.actual_start IS NOT NULL AND w.actual_end IS NOT NULL AND w.actual_end BETWEEN ? AND ?) as total_downtime_hours
+    FROM equipment e
+    WHERE ${where}
+    ORDER BY total_downtime_hours DESC
+  `).all(...params);
+  res.json(rows);
+});
+
+/**
+ * GET /api/reports/time-by-technician
+ * Heures passées par technicien sur la période
+ */
+router.get('/time-by-technician', (req, res) => {
+  const { startDate, endDate } = req.query;
+  const start = startDate || '2020-01-01';
+  const end = endDate || '2100-12-31';
+  const rows = db.prepare(`
+    SELECT u.id, u.first_name || ' ' || u.last_name as technician_name,
+           COALESCE(SUM(i.hours_spent), 0) as hours_spent,
+           COUNT(DISTINCT i.work_order_id) as work_orders_count
+    FROM users u
+    INNER JOIN interventions i ON i.technician_id = u.id
+    INNER JOIN work_orders wo ON i.work_order_id = wo.id AND wo.actual_end BETWEEN ? AND ?
+    GROUP BY u.id
+    ORDER BY hours_spent DESC
+  `).all(start, end);
+  res.json(rows);
+});
+
+/**
+ * GET /api/reports/parts-most-used
+ * Pièces les plus utilisées sur la période
+ */
+router.get('/parts-most-used', (req, res) => {
+  const { startDate, endDate, limit } = req.query;
+  const start = startDate || '2020-01-01';
+  const end = endDate || '2100-12-31';
+  const lim = Math.min(parseInt(limit, 10) || 20, 100);
+  const rows = db.prepare(`
+    SELECT sp.code as part_code, sp.name as part_name,
+           SUM(i.quantity_used) as quantity_used,
+           SUM(i.quantity_used * sp.unit_price) as total_cost
+    FROM interventions i
+    JOIN spare_parts sp ON i.spare_part_id = sp.id
+    JOIN work_orders wo ON i.work_order_id = wo.id
+    WHERE wo.actual_end BETWEEN ? AND ? AND wo.status = 'completed'
+    GROUP BY sp.id
+    ORDER BY quantity_used DESC
+    LIMIT ?
+  `).all(start, end, lim);
+  res.json(rows);
+});
+
+/**
+ * GET /api/reports/export/detailed
+ * Export Excel détaillé (coûts, pièces, temps)
+ */
+router.get('/export/detailed', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), async (req, res) => {
+  const { startDate, endDate } = req.query;
+  const start = startDate || '2020-01-01';
+  const end = endDate || '2100-12-31';
+  const rows = db.prepare(`
+    SELECT wo.number, wo.title, wo.status, wo.priority, wo.failure_date, wo.actual_start, wo.actual_end,
+           e.name as equipment_name, t.name as type_name,
+           (SELECT SUM(i.hours_spent) FROM interventions i WHERE i.work_order_id = wo.id) as hours_spent,
+           (SELECT SUM(i.quantity_used * sp.unit_price) FROM interventions i LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id WHERE i.work_order_id = wo.id) as parts_cost
+    FROM work_orders wo
+    LEFT JOIN equipment e ON wo.equipment_id = e.id
+    LEFT JOIN work_order_types t ON wo.type_id = t.id
+    WHERE wo.actual_end BETWEEN ? AND ? AND wo.status = 'completed'
+    ORDER BY wo.actual_end DESC
+  `).all(start, end);
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Rapport détaillé');
+  sheet.columns = [
+    { header: 'N° OT', key: 'number', width: 15 },
+    { header: 'Titre', key: 'title', width: 35 },
+    { header: 'Équipement', key: 'equipment_name', width: 25 },
+    { header: 'Type', key: 'type_name', width: 15 },
+    { header: 'Statut', key: 'status', width: 12 },
+    { header: 'Heures', key: 'hours_spent', width: 10 },
+    { header: 'Coût pièces (€)', key: 'parts_cost', width: 14 },
+    { header: 'Date fin', key: 'actual_end', width: 18 }
+  ];
+  sheet.addRows(rows.map(r => ({ ...r, parts_cost: r.parts_cost ? parseFloat(r.parts_cost).toFixed(2) : 0 })));
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename=rapport-detaille.xlsx');
+  await workbook.xlsx.write(res);
+  res.end();
+});
+
+/**
+ * GET /api/reports/work-orders
+ */
+router.get('/work-orders', (req, res) => {
+  const { startDate, endDate, status } = req.query;
+  let sql = `
+    SELECT wo.*, e.name as equipment_name, t.name as type_name
+    FROM work_orders wo
+    LEFT JOIN equipment e ON wo.equipment_id = e.id
+    LEFT JOIN work_order_types t ON wo.type_id = t.id
+    WHERE wo.created_at BETWEEN ? AND ?
+  `;
+  const params = [startDate || '2020-01-01', endDate || '2100-12-31'];
+  if (status) { sql += ' AND wo.status = ?'; params.push(status); }
+  sql += ' ORDER BY wo.created_at DESC';
+  const rows = db.prepare(sql).all(...params);
+  res.json(rows);
+});
+
+/**
+ * GET /api/reports/export/excel
+ * Export Excel des OT
+ */
+router.get('/export/excel', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), async (req, res) => {
+  const rows = db.prepare(`
+    SELECT wo.number, wo.title, wo.status, wo.priority, wo.created_at, wo.actual_end,
+           e.name as equipment_name, t.name as type_name
+    FROM work_orders wo
+    LEFT JOIN equipment e ON wo.equipment_id = e.id
+    LEFT JOIN work_order_types t ON wo.type_id = t.id
+    ORDER BY wo.created_at DESC
+  `).all();
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Ordres de travail');
+  sheet.columns = [
+    { header: 'N° OT', key: 'number', width: 15 },
+    { header: 'Titre', key: 'title', width: 35 },
+    { header: 'Équipement', key: 'equipment_name', width: 25 },
+    { header: 'Type', key: 'type_name', width: 15 },
+    { header: 'Statut', key: 'status', width: 12 },
+    { header: 'Priorité', key: 'priority', width: 10 },
+    { header: 'Date création', key: 'created_at', width: 18 },
+    { header: 'Date fin', key: 'actual_end', width: 18 }
+  ];
+  sheet.addRows(rows);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename=rapport-ot.xlsx');
+  await workbook.xlsx.write(res);
+  res.end();
+});
+
+/**
+ * GET /api/reports/export/pdf/equipment - Liste des équipements en PDF
+ */
+router.get('/export/pdf/equipment', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const rows = db.prepare(`
+    SELECT e.code, e.name, e.status, s.name as site_name
+    FROM equipment e
+    LEFT JOIN lignes l ON e.ligne_id = l.id
+    LEFT JOIN sites s ON l.site_id = s.id
+    ORDER BY s.name, e.code
+  `).all();
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'attachment; filename=liste-equipements.pdf');
+  const doc = new PDFDocument({ margin: 50 });
+  doc.pipe(res);
+  doc.fontSize(16).text('Liste des équipements', 50, 50);
+  doc.fontSize(10).text(`Généré le ${new Date().toLocaleDateString('fr-FR')} - ${rows.length} équipement(s)`, 50, 75);
+  doc.moveDown();
+  writePdfTable(doc, ['Code', 'Désignation', 'Statut', 'Site'], rows.map(r => [r.code, r.name, r.status || '-', r.site_name || '-']), [70, 180, 60, 120]);
+  doc.end();
+});
+
+/**
+ * GET /api/reports/export/pdf/stock - État des stocks en PDF
+ */
+router.get('/export/pdf/stock', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const rows = db.prepare(`
+    SELECT sp.code, sp.name, COALESCE(sb.quantity, 0) as quantity, sp.min_stock, sp.unit
+    FROM spare_parts sp
+    LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
+    ORDER BY sp.code
+  `).all();
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'attachment; filename=etat-stocks.pdf');
+  const doc = new PDFDocument({ margin: 50 });
+  doc.pipe(res);
+  doc.fontSize(16).text('État des stocks', 50, 50);
+  doc.fontSize(10).text(`Généré le ${new Date().toLocaleDateString('fr-FR')} - ${rows.length} référence(s)`, 50, 75);
+  doc.moveDown();
+  writePdfTable(doc, ['Code', 'Désignation', 'Quantité', 'Seuil min', 'Unité'], rows.map(r => [r.code, r.name, r.quantity, r.min_stock, r.unit || '-']), [70, 180, 60, 70, 50]);
+  doc.end();
+});
+
+/**
+ * GET /api/reports/export/pdf/kpis - Indicateurs de performance en PDF
+ */
+router.get('/export/pdf/kpis', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const { startDate, endDate } = req.query;
+  const start = startDate || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const end = endDate || new Date().toISOString().slice(0, 10);
+  const woTotal = db.prepare('SELECT COUNT(*) as c FROM work_orders WHERE date(created_at) BETWEEN ? AND ?').get(start, end);
+  const woCompleted = db.prepare("SELECT COUNT(*) as c FROM work_orders WHERE status = 'completed' AND date(actual_end) BETWEEN ? AND ?").get(start, end);
+  const mttrRow = db.prepare(`
+    SELECT AVG((julianday(actual_end) - julianday(actual_start)) * 24) as mttr
+    FROM work_orders WHERE status = 'completed' AND actual_start IS NOT NULL AND actual_end IS NOT NULL AND date(actual_end) BETWEEN ? AND ?
+  `).get(start, end);
+  const eqCount = db.prepare('SELECT COUNT(*) as c FROM equipment WHERE status != ?').get('retired');
+  const alertCount = db.prepare(`
+    SELECT COUNT(*) as c FROM spare_parts sp
+    LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
+    WHERE COALESCE(sb.quantity, 0) <= sp.min_stock
+  `).get();
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'attachment; filename=indicateurs-kpis.pdf');
+  const doc = new PDFDocument({ margin: 50 });
+  doc.pipe(res);
+  doc.fontSize(16).text('Indicateurs de performance', 50, 50);
+  doc.fontSize(10).text(`Période du ${start} au ${end}`, 50, 75);
+  doc.moveDown();
+  doc.fontSize(11);
+  doc.text(`OT créés (période) : ${woTotal?.c ?? 0}`, 50, doc.y);
+  doc.text(`OT terminés (période) : ${woCompleted?.c ?? 0}`, 50, doc.y + 20);
+  doc.text(`MTTR moyen (heures) : ${mttrRow?.mttr ? parseFloat(mttrRow.mttr).toFixed(2) : '-'}`, 50, doc.y + 40);
+  doc.text(`Équipements actifs : ${eqCount?.c ?? 0}`, 50, doc.y + 60);
+  doc.text(`Alertes stock (sous seuil) : ${alertCount?.c ?? 0}`, 50, doc.y + 80);
+  doc.end();
+});
+
+module.exports = router;

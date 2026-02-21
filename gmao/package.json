@@ -1,0 +1,15 @@
+{
+  "name": "xmaint",
+  "version": "1.0.0",
+  "description": "maintx - Gestion de Maintenance (xmaint.org)",
+  "private": true,
+  "scripts": {
+    "dev": "node dev-runner.js",
+    "backend": "cd backend && npm run dev",
+    "frontend": "cd frontend && npm run dev",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "init-db": "cd backend && npm run init-db",
+    "seed": "cd backend && npm run seed"
+  },
+  "devDependencies": {}
+}

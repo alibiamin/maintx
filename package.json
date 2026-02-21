@@ -1,0 +1,17 @@
+{
+  "name": "gmao",
+  "version": "1.0.0",
+  "description": "GMAO - Gestion de Maintenance Assistée par Ordinateur",
+  "private": true,
+  "scripts": {
+    "dev": "node gmao/dev-runner.js",
+    "backend": "cd gmao/backend && npm run dev",
+    "frontend": "cd gmao/frontend && npm run dev",
+    "install:all": "cd gmao/backend && npm install && cd ../frontend && npm install",
+    "init-db": "cd gmao/backend && npm run init-db",
+    "seed": "cd gmao/backend && npm run seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
