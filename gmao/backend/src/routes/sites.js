@@ -107,17 +107,30 @@ router.post('/sites', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 });
 
 router.put('/sites/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
-  const { code, name, address } = req.body;
+  const { code, name, address, latitude, longitude } = req.body;
   const id = req.params.id;
   const updates = [];
   const vals = [];
   if (code !== undefined) { updates.push('code = ?'); vals.push(code); }
   if (name !== undefined) { updates.push('name = ?'); vals.push(name); }
   if (address !== undefined) { updates.push('address = ?'); vals.push(address); }
+  if (latitude !== undefined) { updates.push('latitude = ?'); vals.push(latitude == null ? null : parseFloat(latitude)); }
+  if (longitude !== undefined) { updates.push('longitude = ?'); vals.push(longitude == null ? null : parseFloat(longitude)); }
   if (updates.length === 0) return res.status(400).json({ error: 'Aucune donnée' });
   updates.push('updated_at = CURRENT_TIMESTAMP');
   vals.push(id);
-  db.prepare('UPDATE sites SET ' + updates.join(', ') + ' WHERE id = ?').run(...vals);
+  try {
+    db.prepare('UPDATE sites SET ' + updates.join(', ') + ' WHERE id = ?').run(...vals);
+  } catch (e) {
+    if (e.message && e.message.includes('no such column')) {
+      const u2 = updates.filter((u) => !u.includes('latitude') && !u.includes('longitude'));
+      const idx = [updates.findIndex((u) => u.startsWith('latitude')), updates.findIndex((u) => u.startsWith('longitude'))].filter((i) => i >= 0).sort((a, b) => b - a);
+      const v2 = [...vals];
+      idx.forEach((i) => { v2.splice(i, 1); });
+      v2[v2.length - 1] = id;
+      db.prepare('UPDATE sites SET ' + u2.join(', ') + ' WHERE id = ?').run(...v2);
+    } else throw e;
+  }
   res.json(db.prepare('SELECT * FROM sites WHERE id = ?').get(id));
 });
 

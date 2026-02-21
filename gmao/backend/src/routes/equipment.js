@@ -270,6 +270,125 @@ router.get('/:id/warranties', (req, res) => {
   }
 });
 
+/**
+ * GET /api/equipment/:id/counters
+ * Compteurs (heures, cycles, km) pour maintenance conditionnelle
+ */
+router.get('/:id/counters', param('id').isInt(), (req, res) => {
+  const id = req.params.id;
+  const eq = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
+  if (!eq) return res.status(404).json({ error: 'Équipement non trouvé' });
+  try {
+    const rows = db.prepare('SELECT id, equipment_id, counter_type, value, unit, updated_at FROM equipment_counters WHERE equipment_id = ?').all(id);
+    res.json(rows.map(r => ({ id: r.id, equipmentId: r.equipment_id, counterType: r.counter_type, value: r.value, unit: r.unit || 'h', updatedAt: r.updated_at })));
+  } catch (err) {
+    if (err.message && err.message.includes('no such table')) return res.json([]);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * PUT /api/equipment/:id/counters
+ * Mettre à jour ou créer un compteur (body: counterType, value, unit)
+ */
+router.put('/:id/counters', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), [
+  body('counterType').isIn(['hours', 'cycles', 'km', 'other']),
+  body('value').isFloat({ min: 0 })
+], (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const id = req.params.id;
+  const eq = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
+  if (!eq) return res.status(404).json({ error: 'Équipement non trouvé' });
+  const { counterType, value, unit } = req.body;
+  try {
+    const existing = db.prepare('SELECT id FROM equipment_counters WHERE equipment_id = ? AND counter_type = ?').get(id, counterType);
+    if (existing) {
+      db.prepare('UPDATE equipment_counters SET value = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(value, unit || 'h', existing.id);
+    } else {
+      db.prepare('INSERT INTO equipment_counters (equipment_id, counter_type, value, unit) VALUES (?, ?, ?, ?)').run(id, counterType, value, unit || 'h');
+    }
+    const row = db.prepare('SELECT * FROM equipment_counters WHERE equipment_id = ? AND counter_type = ?').get(id, counterType);
+    res.json({ id: row.id, equipmentId: row.equipment_id, counterType: row.counter_type, value: row.value, unit: row.unit || 'h', updatedAt: row.updated_at });
+  } catch (err) {
+    if (err.message && err.message.includes('no such table')) return res.status(501).json({ error: 'Table equipment_counters non disponible' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/equipment/:id/thresholds
+ * Seuils IoT / prévisionnel pour un équipement
+ */
+router.get('/:id/thresholds', param('id').isInt(), (req, res) => {
+  const id = req.params.id;
+  const eq = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
+  if (!eq) return res.status(404).json({ error: 'Équipement non trouvé' });
+  try {
+    const rows = db.prepare('SELECT * FROM equipment_thresholds WHERE equipment_id = ?').all(id);
+    res.json(rows.map((r) => ({
+      id: r.id,
+      equipmentId: r.equipment_id,
+      metric: r.metric,
+      thresholdValue: r.threshold_value,
+      operator: r.operator,
+      lastTriggeredAt: r.last_triggered_at,
+      createWoOnBreach: !!r.create_wo_on_breach,
+      createdAt: r.created_at
+    })));
+  } catch (err) {
+    if (err.message && err.message.includes('no such table')) return res.json([]);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/equipment/:id/thresholds
+ * Ajouter un seuil (body: metric, thresholdValue, operator, createWoOnBreach)
+ */
+router.post('/:id/thresholds', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), [
+  body('metric').isIn(['temperature', 'vibrations', 'hours', 'cycles', 'pressure', 'custom']),
+  body('thresholdValue').isFloat(),
+  body('operator').optional().isIn(['>', '<', '>=', '<=', '=', '!='])
+], (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const id = req.params.id;
+  const eq = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
+  if (!eq) return res.status(404).json({ error: 'Équipement non trouvé' });
+  const { metric, thresholdValue, operator, createWoOnBreach } = req.body;
+  try {
+    db.prepare(`
+      INSERT INTO equipment_thresholds (equipment_id, metric, threshold_value, operator, create_wo_on_breach)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, metric, parseFloat(thresholdValue), operator || '>=', createWoOnBreach ? 1 : 0);
+    const row = db.prepare('SELECT * FROM equipment_thresholds WHERE equipment_id = ? AND metric = ?').get(id, metric);
+    res.status(201).json({
+      id: row.id,
+      equipmentId: row.equipment_id,
+      metric: row.metric,
+      thresholdValue: row.threshold_value,
+      operator: row.operator,
+      lastTriggeredAt: row.last_triggered_at,
+      createWoOnBreach: !!row.create_wo_on_breach,
+      createdAt: row.created_at
+    });
+  } catch (err) {
+    if (err.message && err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Un seuil pour ce métrique existe déjà' });
+    if (err.message && err.message.includes('no such table')) return res.status(501).json({ error: 'Table equipment_thresholds non disponible' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * DELETE /api/equipment/:id/thresholds/:tid
+ */
+router.delete('/:id/thresholds/:tid', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), param('tid').isInt(), (req, res) => {
+  const result = db.prepare('DELETE FROM equipment_thresholds WHERE id = ? AND equipment_id = ?').run(req.params.tid, req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Seuil non trouvé' });
+  res.status(204).send();
+});
+
 router.get('/:id', param('id').isInt(), (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });

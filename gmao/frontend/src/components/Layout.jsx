@@ -96,6 +96,7 @@ function getMenuStructure() {
       { titleKey: 'section.maintenance_0', items: [
         { labelKey: 'item.wo_list', path: '/work-orders' },
         { labelKey: 'item.wo_declare', path: '/creation' },
+        { labelKey: 'item.intervention_requests', path: '/intervention-requests' },
         { labelKey: 'item.wo_in_progress', path: '/work-orders?status=in_progress' },
         { labelKey: 'item.wo_pending', path: '/work-orders?status=pending' }
       ]},
@@ -148,7 +149,8 @@ function getMenuStructure() {
     { id: 'sites', labelKey: 'menu.sites', icon: <BusinessIcon />, path: '/sites', sections: [
       { titleKey: 'section.sites_0', items: [
         { labelKey: 'item.sites_list', path: '/sites' },
-        { labelKey: 'item.sites_lines', path: '/sites/lines' }
+        { labelKey: 'item.sites_lines', path: '/sites/lines' },
+        { labelKey: 'item.sites_map', path: '/sites/map' }
       ]}
     ]},
     { id: 'effectif', labelKey: 'menu.effectif', icon: <PeopleIcon />, path: '/technicians', sections: [

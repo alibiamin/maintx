@@ -464,7 +464,118 @@ async function seed() {
     if (!e.message?.includes('no such table')) console.warn('Commandes/interventions/stock:', e.message);
   }
 
+  // ——— Données de test pour les nouveaux modules (Demandes d'intervention, Compteurs, IoT, SIG) ———
+  try {
+    const userReq = db.prepare('SELECT id FROM users WHERE email = ?').get('user@xmaint.org')?.id;
+    const respId = db.prepare('SELECT id FROM users WHERE email = ?').get('responsable@xmaint.org')?.id;
+    const eqReq1 = db.prepare('SELECT id FROM equipment WHERE code = ?').get('EQ-001')?.id;
+    const eqReq2 = db.prepare('SELECT id FROM equipment WHERE code = ?').get('EQ-004')?.id;
+    const woCreated = db.prepare('SELECT id FROM work_orders WHERE number = ?').get('OT-2025-002')?.id;
+
+    if (userReq && eqReq1) {
+      db.prepare(`
+        INSERT OR IGNORE INTO intervention_requests (title, description, equipment_id, requested_by, priority, status)
+        VALUES ('Bruit anormal sur presse P500', 'Bruit métallique côté bloc hydraulique', ?, ?, 'high', 'pending')
+      `).run(eqReq1, userReq);
+      db.prepare(`
+        INSERT OR IGNORE INTO intervention_requests (title, description, equipment_id, requested_by, priority, status)
+        VALUES ('Fuite huile pompe centrifuge', 'Gouttes sous la pompe PC-200', ?, ?, 'medium', 'pending')
+      `).run(eqReq2, userReq);
+    }
+    const eqConv = db.prepare('SELECT id FROM equipment WHERE code = ?').get('EQ-002')?.id;
+    if (userReq && respId && (eqConv || eqId) && woCreated) {
+      db.prepare(`
+        INSERT OR IGNORE INTO intervention_requests (title, description, equipment_id, requested_by, priority, status, work_order_id, validated_by, validated_at)
+        VALUES ('Vibration convoyeur L1', 'Vibration au démarrage', ?, ?, 'critical', 'validated', ?, ?, datetime('now'))
+      `).run(eqConv || eqId, userReq, woCreated, respId);
+      db.prepare(`
+        INSERT OR IGNORE INTO intervention_requests (title, description, equipment_id, requested_by, priority, status, validated_by, validated_at, rejection_reason)
+        VALUES ('Demande de nettoyage encoffrement', 'Nettoyage demandé sans urgence', ?, ?, 'low', 'rejected', ?, datetime('now'), 'Reporté au prochain arrêt planifié')
+      `).run(eqReq1, userReq, respId);
+    }
+  } catch (e) {
+    if (!e.message?.includes('no such table')) console.warn('Demandes d\'intervention:', e.message);
+  }
+
+  try {
+    const eqC1 = db.prepare('SELECT id FROM equipment WHERE code = ?').get('EQ-001')?.id;
+    const eqC2 = db.prepare('SELECT id FROM equipment WHERE code = ?').get('EQ-004')?.id;
+    if (eqC1) {
+      db.prepare('INSERT OR REPLACE INTO equipment_counters (equipment_id, counter_type, value, unit) VALUES (?, ?, ?, ?)').run(eqC1, 'hours', 4850, 'h');
+      db.prepare('INSERT OR REPLACE INTO equipment_counters (equipment_id, counter_type, value, unit) VALUES (?, ?, ?, ?)').run(eqC1, 'cycles', 125000, 'cycles');
+    }
+    if (eqC2) {
+      db.prepare('INSERT OR REPLACE INTO equipment_counters (equipment_id, counter_type, value, unit) VALUES (?, ?, ?, ?)').run(eqC2, 'hours', 3200, 'h');
+      db.prepare('INSERT OR REPLACE INTO equipment_counters (equipment_id, counter_type, value, unit) VALUES (?, ?, ?, ?)').run(eqC2, 'cycles', 8900, 'cycles');
+    }
+  } catch (e) {
+    if (!e.message?.includes('no such table')) console.warn('Compteurs équipement:', e.message);
+  }
+
+  try {
+    const eqP1 = db.prepare('SELECT id FROM equipment WHERE code = ?').get('EQ-001')?.id;
+    const eqP2 = db.prepare('SELECT id FROM equipment WHERE code = ?').get('EQ-004')?.id;
+    if (eqP1) {
+      db.prepare(`
+        INSERT OR IGNORE INTO maintenance_plans (equipment_id, name, description, frequency_days, next_due_date, is_active, trigger_type, counter_type, threshold_value)
+        VALUES (?, 'Révision 5000 h', 'Révision complète presse (heures de marche)', 365, NULL, 1, 'counter', 'hours', 5000)
+      `).run(eqP1);
+      db.prepare(`
+        INSERT OR IGNORE INTO maintenance_plans (equipment_id, name, description, frequency_days, next_due_date, is_active, trigger_type, counter_type, threshold_value)
+        VALUES (?, 'Contrôle 150 000 cycles', 'Contrôle paliers et courroies (cycles)', 365, NULL, 1, 'counter', 'cycles', 150000)
+      `).run(eqP1);
+    }
+    if (eqP2) {
+      db.prepare(`
+        INSERT OR IGNORE INTO maintenance_plans (equipment_id, name, description, frequency_days, next_due_date, is_active, trigger_type, counter_type, threshold_value)
+        VALUES (?, 'Révision 10 000 h pompe', 'Révision pompe centrifuge (heures)', 365, NULL, 1, 'counter', 'hours', 10000)
+      `).run(eqP2);
+    }
+  } catch (e) {
+    if (!e.message?.includes('no such table') && !e.message?.includes('no such column')) console.warn('Plans conditionnels:', e.message);
+  }
+
+  try {
+    const eqT1 = db.prepare('SELECT id FROM equipment WHERE code = ?').get('EQ-001')?.id;
+    const eqT2 = db.prepare('SELECT id FROM equipment WHERE code = ?').get('EQ-004')?.id;
+    if (eqT1) {
+      db.prepare(`
+        INSERT OR IGNORE INTO equipment_thresholds (equipment_id, metric, threshold_value, operator, create_wo_on_breach)
+        VALUES (?, 'hours', 5000, '>=', 0)
+      `).run(eqT1);
+      db.prepare(`
+        INSERT OR IGNORE INTO equipment_thresholds (equipment_id, metric, threshold_value, operator, create_wo_on_breach)
+        VALUES (?, 'vibrations', 7.5, '>=', 0)
+      `).run(eqT1);
+    }
+    if (eqT2) {
+      db.prepare(`
+        INSERT OR IGNORE INTO equipment_thresholds (equipment_id, metric, threshold_value, operator, create_wo_on_breach)
+        VALUES (?, 'hours', 10000, '>=', 0)
+      `).run(eqT2);
+      db.prepare(`
+        INSERT OR IGNORE INTO equipment_thresholds (equipment_id, metric, threshold_value, operator, create_wo_on_breach)
+        VALUES (?, 'temperature', 85, '>=', 0)
+      `).run(eqT2);
+    }
+  } catch (e) {
+    if (!e.message?.includes('no such table')) console.warn('Seuils IoT:', e.message);
+  }
+
+  try {
+    db.prepare("UPDATE sites SET latitude = 48.8566, longitude = 2.3522 WHERE code = 'SITE-01'").run();
+    db.prepare("UPDATE sites SET latitude = 48.8606, longitude = 2.3376 WHERE code = 'SITE-02'").run();
+  } catch (e) {
+    if (!e.message?.includes('no such column')) console.warn('Géoloc sites:', e.message);
+  }
+
   console.log('✅ Données de démo créées');
+  console.log('\nDonnées de test pour les nouveaux modules :');
+  console.log('  - Demandes d\'intervention (pending / validées / rejetées)');
+  console.log('  - Compteurs équipement (heures, cycles) sur EQ-001 et EQ-004');
+  console.log('  - Plans de maintenance conditionnelle (seuils heures/cycles)');
+  console.log('  - Seuils IoT sur EQ-001 et EQ-004');
+  console.log('  - Sites SITE-01 et SITE-02 avec coordonnées (carte SIG)');
   console.log('\nComptes de test (mot de passe: Password123!)');
   console.log('  - admin@xmaint.org (Administrateur)');
   console.log('  - responsable@xmaint.org (Responsable maintenance)');

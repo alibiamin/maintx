@@ -176,10 +176,101 @@ router.get('/charts', (req, res) => {
 });
 
 /**
+ * Escalade SLA (Flow) : notifier les responsables pour les OT dont le SLA est dépassé (une fois par OT)
+ */
+function runSlaEscalation() {
+  try {
+    const slaBreached = db.prepare(`
+      SELECT wo.id, wo.number, wo.title, wo.priority, wo.sla_deadline, e.name as equipment_name
+      FROM work_orders wo
+      LEFT JOIN equipment e ON wo.equipment_id = e.id
+      WHERE wo.status IN ('pending', 'in_progress') AND wo.sla_deadline IS NOT NULL
+        AND datetime(wo.sla_deadline) < datetime('now')
+        AND wo.id NOT IN (SELECT work_order_id FROM sla_escalation_log)
+    `).all();
+    const responsibles = db.prepare(`
+      SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id
+      WHERE u.is_active = 1 AND r.name IN ('responsable_maintenance', 'administrateur')
+    `).all().map((u) => u.id);
+    const insertLog = db.prepare('INSERT OR IGNORE INTO sla_escalation_log (work_order_id) VALUES (?)');
+    const notificationService = require('../services/notificationService');
+    for (const wo of slaBreached) {
+      insertLog.run(wo.id);
+      notificationService.notify('sla_breached', responsibles, {
+        number: wo.number,
+        title: wo.title,
+        priority: wo.priority,
+        equipment_name: wo.equipment_name
+      }).catch(() => {});
+    }
+  } catch (e) {
+    if (e.message && !e.message.includes('no such table')) console.warn('[dashboard] SLA escalation:', e.message);
+  }
+}
+
+/**
+ * Vérification des seuils IoT (heures/cycles) : comparaison compteurs vs equipment_thresholds, création alerte et optionnellement OT
+ */
+function runThresholdCheck() {
+  try {
+    const thresholds = db.prepare(`
+      SELECT t.*, e.code as equipment_code, e.name as equipment_name
+      FROM equipment_thresholds t
+      JOIN equipment e ON t.equipment_id = e.id
+      WHERE t.metric IN ('hours', 'cycles')
+    `).all();
+    const counters = db.prepare('SELECT equipment_id, counter_type, value FROM equipment_counters').all();
+    const counterByEquip = {};
+    counters.forEach((c) => {
+      if (!counterByEquip[c.equipment_id]) counterByEquip[c.equipment_id] = {};
+      counterByEquip[c.equipment_id][c.counter_type] = c.value;
+    });
+    const now = new Date().toISOString().slice(0, 19);
+    for (const t of thresholds) {
+      const current = (counterByEquip[t.equipment_id] && counterByEquip[t.equipment_id][t.metric]) != null
+        ? parseFloat(counterByEquip[t.equipment_id][t.metric])
+        : null;
+      if (current == null) continue;
+      const th = parseFloat(t.threshold_value);
+      const op = t.operator || '>=';
+      let breached = false;
+      if (op === '>=') breached = current >= th;
+      else if (op === '>') breached = current > th;
+      else if (op === '<=') breached = current <= th;
+      else if (op === '<') breached = current < th;
+      else if (op === '=') breached = current === th;
+      else if (op === '!=') breached = current !== th;
+      if (!breached) continue;
+      const lastTriggered = t.last_triggered_at ? new Date(t.last_triggered_at).getTime() : 0;
+      if (Date.now() - lastTriggered < 86400000) continue;
+      db.prepare('UPDATE equipment_thresholds SET last_triggered_at = ? WHERE id = ?').run(now, t.id);
+      const responsibles = db.prepare(`
+        SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id
+        WHERE u.is_active = 1 AND r.name IN ('responsable_maintenance', 'administrateur')
+      `).all().map((u) => u.id);
+      const title = `Seuil ${t.metric} dépassé : ${t.equipment_code || t.equipment_name}`;
+      const message = `Valeur actuelle : ${current}. Seuil : ${op} ${th}.`;
+      responsibles.forEach((uid) => {
+        try {
+          db.prepare(`
+            INSERT INTO alerts (alert_type, severity, title, message, entity_type, entity_id, target_user_id)
+            VALUES ('custom', 'warning', ?, ?, 'equipment', ?, ?)
+          `).run(title, message, t.equipment_id, uid);
+        } catch (_) {}
+      });
+    }
+  } catch (e) {
+    if (e.message && !e.message.includes('no such table')) console.warn('[dashboard] threshold check:', e.message);
+  }
+}
+
+/**
  * GET /api/dashboard/alerts
- * Alertes : stock bas, SLA dépassé, plans en retard
+ * Alertes : stock bas, SLA dépassé, plans en retard, seuils IoT. Déclenche escalade SLA et vérification seuils.
  */
 router.get('/alerts', (req, res) => {
+  runSlaEscalation();
+  runThresholdCheck();
   const stockAlerts = db.prepare(`
     SELECT sp.id, sp.code, sp.name, COALESCE(sb.quantity, 0) as stock_quantity, sp.min_stock
     FROM spare_parts sp
@@ -413,6 +504,47 @@ router.get('/recent', (req, res) => {
  * GET /api/dashboard/activity
  * Alias pour activité récente (format liste d’activités)
  */
+router.get('/analytics', (req, res) => {
+  const period = parseInt(req.query.period, 10) || 30;
+  const since = `date('now', '-${period} days')`;
+  let mttrByWeek = [];
+  let costsByEquipment = [];
+  try {
+    mttrByWeek = db.prepare(`
+      SELECT strftime('%Y-%W', wo.actual_end) as week,
+             AVG((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24) as mttr_hours
+      FROM work_orders wo
+      WHERE wo.status = 'completed' AND wo.actual_start IS NOT NULL AND wo.actual_end IS NOT NULL
+        AND date(wo.actual_end) >= ${since}
+      GROUP BY week ORDER BY week
+    `).all();
+  } catch (_) {}
+  try {
+    costsByEquipment = db.prepare(`
+      SELECT e.id, e.code, e.name,
+             COALESCE(SUM(COALESCE(i.quantity_used, 0) * COALESCE(sp.unit_price, 0)), 0) as parts_cost,
+             COALESCE(SUM(i.hours_spent * 45), 0) as labor_cost
+      FROM work_orders wo
+      JOIN equipment e ON wo.equipment_id = e.id
+      LEFT JOIN interventions i ON i.work_order_id = wo.id
+      LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id
+      WHERE wo.status = 'completed' AND date(wo.actual_end) >= ${since}
+      GROUP BY wo.equipment_id
+      HAVING (parts_cost + labor_cost) > 0
+      ORDER BY (parts_cost + labor_cost) DESC LIMIT 10
+    `).all();
+  } catch (_) {}
+  res.json({
+    mttrByWeek: mttrByWeek.map((r) => ({ week: r.week, mttrHours: r.mttr_hours != null ? parseFloat(Number(r.mttr_hours).toFixed(2)) : null })),
+    costsByEquipment: costsByEquipment.map((r) => ({
+      equipmentId: r.id, code: r.code, name: r.name,
+      partsCost: parseFloat(Number(r.parts_cost).toFixed(2)),
+      laborCost: parseFloat(Number(r.labor_cost).toFixed(2)),
+      totalCost: parseFloat(Number(Number(r.parts_cost) + Number(r.labor_cost)).toFixed(2))
+    }))
+  });
+});
+
 router.get('/activity', (req, res) => {
   const rows = db.prepare(`
     SELECT wo.id, wo.number as work_order_number, wo.title, wo.description, wo.status, wo.priority, wo.created_at,

@@ -100,12 +100,13 @@ function formatWeekLabel(weekStr) {
   return weekStr.length > 8 ? weekStr.slice(-5) : weekStr;
 }
 
-const DEFAULT_DASHBOARD_LAYOUT = ['alerts', 'kpis', 'summary', 'charts', 'technicianPerformance', 'recent', 'topFailures'];
+const DEFAULT_DASHBOARD_LAYOUT = ['alerts', 'kpis', 'summary', 'charts', 'analytics', 'technicianPerformance', 'recent', 'topFailures'];
 const WIDGET_LABELS = {
   alerts: 'Alertes (stock, SLA, plans)',
   kpis: 'Indicateurs clés (dispo, coût, MTTR, préventif)',
   summary: 'Résumé période et accès rapide',
   charts: 'Graphiques (statuts, priorités, évolution)',
+  analytics: 'BI : Coûts par équipement et MTTR',
   technicianPerformance: 'Performance des techniciens',
   recent: 'Activité récente (OT)',
   topFailures: 'Équipements les plus en panne'
@@ -119,6 +120,7 @@ export default function Dashboard() {
   const [topFailures, setTopFailures] = useState([]);
   const [technicianPerformance, setTechnicianPerformance] = useState([]);
   const [summary, setSummary] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState(30);
   const [profile, setProfile] = useState(null);
@@ -146,8 +148,9 @@ export default function Dashboard() {
       api.get('/dashboard/alerts').catch(() => ({ data: { stock: [], sla: [], overduePlans: [] } })),
       api.get('/dashboard/top-failures', { params: { limit: 5 } }).catch(() => ({ data: [] })),
       api.get('/dashboard/technician-performance', { params: { period, limit: 8 } }).catch(() => ({ data: [] })),
-      api.get('/dashboard/summary', { params: { period } }).catch(() => ({ data: null }))
-    ]).then(([k, c, r, a, t, perf, s]) => {
+      api.get('/dashboard/summary', { params: { period } }).catch(() => ({ data: null })),
+      api.get('/dashboard/analytics', { params: { period } }).catch(() => ({ data: null }))
+    ]).then(([k, c, r, a, t, perf, s, ax]) => {
       setKpis(k.data);
       setCharts(c.data);
       setRecent(r.data);
@@ -155,6 +158,7 @@ export default function Dashboard() {
       setTopFailures(t.data || []);
       setTechnicianPerformance(perf.data || []);
       setSummary(s.data);
+      setAnalytics(ax?.data || null);
     }).catch(console.error).finally(() => setLoading(false));
   }, [period]);
 
@@ -744,6 +748,36 @@ export default function Dashboard() {
                       />
                       <Bar dataKey="ot" name="ot" fill={CHART_COLORS[0]} radius={[0, 6, 6, 0]} maxBarSize={20} />
                       <Bar dataKey="heures" name="heures" fill={CHART_COLORS[3]} radius={[0, 6, 6, 0]} maxBarSize={20} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+        )}
+        {visibleOrder.includes('analytics') && analytics && (
+        <Grid item xs={12} md={6}>
+          <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
+            <CardContent>
+              <Typography variant="h6" fontWeight={700} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Assessment sx={{ color: 'primary.main', fontSize: 26 }} />
+                BI : Coûts par équipement
+              </Typography>
+              {(analytics.costsByEquipment || []).length === 0 ? (
+                <Typography color="text.secondary">Aucun coût sur la période</Typography>
+              ) : (
+                <Box sx={{ height: 280 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      layout="vertical"
+                      data={(analytics.costsByEquipment || []).map((e) => ({ name: (e.code || e.name || '').slice(0, 14), total: e.totalCost }))}
+                      margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
+                    >
+                      <XAxis type="number" tick={tickStyle} tickLine={false} tickFormatter={(v) => `${v} ${currency}`} />
+                      <YAxis type="category" dataKey="name" width={80} tick={{ ...tickStyle, fontSize: 11 }} tickLine={false} />
+                      <Tooltip contentStyle={{ borderRadius: 12, border: `1px solid ${tooltipBorder}`, backgroundColor: tooltipBg }} formatter={(v) => [`${Number(v).toFixed(2)} ${currency}`, 'Coût total']} />
+                      <Bar dataKey="total" fill={CHART_COLORS[2]} radius={[0, 6, 6, 0]} maxBarSize={24} />
                     </BarChart>
                   </ResponsiveContainer>
                 </Box>

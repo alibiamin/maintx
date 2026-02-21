@@ -23,6 +23,7 @@ const WorkOrderDetail = lazy(() => import('./pages/maintenance/WorkOrderDetail')
 const WorkOrderForm = lazy(() => import('./pages/maintenance/WorkOrderForm'));
 const MaintenancePlans = lazy(() => import('./pages/maintenance/MaintenancePlans'));
 const MaintenancePlansDue = lazy(() => import('./pages/maintenance/MaintenancePlansDue'));
+const InterventionRequests = lazy(() => import('./pages/maintenance/InterventionRequests'));
 const Planning = lazy(() => import('./pages/Planning'));
 const PlanningAssignments = lazy(() => import('./pages/PlanningAssignments'));
 const PlanningResources = lazy(() => import('./pages/PlanningResources'));
@@ -41,6 +42,7 @@ const ReportsExports = lazy(() => import('./pages/ReportsExports'));
 const Users = lazy(() => import('./pages/Users'));
 const Sites = lazy(() => import('./pages/Sites'));
 const SitesLines = lazy(() => import('./pages/SitesLines'));
+const SitesMap = lazy(() => import('./pages/SitesMap'));
 const Settings = lazy(() => import('./pages/Settings'));
 const SettingsRoles = lazy(() => import('./pages/SettingsRoles'));
 const Contracts = lazy(() => import('./pages/Contracts'));
@@ -101,6 +103,7 @@ export default function App() {
         <Route path="work-orders" element={<WorkOrderList />} />
         <Route path="work-orders/new" element={<WorkOrderForm />} />
         <Route path="work-orders/:id" element={<WorkOrderDetail />} />
+        <Route path="intervention-requests" element={<InterventionRequests />} />
         <Route path="planning" element={<Planning />} />
         <Route path="planning/assignments" element={<PlanningAssignments />} />
         <Route path="planning/resources" element={<PlanningResources />} />
@@ -118,6 +121,7 @@ export default function App() {
         <Route path="suppliers/orders" element={<SuppliersOrders />} />
         <Route path="sites" element={<Sites />} />
         <Route path="sites/lines" element={<SitesLines />} />
+        <Route path="sites/map" element={<SitesMap />} />
         <Route path="reports" element={<Reports />} />
         <Route path="reports/exports" element={<ReportsExports />} />
         <Route path="contracts" element={<Contracts />} />

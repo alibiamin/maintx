@@ -23,7 +23,8 @@ const EVENT_LABELS = {
   work_order_assigned: 'OT affecté',
   work_order_closed: 'OT clôturé',
   plan_overdue: 'Plan de maintenance en retard',
-  stock_alert: 'Alerte stock'
+  stock_alert: 'Alerte stock',
+  sla_breached: 'SLA dépassé (escalade)'
 };
 
 function getTransporter() {
@@ -109,6 +110,8 @@ function buildMessage(eventType, data) {
       return `[${appName}] Plan en retard : ${data.plan_name || ''} (${data.equipment_code || ''}) — échéance ${data.next_due_date || ''}.`;
     case 'stock_alert':
       return `[${appName}] Alerte stock : ${data.part_name || data.code || ''} — stock actuel sous le minimum.`;
+    case 'sla_breached':
+      return `[${appName}] SLA dépassé — OT ${data.number || ''} : ${data.title || ''} (priorité ${data.priority || ''}). À traiter en priorité.`;
     default:
       return `[${appName}] Notification : ${data.title || eventType}`;
   }
@@ -126,6 +129,8 @@ function buildSubject(eventType, data) {
       return `[xmaint] Plan en retard — ${data.plan_name || ''}`;
     case 'stock_alert':
       return `[xmaint] Alerte stock`;
+    case 'sla_breached':
+      return `[xmaint] SLA dépassé — ${data.number || ''}`;
     default:
       return `[xmaint] Notification`;
   }

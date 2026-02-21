@@ -30,6 +30,7 @@ const techniciansRoutes = require('./routes/technicians');
 const competenciesRoutes = require('./routes/competencies');
 const notificationsRoutes = require('./routes/notifications');
 const searchRoutes = require('./routes/search');
+const interventionRequestsRoutes = require('./routes/interventionRequests');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -73,6 +74,7 @@ app.use('/api/technicians', techniciansRoutes);
 app.use('/api/competencies', competenciesRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/intervention-requests', interventionRequestsRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

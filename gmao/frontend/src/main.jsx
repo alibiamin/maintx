@@ -10,6 +10,13 @@ import { ActionPanelProvider } from './context/ActionPanelContext';
 import { SnackbarProvider } from './context/SnackbarContext';
 import { CurrencyProvider } from './context/CurrencyContext';
 
+// PWA : enregistrer le service worker pour installation mobile (techniciens terrain)
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+  });
+}
+
 // EncodedHashRouter : le hash affiche un lien crypté (base64url), pas le chemin réel.
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
