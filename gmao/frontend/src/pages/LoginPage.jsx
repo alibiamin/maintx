@@ -11,8 +11,12 @@ import {
   alpha,
   useTheme,
   Tooltip,
-  Link
+  Link,
+  IconButton,
+  Menu,
+  MenuItem
 } from '@mui/material';
+import { Language as LanguageIcon } from '@mui/icons-material';
 import {
   Build,
   Assignment,
@@ -21,6 +25,7 @@ import {
   Security,
   Email
 } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import Logo from '../components/Logo';
 
@@ -67,11 +72,22 @@ function SocialIcon({ icon, color, size = 24 }) {
   return <Email sx={{ fontSize: s, color }} />;
 }
 
+const LANGUAGES = [
+  { code: 'fr', label: 'Français' },
+  { code: 'en', label: 'English' },
+  { code: 'ar', label: 'العربية' },
+  { code: 'es', label: 'Español' },
+  { code: 'pt', label: 'Português' },
+  { code: 'de', label: 'Deutsch' }
+];
+
 export default function LoginPage() {
+  const { t, i18n } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [langAnchor, setLangAnchor] = useState(null);
   const { login } = useAuth();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -84,7 +100,7 @@ export default function LoginPage() {
       await login(email, password);
       navigate('/');
     } catch (err) {
-      setError(err.response?.data?.error || 'Erreur de connexion');
+      setError(err.response?.data?.error || t('login.error'));
     } finally {
       setLoading(false);
     }
@@ -136,7 +152,7 @@ export default function LoginPage() {
             <Logo variant="dark" size="medium" showText={false} logoSrc={null} sx={{ flexShrink: 0 }} />
             <Box sx={{ borderLeft: '1px solid', borderColor: 'divider', pl: 2 }}>
               <Typography variant="body1" sx={{ color: 'text.primary', fontWeight: 500, letterSpacing: '0.02em' }}>
-                Solution GMAO pour la maintenance industrielle et préventive
+                {t('login.tagline')}
               </Typography>
             </Box>
           </Box>
@@ -228,6 +244,30 @@ export default function LoginPage() {
           position: 'relative'
         }}
       >
+        <IconButton
+          onClick={(e) => setLangAnchor(e.currentTarget)}
+          sx={{ position: 'absolute', top: 16, right: 16, color: 'rgba(255,255,255,0.9)' }}
+          aria-label={t('common.language')}
+        >
+          <LanguageIcon />
+        </IconButton>
+        <Menu
+          anchorEl={langAnchor}
+          open={!!langAnchor}
+          onClose={() => setLangAnchor(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        >
+          {LANGUAGES.map((lang) => (
+            <MenuItem
+              key={lang.code}
+              selected={i18n.language === lang.code}
+              onClick={() => { i18n.changeLanguage(lang.code); setLangAnchor(null); }}
+            >
+              {lang.label}
+            </MenuItem>
+          ))}
+        </Menu>
         <Card
           elevation={0}
           sx={{
@@ -247,10 +287,10 @@ export default function LoginPage() {
             </Box>
 
             <Typography variant="h6" fontWeight={700} color="text.primary" sx={{ mb: 0.5 }}>
-              Connexion
+              {t('login.title')}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Accédez à votre espace de gestion de maintenance
+              {t('login.subtitle')}
             </Typography>
 
             {error && (
@@ -262,7 +302,7 @@ export default function LoginPage() {
             <form onSubmit={handleSubmit}>
               <TextField
                 fullWidth
-                label="Adresse email"
+                label={t('login.email')}
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -273,7 +313,7 @@ export default function LoginPage() {
               />
               <TextField
                 fullWidth
-                label="Mot de passe"
+                label={t('login.password')}
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -297,7 +337,7 @@ export default function LoginPage() {
                   boxShadow: 2
                 }}
               >
-                {loading ? 'Connexion...' : 'Se connecter'}
+                {loading ? t('login.submitting') : t('login.submit')}
               </Button>
             </form>
           </CardContent>

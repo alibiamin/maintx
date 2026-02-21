@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
+import { useAuth } from './AuthContext';
 
 const CurrencyContext = createContext({ currency: '€', refresh: () => {} });
 
 export function CurrencyProvider({ children }) {
+  const { user } = useAuth();
   const [currency, setCurrency] = useState('€');
 
   const refresh = useCallback(() => {
@@ -13,8 +15,8 @@ export function CurrencyProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (user) refresh();
+  }, [user, refresh]);
 
   return (
     <CurrencyContext.Provider value={{ currency, refresh }}>

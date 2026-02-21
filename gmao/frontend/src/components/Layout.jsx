@@ -57,278 +57,152 @@ import {
   Warning as WarningIcon,
   Info as InfoIcon
 } from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import api from '../services/api';
 import { LogoCompact } from './Logo';
 
-const PATH_LABELS = {
-  '': 'Tableau de bord',
-  dashboard: 'Tableau de bord',
-  'dashboard/kpis': 'KPIs',
-  'dashboard/activity': 'Activité',
-  creation: 'Création',
-  equipment: 'Équipements',
-  'equipment/map': 'Carte',
-  'equipment/categories': 'Catégories',
-  'equipment/technical': 'Fiches techniques',
-  'work-orders': 'Ordres de travail',
-  'maintenance-plans': 'Plans de maintenance',
-  'maintenance-plans/due': 'Plans en retard',
-  planning: 'Planning',
-  'planning/assignments': 'Affectations',
-  'planning/resources': 'Ressources',
-  stock: 'Stock',
-  'stock/movements': 'Mouvements',
-  'stock/alerts': 'Alertes stock',
-  'stock/entries': 'Entrées',
-  'stock/exits': 'Sorties',
-  'stock/transfers': 'Transferts',
-  'stock/inventories': 'Inventaires',
-  'stock/reorders': 'Réapprovisionnements',
-  suppliers: 'Fournisseurs',
-  reports: 'Rapports',
-  'reports/exports': 'Exports',
-  users: 'Utilisateurs',
-  sites: 'Sites',
-  settings: 'Paramétrage',
-  'settings/roles': 'Rôles',
-  contracts: 'Contrats',
-  tools: 'Outils',
-  checklists: 'Checklists',
-  technicians: 'Effectif',
-  'technicians/competencies': 'Compétences',
-  'technicians/type-competencies': 'Règles d\'affectation',
-  'technicians/team': 'Équipe'
-};
-
-// Structure du menu hiérarchique comme Sage X3
-const menuStructure = [
-  {
-    id: 'dashboard',
-    label: 'Tableau de bord',
-    icon: <DashboardIcon />,
-    path: '/',
-    sections: [
-      {
-        title: 'Tableau de bord',
-        items: [
-          { label: 'Vue d\'ensemble', path: '/' },
-          { label: 'KPIs', path: '/dashboard/kpis' },
-          { label: 'Activité récente', path: '/dashboard/activity' }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'creation',
-    label: 'Création',
-    icon: <BusinessIcon />,
-    path: '/creation',
-    sections: [
-      {
-        title: 'Création',
-        items: [
-          { label: 'Nouvel élément (site, département, ligne, équipement…)', path: '/creation' }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'equipment',
-    label: 'Équipements',
-    icon: <BuildIcon />,
-    path: '/equipment',
-    sections: [
-      {
-        title: 'Équipements',
-        items: [
-          { label: 'Liste des équipements', path: '/equipment' },
-          { label: 'Carte hiérarchie', path: '/equipment/map' },
-          { label: 'Catégories', path: '/equipment/categories' },
-          { label: 'Fiches techniques', path: '/equipment/technical' }
-        ]
-      },
-      {
-        title: 'Gestion',
-        items: [
-          { label: 'Historique (par équipement)', path: '/equipment' },
-          { label: 'Documents (par équipement)', path: '/equipment' },
-          { label: 'Garanties (par équipement)', path: '/equipment' }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'maintenance',
-    label: 'Maintenance',
-    icon: <AssignmentIcon />,
-    path: '/work-orders',
-    sections: [
-      {
-        title: 'Ordres de travail',
-        items: [
-          { label: 'Liste des OT', path: '/work-orders' },
-          { label: 'Déclarer une panne', path: '/creation' },
-          { label: 'OT en cours', path: '/work-orders?status=in_progress' },
-          { label: 'OT planifiés', path: '/work-orders?status=pending' }
-        ]
-      },
-      {
-        title: 'Maintenance préventive',
-        items: [
-          { label: 'Plans de maintenance', path: '/maintenance-plans' },
-          { label: 'Checklists', path: '/checklists' },
-          { label: 'Échéances', path: '/maintenance-plans/due' }
-        ]
-      },
-      {
-        title: 'Planning',
-        items: [
-          { label: 'Calendrier', path: '/planning' },
-          { label: 'Affectations', path: '/planning/assignments' },
-          { label: 'Ressources', path: '/planning/resources' }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'stock',
-    label: 'Stocks',
-    icon: <StockIcon />,
-    path: '/stock',
-    sections: [
-      {
-        title: 'Stocks',
-        items: [
-          { label: 'Liste des pièces', path: '/stock' },
-          { label: 'Mouvements', path: '/stock/movements' },
-          { label: 'Inventaires', path: '/stock/inventories' },
-          { label: 'Alertes stock', path: '/stock/alerts' }
-        ]
-      },
-      {
-        title: 'Gestion',
-        items: [
-          { label: 'Entrées', path: '/stock/entries' },
-          { label: 'Sorties', path: '/stock/exits' },
-          { label: 'Transferts', path: '/stock/transfers' },
-          { label: 'Réapprovisionnements', path: '/stock/reorders' }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'suppliers',
-    label: 'Fournisseurs',
-    icon: <SupplierIcon />,
-    path: '/suppliers',
-    sections: [
-      {
-        title: 'Fournisseurs',
-        items: [
-          { label: 'Liste des fournisseurs', path: '/suppliers' },
-          { label: 'Contrats', path: '/contracts' },
-          { label: 'Commandes', path: '/suppliers/orders' }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'tools',
-    label: 'Outils',
-    icon: <ToolsIcon />,
-    path: '/tools',
-    sections: [
-      {
-        title: 'Outils et matériels',
-        items: [
-          { label: 'Liste des outils', path: '/tools' },
-          { label: 'Assignations', path: '/tools/assignments' },
-          { label: 'Calibrations', path: '/tools/calibrations' }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'reports',
-    label: 'Rapports',
-    icon: <ReportsIcon />,
-    path: '/reports',
-    sections: [
-      {
-        title: 'Rapports',
-        items: [
-          { label: 'Coûts par équipement', path: '/reports' },
-          { label: 'Disponibilité', path: '/reports?tab=availability' },
-          { label: 'Exports', path: '/reports/exports' }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'sites',
-    label: 'Sites',
-    icon: <BusinessIcon />,
-    path: '/sites',
-    sections: [
-      {
-        title: 'Sites',
-        items: [
-          { label: 'Liste des sites', path: '/sites' },
-          { label: 'Lignes de production', path: '/sites/lines' }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'effectif',
-    label: 'Effectif',
-    icon: <PeopleIcon />,
-    path: '/technicians',
-    sections: [
-      {
-        title: 'Effectif',
-        items: [
-          { label: 'Liste des techniciens', path: '/technicians' },
-          { label: 'Compétences', path: '/technicians/competencies' },
-          { label: 'Règles d\'affectation', path: '/technicians/type-competencies' },
-          { label: 'Équipe', path: '/technicians/team' }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'settings',
-    label: 'Paramétrage',
-    icon: <SettingsIcon />,
-    path: '/settings',
-    sections: [
-      {
-        title: 'Paramétrage',
-        items: [
-          { label: 'Configuration', path: '/settings' },
-          { label: 'Alertes email / SMS', path: '/settings?tab=alertes' },
-          { label: 'Utilisateurs', path: '/users' },
-          { label: 'Rôles et permissions', path: '/settings/roles' }
-        ]
-      }
-    ]
-  }
+const LANGUAGES = [
+  { code: 'fr', label: 'Français' },
+  { code: 'en', label: 'English' },
+  { code: 'ar', label: 'العربية' },
+  { code: 'es', label: 'Español' },
+  { code: 'pt', label: 'Português' },
+  { code: 'de', label: 'Deutsch' }
 ];
 
+function getMenuStructure() {
+  return [
+    { id: 'dashboard', labelKey: 'menu.dashboard', icon: <DashboardIcon />, path: '/', sections: [
+      { titleKey: 'section.dashboard_0', items: [
+        { labelKey: 'item.dashboard_overview', path: '/' },
+        { labelKey: 'item.dashboard_kpis', path: '/dashboard/kpis' },
+        { labelKey: 'item.dashboard_activity', path: '/dashboard/activity' }
+      ]}
+    ]},
+    { id: 'creation', labelKey: 'menu.creation', icon: <BusinessIcon />, path: '/creation', sections: [
+      { titleKey: 'section.creation_0', items: [{ labelKey: 'item.creation_new', path: '/creation' }] }
+    ]},
+    { id: 'equipment', labelKey: 'menu.equipment', icon: <BuildIcon />, path: '/equipment', sections: [
+      { titleKey: 'section.equipment_0', items: [
+        { labelKey: 'item.equipment_list', path: '/equipment' },
+        { labelKey: 'item.equipment_map', path: '/equipment/map' },
+        { labelKey: 'item.equipment_categories', path: '/equipment/categories' },
+        { labelKey: 'item.equipment_technical', path: '/equipment/technical' }
+      ]},
+      { titleKey: 'section.equipment_1', items: [
+        { labelKey: 'item.management_history', path: '/equipment' },
+        { labelKey: 'item.management_documents', path: '/equipment' },
+        { labelKey: 'item.management_warranties', path: '/equipment' }
+      ]}
+    ]},
+    { id: 'maintenance', labelKey: 'menu.maintenance', icon: <AssignmentIcon />, path: '/work-orders', sections: [
+      { titleKey: 'section.maintenance_0', items: [
+        { labelKey: 'item.wo_list', path: '/work-orders' },
+        { labelKey: 'item.wo_declare', path: '/creation' },
+        { labelKey: 'item.wo_in_progress', path: '/work-orders?status=in_progress' },
+        { labelKey: 'item.wo_pending', path: '/work-orders?status=pending' }
+      ]},
+      { titleKey: 'section.maintenance_1', items: [
+        { labelKey: 'item.plans', path: '/maintenance-plans' },
+        { labelKey: 'item.checklists', path: '/checklists' },
+        { labelKey: 'item.due', path: '/maintenance-plans/due' }
+      ]},
+      { titleKey: 'section.maintenance_2', items: [
+        { labelKey: 'item.planning_calendar', path: '/planning' },
+        { labelKey: 'item.planning_assignments', path: '/planning/assignments' },
+        { labelKey: 'item.planning_resources', path: '/planning/resources' }
+      ]}
+    ]},
+    { id: 'stock', labelKey: 'menu.stock', icon: <StockIcon />, path: '/stock', sections: [
+      { titleKey: 'section.stock_0', items: [
+        { labelKey: 'item.stock_list', path: '/stock' },
+        { labelKey: 'item.stock_movements', path: '/stock/movements' },
+        { labelKey: 'item.stock_inventories', path: '/stock/inventories' },
+        { labelKey: 'item.stock_alerts', path: '/stock/alerts' }
+      ]},
+      { titleKey: 'section.stock_1', items: [
+        { labelKey: 'item.stock_entries', path: '/stock/entries' },
+        { labelKey: 'item.stock_exits', path: '/stock/exits' },
+        { labelKey: 'item.stock_transfers', path: '/stock/transfers' },
+        { labelKey: 'item.stock_reorders', path: '/stock/reorders' }
+      ]}
+    ]},
+    { id: 'suppliers', labelKey: 'menu.suppliers', icon: <SupplierIcon />, path: '/suppliers', sections: [
+      { titleKey: 'section.suppliers_0', items: [
+        { labelKey: 'item.suppliers_list', path: '/suppliers' },
+        { labelKey: 'item.contracts', path: '/contracts' },
+        { labelKey: 'item.suppliers_orders', path: '/suppliers/orders' }
+      ]}
+    ]},
+    { id: 'tools', labelKey: 'menu.tools', icon: <ToolsIcon />, path: '/tools', sections: [
+      { titleKey: 'section.tools_0', items: [
+        { labelKey: 'item.tools_list', path: '/tools' },
+        { labelKey: 'item.tools_assignments', path: '/tools/assignments' },
+        { labelKey: 'item.tools_calibrations', path: '/tools/calibrations' }
+      ]}
+    ]},
+    { id: 'reports', labelKey: 'menu.reports', icon: <ReportsIcon />, path: '/reports', sections: [
+      { titleKey: 'section.reports_0', items: [
+        { labelKey: 'item.reports_costs', path: '/reports' },
+        { labelKey: 'item.reports_availability', path: '/reports?tab=availability' },
+        { labelKey: 'item.reports_exports', path: '/reports/exports' }
+      ]}
+    ]},
+    { id: 'sites', labelKey: 'menu.sites', icon: <BusinessIcon />, path: '/sites', sections: [
+      { titleKey: 'section.sites_0', items: [
+        { labelKey: 'item.sites_list', path: '/sites' },
+        { labelKey: 'item.sites_lines', path: '/sites/lines' }
+      ]}
+    ]},
+    { id: 'effectif', labelKey: 'menu.effectif', icon: <PeopleIcon />, path: '/technicians', sections: [
+      { titleKey: 'section.effectif_0', items: [
+        { labelKey: 'item.technicians_list', path: '/technicians' },
+        { labelKey: 'item.technicians_competencies', path: '/technicians/competencies' },
+        { labelKey: 'item.technicians_rules', path: '/technicians/type-competencies' },
+        { labelKey: 'item.technicians_team', path: '/technicians/team' }
+      ]}
+    ]},
+    { id: 'settings', labelKey: 'menu.settings', icon: <SettingsIcon />, path: '/settings', sections: [
+      { titleKey: 'section.settings_0', items: [
+        { labelKey: 'item.settings_config', path: '/settings' },
+        { labelKey: 'item.settings_alerts', path: '/settings?tab=alertes' },
+        { labelKey: 'item.settings_users', path: '/users' },
+        { labelKey: 'item.settings_roles', path: '/settings/roles' }
+      ]}
+    ]}
+  ];
+}
+
 export default function Layout() {
+  const { t, i18n } = useTranslation();
   const [selectedMenuId, setSelectedMenuId] = useState(null);
   const [expandedSections, setExpandedSections] = useState({});
   const [menuSearch, setMenuSearch] = useState('');
   const [globalSearch, setGlobalSearch] = useState('');
   const [anchorEl, setAnchorEl] = useState(null);
+  const [langAnchorEl, setLangAnchorEl] = useState(null);
   const [detailPanelOpen, setDetailPanelOpen] = useState(false);
   const [menuCollapsed, setMenuCollapsed] = useState(false);
   const [alertAnchorEl, setAlertAnchorEl] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const { user, logout } = useAuth();
+
+  const menuStructure = React.useMemo(() => getMenuStructure(), []);
+  const getPathLabel = (pathSeg) => (pathSeg === '' ? t('path._home') : t(`path.${pathSeg}`));
+  const getItemLabelByPath = (path) => {
+    const pathOnly = path.split('?')[0];
+    for (const menu of menuStructure) {
+      for (const section of menu.sections) {
+        for (const item of section.items) {
+          if (item.path.split('?')[0] === pathOnly) return t(item.labelKey);
+        }
+      }
+    }
+    return pathOnly;
+  };
 
   // Épingles (accès rapide) — par utilisateur, stockées en base (profil)
   const [pinnedItems, setPinnedItems] = useState([]);
@@ -349,7 +223,7 @@ export default function Layout() {
     const path = item.path;
     const next = pinnedItems.some((p) => p.path === path)
       ? pinnedItems.filter((p) => p.path !== path)
-      : [...pinnedItems, { path, label: item.label }];
+      : [...pinnedItems, { path, label: t(item.labelKey) }];
     setPinnedItems(next);
     api.put('/auth/me', { pinnedMenuItems: next }).catch(() => {
       setPinnedItems(pinnedItems);
@@ -538,14 +412,14 @@ export default function Layout() {
 
   // Filtrer les menus selon la recherche
   const filteredMenus = menuStructure.filter(menu =>
-    menu.label.toLowerCase().includes(menuSearch.toLowerCase())
+    t(menu.labelKey).toLowerCase().includes(menuSearch.toLowerCase())
   );
 
   // Filtrer les items dans les sections selon la recherche
   const filterItems = (items) => {
     if (!menuSearch) return items;
     return items.filter(item =>
-      item.label.toLowerCase().includes(menuSearch.toLowerCase())
+      t(item.labelKey).toLowerCase().includes(menuSearch.toLowerCase())
     );
   };
 
@@ -585,7 +459,7 @@ export default function Layout() {
             <TextField
               fullWidth
               size="small"
-              placeholder="Rechercher dans le menu Navigation"
+              placeholder={t('common.searchPlaceholder')}
               value={globalSearch}
               onChange={(e) => setGlobalSearch(e.target.value)}
               InputProps={{
@@ -609,8 +483,16 @@ export default function Layout() {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <IconButton
               size="small"
+              onClick={(e) => setLangAnchorEl(e.currentTarget)}
+              aria-label={t('common.language')}
+              sx={{ fontSize: '1rem' }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>{i18n.language.toUpperCase().slice(0, 2)}</Typography>
+            </IconButton>
+            <IconButton
+              size="small"
               onClick={openAlertsMenu}
-              aria-label="Notifications"
+              aria-label={t('common.notifications')}
             >
               <Badge badgeContent={unreadCount} color="error">
                 <NotificationsIcon fontSize="small" />
@@ -667,7 +549,7 @@ export default function Layout() {
               key={p.path}
               component={RouterLink}
               to={p.path}
-              label={p.label}
+              label={getItemLabelByPath(p.path)}
               size="small"
               icon={<Star sx={{ fontSize: 16, color: 'primary.main' }} />}
               onDelete={() => togglePin(p)}
@@ -707,8 +589,27 @@ export default function Layout() {
           }}
         >
           <Logout fontSize="small" sx={{ mr: 1 }} />
-          Déconnexion
+          {t('common.logout')}
         </MenuItem>
+      </Menu>
+
+      {/* Menu Langue */}
+      <Menu
+        anchorEl={langAnchorEl}
+        open={!!langAnchorEl}
+        onClose={() => setLangAnchorEl(null)}
+        transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+        anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+      >
+        {LANGUAGES.map((lang) => (
+          <MenuItem
+            key={lang.code}
+            selected={i18n.language === lang.code}
+            onClick={() => { i18n.changeLanguage(lang.code); setLangAnchorEl(null); }}
+          >
+            {lang.label}
+          </MenuItem>
+        ))}
       </Menu>
 
       {/* Menu Notifications */}
@@ -722,18 +623,18 @@ export default function Layout() {
       >
         <Box sx={{ px: 2, py: 1.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="subtitle1" fontWeight={600}>
-            Notifications
+            {t('common.notifications')}
           </Typography>
           {unreadCount > 0 && (
             <Button size="small" onClick={markAllRead}>
-              Tout marquer lu
+              {t('common.markAllRead')}
             </Button>
           )}
         </Box>
         <Divider />
         {alerts.length === 0 ? (
           <MenuItem disabled>
-            <Typography variant="body2" color="text.secondary">Aucune notification</Typography>
+            <Typography variant="body2" color="text.secondary">{t('common.noNotifications')}</Typography>
           </MenuItem>
         ) : (
           alerts.slice(0, 20).map((alert) => (
@@ -762,7 +663,7 @@ export default function Layout() {
                   primaryTypographyProps={{ fontWeight: alert.is_read ? 400 : 600, variant: 'body2' }}
                   secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
                 />
-                {!alert.is_read && <Chip label="Nouveau" size="small" color="primary" sx={{ ml: 'auto' }} />}
+                {!alert.is_read && <Chip label={t('common.new')} size="small" color="primary" sx={{ ml: 'auto' }} />}
               </Box>
             </MenuItem>
           ))
@@ -801,7 +702,7 @@ export default function Layout() {
           >
             {!menuCollapsed && (
               <Typography variant="h6" fontWeight={700} sx={{ color: 'text.primary' }}>
-                Menu
+                {t('common.menu')}
               </Typography>
             )}
             <IconButton
@@ -844,7 +745,7 @@ export default function Layout() {
                     </Box>
                     {!menuCollapsed && (
                       <ListItemText
-                        primary={menu.label}
+                        primary={t(menu.labelKey)}
                         primaryTypographyProps={{
                           fontWeight: isSelected ? 600 : 500,
                           fontSize: '0.9rem'
@@ -889,7 +790,7 @@ export default function Layout() {
             >
               <TextField
                 size="small"
-                placeholder="Rechercher dans le menu Navigation"
+                placeholder={t('common.searchPlaceholder')}
                 value={menuSearch}
                 onChange={(e) => setMenuSearch(e.target.value)}
                 InputProps={{
@@ -913,7 +814,7 @@ export default function Layout() {
                     px: 2
                   }}
                 >
-                  Tout réduire
+                  {t('common.collapseAll')}
                 </Button>
                 <Button
                   variant="contained"
@@ -926,7 +827,7 @@ export default function Layout() {
                     px: 2
                   }}
                 >
-                  Tout développer
+                  {t('common.expandAll')}
                 </Button>
                 <IconButton
                   size="small"
@@ -971,7 +872,7 @@ export default function Layout() {
                         fontWeight={700}
                         sx={{ color: 'text.primary', fontSize: '1.05rem' }}
                       >
-                        {section.title}
+                        {t(section.titleKey)}
                       </Typography>
                     </Box>
 
@@ -1024,7 +925,7 @@ export default function Layout() {
                                   togglePin(item);
                                 }}
                                 sx={{ p: 0.25 }}
-                                aria-label={pinned ? 'Désépingler' : 'Épingler'}
+                                aria-label={pinned ? t('common.unpin') : t('common.pin')}
                               >
                                 {pinned ? (
                                   <Star fontSize="small" sx={{ color: 'primary.main' }} />
@@ -1040,7 +941,7 @@ export default function Layout() {
                                   fontWeight: isActive ? 600 : 400
                                 }}
                               >
-                                {item.label}
+                                {t(item.labelKey)}
                               </Typography>
                             </Box>
                           );
@@ -1065,13 +966,13 @@ export default function Layout() {
           }}
         >
           <Box sx={{ p: 3 }}>
-            <Breadcrumbs sx={{ mb: 2 }} aria-label="Fil d'Ariane">
+            <Breadcrumbs sx={{ mb: 2 }} aria-label="Breadcrumb">
               <Link component={RouterLink} to="/" underline="hover" color="inherit" sx={{ fontSize: '0.875rem' }}>
-                Accueil
+                {t('common.home')}
               </Link>
               {location.pathname.split('/').filter(Boolean).map((segment, i, arr) => {
                 const path = arr.slice(0, i + 1).join('/');
-                const label = PATH_LABELS[path] || segment;
+                const label = path ? (t(`path.${path}`) || segment) : t('path._home');
                 const isLast = i === arr.length - 1;
                 return isLast ? (
                   <Typography key={path} color="text.primary" sx={{ fontSize: '0.875rem', fontWeight: 600 }}>
