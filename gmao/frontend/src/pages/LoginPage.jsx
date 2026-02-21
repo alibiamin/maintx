@@ -28,6 +28,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import Logo from '../components/Logo';
+import AppLoadingScreen from '../components/AppLoadingScreen';
 
 // Liens sociaux — à personnaliser avec vos URLs
 const SOCIAL_LINKS = [
@@ -89,8 +90,14 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
+    const startedAt = Date.now();
     try {
       await login(email, password);
+      const elapsed = Date.now() - startedAt;
+      const minDisplayMs = 3000;
+      if (elapsed < minDisplayMs) {
+        await new Promise((r) => setTimeout(r, minDisplayMs - elapsed));
+      }
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.error || t('login.error'));
@@ -98,6 +105,8 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  if (loading) return <AppLoadingScreen />;
 
   const fadeInUp = {
     '@keyframes fadeInUp': {
@@ -338,7 +347,7 @@ export default function LoginPage() {
         </Card>
 
         <Typography variant="caption" sx={{ position: 'absolute', bottom: 16, left: 16, right: 16, textAlign: 'center', color: 'rgba(255,255,255,0.85)' }}>
-          © MainteniX — Gestion de Maintenance
+          © MaintX — Gestion de Maintenance
         </Typography>
       </Box>
     </Box>

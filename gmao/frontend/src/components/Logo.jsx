@@ -5,29 +5,33 @@ import { Box, Typography } from '@mui/material';
 export const LOGO_IMAGE_SRC = '/logomaintx.ico';
 
 /**
- * Logo maintx — image (logomaintx.ico) ou vectoriel selon logoSrc.
+ * Logo officiel MAINTX — image (logomaintx.ico) ou vectoriel selon logoSrc.
+ * Nom : MAINTX avec X en vert (couleurs officielles).
  * variant: "light" (fond sombre/vert) | "dark" (fond clair)
- * size: "small" (header) | "medium" | "large" (login)
+ * size: "small" (header) | "medium" | "large" (login) | "xlarge" (écran de chargement)
  */
 const LOGO_COLORS = {
   light: {
     iconPrimary: '#ffffff',
     iconSecondary: 'rgba(255,255,255,0.85)',
     main: '#ffffff',
-    sub: 'rgba(255,255,255,0.9)'
+    sub: 'rgba(255,255,255,0.9)',
+    xGreen: '#2EB23E'
   },
   dark: {
     iconPrimary: '#259633',
     iconSecondary: '#2EB23E',
     main: '#1a1a1a',
-    sub: '#259633'
+    sub: '#259633',
+    xGreen: '#259633'
   }
 };
 
 const SIZES = {
   small: { icon: 32, main: '1rem', sub: '0.65rem', gap: 0.75 },
   medium: { icon: 44, main: '1.25rem', sub: '0.75rem', gap: 1 },
-  large: { icon: 52, main: '1.5rem', sub: '0.85rem', gap: 1.25 }
+  large: { icon: 52, main: '1.5rem', sub: '0.85rem', gap: 1.25 },
+  xlarge: { icon: 96, main: '2.75rem', sub: '1.35rem', gap: 2 }
 };
 
 function LogoIcon({ size, colors, sx = {} }) {
@@ -82,7 +86,7 @@ export default function Logo({ variant = 'dark', size = 'medium', showText = tru
         <Box
           component="img"
           src={logoSrc}
-          alt="maintx"
+          alt="MAINTX"
           sx={{ width: dim.icon, height: dim.icon, flexShrink: 0, objectFit: 'contain' }}
         />
       ) : (
@@ -99,7 +103,7 @@ export default function Logo({ variant = 'dark', size = 'medium', showText = tru
               color: colors.main
             }}
           >
-            maintx
+            MAINT<Box component="span" sx={{ color: colors.xGreen || colors.sub }}>X</Box>
           </Typography>
           <Typography
             component="span"
@@ -145,11 +149,10 @@ export function LogoCompact({ variant = 'light', size = 40, sx = {} }) {
           fontWeight: 700,
           letterSpacing: '-0.02em',
           color: colors.main,
-          textTransform: 'lowercase',
           fontFamily: '"Outfit", "Segoe UI", system-ui, sans-serif'
         }}
       >
-        maintx
+        MAINT<Box component="span" sx={{ color: colors.xGreen || colors.sub }}>X</Box>
       </Typography>
     </Box>
   );

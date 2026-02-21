@@ -1,8 +1,10 @@
-import React, { lazy } from 'react';
+import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import Layout from './components/Layout';
+import AppLoadingScreen from './components/AppLoadingScreen';
+import AppLoadingScreenWithMinDelay from './components/AppLoadingScreenWithMinDelay';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const DashboardKPIs = lazy(() => import('./pages/DashboardKPIs'));
@@ -53,14 +55,33 @@ const TeamPage = lazy(() => import('./pages/technicians/TeamPage'));
 const CompetenciesPage = lazy(() => import('./pages/technicians/CompetenciesPage'));
 const TypeCompetenciesPage = lazy(() => import('./pages/technicians/TypeCompetenciesPage'));
 
+const LOADING_MIN_MS = 3000;
+
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
-  if (loading) return null;
-  return isAuthenticated ? children : <Navigate to="/login" replace />;
+  const content = !isAuthenticated ? <Navigate to="/login" replace /> : <Suspense fallback={<AppLoadingScreen />}>{children}</Suspense>;
+  return (
+    <AppLoadingScreenWithMinDelay loading={loading} minDisplayMs={LOADING_MIN_MS}>
+      {content}
+    </AppLoadingScreenWithMinDelay>
+  );
+}
+
+/** Affiche l’écran de chargement au moins 3 s à l’ouverture du site (avant login ou dashboard). */
+function AppInitialLoader({ children }) {
+  const [initialDone, setInitialDone] = useState(false);
+  const { loading: authLoading } = useAuth();
+  useEffect(() => {
+    const t = setTimeout(() => setInitialDone(true), LOADING_MIN_MS);
+    return () => clearTimeout(t);
+  }, []);
+  if (!initialDone || authLoading) return <AppLoadingScreen />;
+  return children;
 }
 
 export default function App() {
   return (
+    <AppInitialLoader>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
@@ -115,5 +136,6 @@ export default function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </AppInitialLoader>
   );
 }
