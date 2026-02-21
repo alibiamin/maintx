@@ -7,6 +7,7 @@ import { AuthProvider } from './context/AuthContext';
 import { ThemeModeProvider } from './theme';
 import { ActionPanelProvider } from './context/ActionPanelContext';
 import { SnackbarProvider } from './context/SnackbarContext';
+import { CurrencyProvider } from './context/CurrencyContext';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
@@ -14,11 +15,13 @@ root.render(
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <ThemeModeProvider>
-          <SnackbarProvider>
-            <ActionPanelProvider>
-              <App />
-            </ActionPanelProvider>
-          </SnackbarProvider>
+          <CurrencyProvider>
+            <SnackbarProvider>
+              <ActionPanelProvider>
+                <App />
+              </ActionPanelProvider>
+            </SnackbarProvider>
+          </CurrencyProvider>
         </ThemeModeProvider>
       </AuthProvider>
     </BrowserRouter>

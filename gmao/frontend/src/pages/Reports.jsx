@@ -29,11 +29,13 @@ import { useTheme } from '@mui/material/styles';
 import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { CHART_COLORS } from '../shared/chartTheme';
+import { useCurrency } from '../context/CurrencyContext';
 
 const TAB_IDS = ['costs', 'availability', 'technician', 'parts'];
 const TAB_ID_TO_INDEX = Object.fromEntries(TAB_IDS.map((id, i) => [id, i]));
 
 export default function Reports() {
+  const currency = useCurrency();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab') || '';
   const tab = TAB_ID_TO_INDEX[tabParam] !== undefined ? TAB_ID_TO_INDEX[tabParam] : 0;
@@ -153,7 +155,7 @@ export default function Reports() {
       <Box display="flex" gap={2} flexWrap="wrap" sx={{ mb: 3 }}>
         <Card sx={{ flex: 1, minWidth: 160, borderRadius: 2 }}>
           <CardContent>
-            <Typography variant="body2" color="text.secondary" gutterBottom>Coût total (€)</Typography>
+            <Typography variant="body2" color="text.secondary" gutterBottom>Coût total ({currency})</Typography>
             <Typography variant="h5" fontWeight={700} color="primary.main">
               {costs.reduce((s, c) => s + parseFloat(c.parts_cost || 0), 0).toFixed(2)}
             </Typography>
@@ -205,9 +207,9 @@ export default function Reports() {
                         border: isDark ? '1px solid rgba(148,163,184,0.2)' : '1px solid rgba(0,0,0,0.1)',
                         backgroundColor: isDark ? '#1e293b' : '#fff'
                       }}
-                      formatter={(value) => [`${Number(value).toFixed(2)} €`, 'Coût pièces']}
+                      formatter={(value) => [`${Number(value).toFixed(2)} ${currency}`, 'Coût pièces']}
                     />
-                    <Bar dataKey="value" name="Coût pièces (€)" radius={[6, 6, 0, 0]} maxBarSize={60}>
+                    <Bar dataKey="value" name={`Coût pièces (${currency})`} radius={[6, 6, 0, 0]} maxBarSize={60}>
                       {costs.map((_, i) => (
                         <Cell key={i} fill={CHART_COLORS[0]} />
                       ))}
@@ -225,7 +227,7 @@ export default function Reports() {
                     <TableCell>Code</TableCell>
                     <TableCell>Équipement</TableCell>
                     <TableCell align="right">Interventions</TableCell>
-                    <TableCell align="right">Coût pièces (€)</TableCell>
+                    <TableCell align="right">Coût pièces ({currency})</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -402,7 +404,7 @@ export default function Reports() {
                     <TableCell>Code</TableCell>
                     <TableCell>Désignation</TableCell>
                     <TableCell align="right">Quantité utilisée</TableCell>
-                    <TableCell align="right">Coût total (€)</TableCell>
+                    <TableCell align="right">Coût total ({currency})</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>

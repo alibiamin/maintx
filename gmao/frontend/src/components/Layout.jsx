@@ -96,9 +96,10 @@ const PATH_LABELS = {
   contracts: 'Contrats',
   tools: 'Outils',
   checklists: 'Checklists',
-  technicians: 'Techniciens',
+  technicians: 'Effectif',
   'technicians/competencies': 'Compétences',
-  'technicians/type-competencies': 'Règles d\'affectation'
+  'technicians/type-competencies': 'Règles d\'affectation',
+  'technicians/team': 'Équipe'
 };
 
 // Structure du menu hiérarchique comme Sage X3
@@ -281,17 +282,18 @@ const menuStructure = [
     ]
   },
   {
-    id: 'technicians',
-    label: 'Techniciens',
+    id: 'effectif',
+    label: 'Effectif',
     icon: <PeopleIcon />,
     path: '/technicians',
     sections: [
       {
-        title: 'Techniciens',
+        title: 'Effectif',
         items: [
           { label: 'Liste des techniciens', path: '/technicians' },
           { label: 'Compétences', path: '/technicians/competencies' },
-          { label: 'Règles d\'affectation', path: '/technicians/type-competencies' }
+          { label: 'Règles d\'affectation', path: '/technicians/type-competencies' },
+          { label: 'Équipe', path: '/technicians/team' }
         ]
       }
     ]

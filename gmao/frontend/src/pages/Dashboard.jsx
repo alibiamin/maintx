@@ -56,6 +56,7 @@ import {
 } from 'recharts';
 import api from '../services/api';
 import { useTheme } from '@mui/material/styles';
+import { useCurrency } from '../context/CurrencyContext';
 import { CHART_COLORS } from '../shared/chartTheme';
 
 // Format date relative (il y a X min, hier, date)
@@ -90,6 +91,7 @@ export default function Dashboard() {
   const [period, setPeriod] = useState(30);
   const navigate = useNavigate();
   const muiTheme = useTheme();
+  const currency = useCurrency();
   const isDark = muiTheme.palette.mode === 'dark';
   const tickStyle = { fill: isDark ? '#94a3b8' : '#64748b', fontSize: 11 };
   const tooltipBg = isDark ? 'rgba(30, 41, 59, 0.98)' : 'rgba(255,255,255,0.98)';
@@ -315,7 +317,7 @@ export default function Dashboard() {
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
                   <Typography variant="body2" color="text.secondary" fontWeight={500}>Coût période</Typography>
-                  <Typography variant="h4" fontWeight={800} sx={{ color: CHART_COLORS[2] }}>{(kpis?.totalCostPeriod ?? 0).toLocaleString('fr-FR')} €</Typography>
+                  <Typography variant="h4" fontWeight={800} sx={{ color: CHART_COLORS[2] }}>{(kpis?.totalCostPeriod ?? 0).toLocaleString('fr-FR')} {currency}</Typography>
                   <Typography variant="caption" color="text.secondary">Pièces + main d'œuvre</Typography>
                 </Box>
                 <Box sx={{ width: 44, height: 44, borderRadius: 2, bgcolor: alpha(CHART_COLORS[2], 0.15), display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

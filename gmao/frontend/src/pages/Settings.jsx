@@ -23,6 +23,7 @@ import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSnackbar } from '../context/SnackbarContext';
+import { useCurrencyRefresh } from '../context/CurrencyContext';
 
 const CODIFICATION_ENTITIES = [
   { key: 'site', label: 'Site' },
@@ -38,7 +39,6 @@ const CODIFICATION_ENTITIES = [
 export default function Settings() {
   const [failureCodes, setFailureCodes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [hourlyRate, setHourlyRate] = useState('45');
   const [tab, setTab] = useState(0);
   const [codification, setCodification] = useState({});
   const [codificationSave, setCodificationSave] = useState('');
@@ -48,6 +48,8 @@ export default function Settings() {
   const [notifPhone, setNotifPhone] = useState('');
   const [notifPreferences, setNotifPreferences] = useState({});
   const [notifSaving, setNotifSaving] = useState(false);
+  const [currency, setCurrency] = useState('€');
+  const [currencySaving, setCurrencySaving] = useState(false);
   const { user } = useAuth();
   const canEditCodification = ['administrateur', 'responsable_maintenance'].includes(user?.role);
   const isAdmin = user?.role === 'administrateur';
@@ -59,10 +61,11 @@ export default function Settings() {
     if (searchParams.get('tab') === 'alertes') setTab(alertesTabIndex);
   }, [searchParams.get('tab'), alertesTabIndex]);
 
+  const refreshCurrency = useCurrencyRefresh();
   useEffect(() => {
     api.get('/failure-codes').then(r => setFailureCodes(r.data)).catch(() => setFailureCodes([])).finally(() => setLoading(false));
-    api.get('/settings/hourly-rate').then(r => setHourlyRate(r.data?.value || '45')).catch(() => {});
     api.get('/settings/codification').then(r => setCodification(r.data || {})).catch(() => setCodification({}));
+    api.get('/settings/currency').then(r => setCurrency(r.data?.value || '€')).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -76,10 +79,15 @@ export default function Settings() {
       .finally(() => setNotifLoading(false));
   }, []);
 
-  const handleSaveRate = () => {
-    api.post('/settings/hourly-rate', { value: hourlyRate })
-      .then(() => snackbar.showSuccess('Taux horaire enregistré'))
-      .catch(() => snackbar.showError('Erreur enregistrement'));
+  const handleSaveCurrency = () => {
+    setCurrencySaving(true);
+    api.post('/settings/currency', { value: currency })
+      .then(() => {
+        refreshCurrency();
+        snackbar.showSuccess('Devise enregistrée');
+      })
+      .catch(() => snackbar.showError('Erreur enregistrement'))
+      .finally(() => setCurrencySaving(false));
   };
 
   const handleCodificationChange = (entity, field, value) => {
@@ -150,14 +158,40 @@ export default function Settings() {
         }}
         sx={{ mb: 2 }}
       >
+        <Tab label="Général" />
         <Tab label="Codes défaut" />
-        <Tab label="Coûts" />
         <Tab label="Codification" />
         {isAdmin && <Tab label="Sauvegarde" />}
         <Tab label="Alertes email / SMS" />
       </Tabs>
 
       {tab === 0 && (
+        <Card sx={{ borderRadius: 2 }}>
+          <CardContent>
+            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+              Devise de l'application
+            </Typography>
+            <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+              <TextField
+                label="Symbole ou code devise"
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                size="small"
+                placeholder="€"
+                sx={{ width: 160 }}
+              />
+              <Button variant="contained" startIcon={<Save />} onClick={handleSaveCurrency} disabled={currencySaving}>
+                {currencySaving ? 'Enregistrement…' : 'Enregistrer'}
+              </Button>
+            </Box>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+              Ex. € (euro), $ (dollar), £ (livre). Utilisé pour tous les montants (coûts, taux horaires, rapports).
+            </Typography>
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === 1 && (
         <Card sx={{ borderRadius: 2 }}>
           <CardContent>
             <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
@@ -187,32 +221,6 @@ export default function Settings() {
             {failureCodes.length === 0 && (
               <Typography color="text.secondary">Exécutez la migration 002 pour charger les codes par défaut.</Typography>
             )}
-          </CardContent>
-        </Card>
-      )}
-
-      {tab === 1 && (
-        <Card sx={{ borderRadius: 2 }}>
-          <CardContent>
-            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
-              Taux horaire (coûts main d'œuvre)
-            </Typography>
-            <Box display="flex" alignItems="center" gap={2}>
-              <TextField
-                type="number"
-                label="Taux horaire (€/h)"
-                value={hourlyRate}
-                onChange={(e) => setHourlyRate(e.target.value)}
-                size="small"
-                sx={{ width: 120 }}
-              />
-              <Button variant="contained" startIcon={<Save />} onClick={handleSaveRate}>
-                Enregistrer
-              </Button>
-            </Box>
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-              Utilisé pour le calcul des coûts de maintenance (interventions × heures)
-            </Typography>
           </CardContent>
         </Card>
       )}

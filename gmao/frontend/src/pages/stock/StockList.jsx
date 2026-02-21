@@ -16,8 +16,10 @@ import {
 import { Search, Warning } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { useCurrency } from '../../context/CurrencyContext';
 
 export default function StockList() {
+  const currency = useCurrency();
   const [parts, setParts] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -96,7 +98,7 @@ export default function StockList() {
                   <TableCell>{p.supplier_name || '-'}</TableCell>
                   <TableCell align="right">{p.stock_quantity ?? 0}</TableCell>
                   <TableCell align="right">{p.min_stock}</TableCell>
-                  <TableCell align="right">{p.unit_price ? p.unit_price.toFixed(2) + ' EUR' : '-'}</TableCell>
+                  <TableCell align="right">{p.unit_price ? `${p.unit_price.toFixed(2)} ${currency}` : '-'}</TableCell>
                   <TableCell>
                     {(p.stock_quantity ?? 0) <= p.min_stock ? (
                       <Chip label="Stock bas" size="small" color="warning" />

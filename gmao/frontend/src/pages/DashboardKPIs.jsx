@@ -14,8 +14,10 @@ import {
 } from '@mui/material';
 import { TrendingUp, Build, Euro, Schedule, Speed, Warning, ArrowBack, BarChart } from '@mui/icons-material';
 import api from '../services/api';
+import { useCurrency } from '../context/CurrencyContext';
 
 export default function DashboardKPIs() {
+  const currency = useCurrency();
   const [kpis, setKpis] = useState(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState(30);
@@ -52,7 +54,7 @@ export default function DashboardKPIs() {
   const kpiCards = [
     { title: 'Disponibilité équipements', value: `${Number(availabilityRate).toFixed(1)}%`, sub: `${kpis?.operationalCount ?? 0}/${kpis?.totalEquipment ?? 0} opérationnels`, icon: Speed, color: 'primary', progress: availabilityRate },
     { title: 'Respect plans préventifs', value: `${Number(preventiveRate).toFixed(1)}%`, sub: 'Plans exécutés à temps', icon: Schedule, color: 'success', progress: preventiveRate },
-    { title: 'Coût maintenance (période)', value: `${Number(totalCost).toLocaleString('fr-FR')} €`, sub: `Pièces : ${(kpis?.partsCost ?? 0).toLocaleString('fr-FR')} € · Main d'œuvre : ${(kpis?.laborCost ?? 0).toLocaleString('fr-FR')} €`, icon: Euro, color: 'warning' },
+    { title: 'Coût maintenance (période)', value: `${Number(totalCost).toLocaleString('fr-FR')} ${currency}`, sub: `Pièces : ${(kpis?.partsCost ?? 0).toLocaleString('fr-FR')} ${currency} · Main d'œuvre : ${(kpis?.laborCost ?? 0).toLocaleString('fr-FR')} ${currency}`, icon: Euro, color: 'warning' },
     { title: 'MTTR (temps moyen réparation)', value: mttr != null ? `${Number(mttr).toFixed(1)} h` : '—', sub: 'Heures moyennes par OT terminé', icon: Build, color: 'info' },
     { title: 'MTBF (entre pannes)', value: kpis?.mtbf != null ? `${Number(kpis.mtbf).toFixed(1)} j` : '—', sub: 'Jours moyens entre pannes', icon: TrendingUp, color: 'success' },
     { title: 'OT en retard (SLA)', value: String(kpis?.slaBreached ?? 0), sub: 'À traiter en priorité', icon: Warning, color: (kpis?.slaBreached ?? 0) > 0 ? 'error' : 'default' }

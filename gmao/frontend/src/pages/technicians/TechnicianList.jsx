@@ -19,18 +19,20 @@ import { PersonAdd, Star } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useSnackbar } from '../../context/SnackbarContext';
+import { useCurrency } from '../../context/CurrencyContext';
 
 const roleLabels = { technicien: 'Technicien', responsable_maintenance: 'Responsable maintenance' };
 
-export default function TechnicianList() {
+function TechnicianList() {
   const navigate = useNavigate();
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '' });
+  const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', hourlyRate: '' });
   const [saving, setSaving] = useState(false);
   const { user } = useAuth();
   const snackbar = useSnackbar();
+  const currency = useCurrency();
   const canAdd = ['administrateur', 'responsable_maintenance'].includes(user?.role);
 
   const load = () => {
@@ -40,7 +42,7 @@ export default function TechnicianList() {
   useEffect(() => { load(); }, []);
 
   const handleOpenDialog = () => {
-    setForm({ email: '', password: '', firstName: '', lastName: '' });
+    setForm({ email: '', password: '', firstName: '', lastName: '', hourlyRate: '' });
     setDialogOpen(true);
   };
 
@@ -57,7 +59,8 @@ export default function TechnicianList() {
       email: form.email.trim(),
       password: form.password,
       firstName: form.firstName.trim(),
-      lastName: form.lastName.trim()
+      lastName: form.lastName.trim(),
+      hourlyRate: form.hourlyRate.trim() ? parseFloat(form.hourlyRate.replace(',', '.')) : undefined
     })
       .then((r) => {
         setDialogOpen(false);
@@ -92,6 +95,7 @@ export default function TechnicianList() {
           <TextField fullWidth label="Mot de passe" type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} margin="normal" helperText="Minimum 8 caractères" autoComplete="new-password" />
           <TextField fullWidth label="Prénom" required value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} margin="normal" />
           <TextField fullWidth label="Nom" required value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} margin="normal" />
+          <TextField fullWidth label={`Taux horaire (${currency}/h)`} type="number" placeholder="Optionnel (sinon taux par défaut)" value={form.hourlyRate} onChange={(e) => setForm({ ...form, hourlyRate: e.target.value })} margin="normal" inputProps={{ min: 0, step: 0.01 }} />
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Annuler</Button>
@@ -127,6 +131,9 @@ export default function TechnicianList() {
                       {t.avg_score != null ? `${t.avg_score}/5` : '—'} ({t.evaluation_count} éval.)
                     </Typography>
                   </Box>
+                  <Typography variant="body2" color="text.secondary">
+                    Taux : {t.hourly_rate != null ? `${Number(t.hourly_rate).toFixed(2)} ${currency}/h` : 'défaut'}
+                  </Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                     {t.competencies?.slice(0, 4).map((c) => (
                       <Chip key={c.competence_id} label={`${c.name} ${c.level}`} size="small" variant="outlined" sx={{ fontSize: '0.75rem' }} />
@@ -142,3 +149,5 @@ export default function TechnicianList() {
     </Box>
   );
 }
+
+export default TechnicianList;

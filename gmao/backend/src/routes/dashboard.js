@@ -44,23 +44,32 @@ router.get('/kpis', (req, res) => {
   // OEE simplifié (disponibilité seule, perf=qualité=100%)
   const oee = parseFloat(availabilityRate);
 
-  // Coût maintenance période (pièces + main d'œuvre estimée)
-  let rate = 45;
+  // Coût maintenance période (pièces + main d'œuvre par technicien)
+  let defaultRate = 45;
   try {
     const r = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('hourly_rate');
-    if (r?.value) rate = parseFloat(r.value);
+    if (r?.value) defaultRate = parseFloat(r.value);
   } catch (_) {}
-  const costRow = db.prepare(`
-    SELECT 
-      COALESCE(SUM(i.quantity_used * sp.unit_price), 0) as parts,
-      COALESCE(SUM(i.hours_spent), 0) as hours
+  const partsRow = db.prepare(`
+    SELECT COALESCE(SUM(i.quantity_used * sp.unit_price), 0) as parts
     FROM work_orders wo
     LEFT JOIN interventions i ON i.work_order_id = wo.id
     LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id
     WHERE wo.status = 'completed' AND wo.actual_end >= ${since}
   `).get();
-  const partsCost = costRow?.parts || 0;
-  const laborCost = (costRow?.hours || 0) * rate;
+  const partsCost = partsRow?.parts || 0;
+  const interventionRows = db.prepare(`
+    SELECT i.hours_spent, u.hourly_rate
+    FROM work_orders wo
+    JOIN interventions i ON i.work_order_id = wo.id
+    LEFT JOIN users u ON i.technician_id = u.id
+    WHERE wo.status = 'completed' AND wo.actual_end >= ${since}
+  `).all();
+  const laborCost = interventionRows.reduce((sum, row) => {
+    const hours = parseFloat(row.hours_spent) || 0;
+    const rate = row.hourly_rate != null ? parseFloat(row.hourly_rate) : defaultRate;
+    return sum + hours * rate;
+  }, 0);
   const totalCost = partsCost + laborCost;
 
   // Taux respect plans préventifs (exécutés à temps)

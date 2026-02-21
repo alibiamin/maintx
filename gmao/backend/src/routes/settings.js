@@ -34,6 +34,31 @@ router.post('/hourly-rate', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res
   }
 });
 
+// ——— Devise de l'application
+function getCurrencyRow() {
+  try {
+    return db.prepare('SELECT value FROM app_settings WHERE key = ?').get('currency');
+  } catch (e) {
+    return null;
+  }
+}
+router.get('/currency', (req, res) => {
+  const r = getCurrencyRow();
+  res.json({ value: r?.value || '€' });
+});
+router.post('/currency', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const { value } = req.body;
+  const v = value != null ? String(value).trim() || '€' : '€';
+  try {
+    db.prepare('INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)')
+      .run('currency', v);
+  } catch (e) {
+    try { db.exec('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)'); } catch (_) {}
+    db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run('currency', v);
+  }
+  res.json({ value: v });
+});
+
 // ——— Codification (préfixe + longueur pour codes auto) ———
 router.get('/codification', (req, res) => {
   try {

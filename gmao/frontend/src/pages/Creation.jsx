@@ -19,6 +19,7 @@ import {
 } from '@mui/material';
 import { Save } from '@mui/icons-material';
 import api from '../services/api';
+import { useCurrency } from '../context/CurrencyContext';
 
 const CATEGORIES = [
   { id: 'hierarchie', label: 'Hiérarchie' },
@@ -94,6 +95,7 @@ const getDefaultForm = (type) => {
 
 export default function Creation() {
   const navigate = useNavigate();
+  const currency = useCurrency();
   const [categoryId, setCategoryId] = useState('hierarchie');
   const [creationType, setCreationType] = useState('site');
   const [form, setForm] = useState(getDefaultForm('site'));
@@ -517,7 +519,7 @@ export default function Creation() {
                 <Grid item xs={12}><FormControl fullWidth required><InputLabel>Fournisseur</InputLabel><Select value={form.supplier_id ?? ''} label="Fournisseur" onChange={(e) => handleChange('supplier_id', e.target.value)}>{suppliers.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
                 <Grid item xs={12}><FormControl fullWidth><InputLabel>Équipement</InputLabel><Select value={form.equipment_id ?? ''} label="Équipement" onChange={(e) => handleChange('equipment_id', e.target.value)}><MenuItem value="">—</MenuItem>{equipment.map(eq => <MenuItem key={eq.id} value={eq.id}>{eq.code} — {eq.name}</MenuItem>)}</Select></FormControl></Grid>
                 <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Type</InputLabel><Select value={form.contract_type ?? 'preventive'} label="Type" onChange={(e) => handleChange('contract_type', e.target.value)}><MenuItem value="preventive">Préventif</MenuItem><MenuItem value="corrective">Correctif</MenuItem><MenuItem value="full">Complet</MenuItem><MenuItem value="spare_parts">Pièces</MenuItem></Select></FormControl></Grid>
-                <Grid item xs={12} sm={6}><TextField fullWidth type="number" label="Coût annuel (€)" value={form.annual_cost ?? ''} onChange={(e) => handleChange('annual_cost', e.target.value)} inputProps={{ min: 0 }} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth type="number" label={`Coût annuel (${currency})`} value={form.annual_cost ?? ''} onChange={(e) => handleChange('annual_cost', e.target.value)} inputProps={{ min: 0 }} /></Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth required type="date" label="Début" value={form.start_date ?? ''} onChange={(e) => handleChange('start_date', e.target.value)} InputLabelProps={{ shrink: true }} /></Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth required type="date" label="Fin" value={form.end_date ?? ''} onChange={(e) => handleChange('end_date', e.target.value)} InputLabelProps={{ shrink: true }} /></Grid>
               </Grid>

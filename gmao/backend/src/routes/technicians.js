@@ -19,20 +19,21 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 ], (req, res) => {
   const err = validationResult(req);
   if (!err.isEmpty()) return res.status(400).json({ errors: err.array() });
-  const { email, password, firstName, lastName } = req.body;
+  const { email, password, firstName, lastName, hourlyRate } = req.body;
   const roleRow = db.prepare("SELECT id FROM roles WHERE name = 'technicien'").get();
   if (!roleRow) return res.status(500).json({ error: 'Rôle technicien introuvable' });
   const hash = bcrypt.hashSync(password, 10);
+  const rate = hourlyRate != null && hourlyRate !== '' ? parseFloat(String(hourlyRate).replace(',', '.')) : null;
   try {
     const result = db.prepare(`
-      INSERT INTO users (email, password_hash, first_name, last_name, role_id)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(email, hash, firstName.trim(), lastName.trim(), roleRow.id);
+      INSERT INTO users (email, password_hash, first_name, last_name, role_id, hourly_rate)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(email, hash, firstName.trim(), lastName.trim(), roleRow.id, rate);
     const row = db.prepare(`
-      SELECT u.id, u.email, u.first_name, u.last_name, u.role_id, r.name as role_name
+      SELECT u.id, u.email, u.first_name, u.last_name, u.role_id, u.hourly_rate, r.name as role_name
       FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?
     `).get(result.lastInsertRowid);
-    res.status(201).json(row);
+    res.status(201).json({ ...row, hourly_rate: row.hourly_rate });
   } catch (e) {
     if (e.message && e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email déjà utilisé' });
     throw e;
@@ -153,10 +154,10 @@ router.put('/type-competencies/save', authorize(ROLES.ADMIN, ROLES.RESPONSABLE),
   res.json(rows);
 });
 
-// Liste des techniciens (et responsables) avec compétences et note moyenne
+// Liste des techniciens (et responsables) avec compétences, note moyenne et taux horaire
 router.get('/', (req, res) => {
   const users = db.prepare(`
-    SELECT u.id, u.first_name, u.last_name, u.email, r.name as role_name
+    SELECT u.id, u.first_name, u.last_name, u.email, u.hourly_rate, u.manager_id, r.name as role_name
     FROM users u
     JOIN roles r ON u.role_id = r.id
     WHERE u.is_active = 1 AND r.name IN ('technicien', 'responsable_maintenance')
@@ -190,6 +191,8 @@ router.get('/', (req, res) => {
     first_name: u.first_name,
     last_name: u.last_name,
     email: u.email,
+    hourly_rate: u.hourly_rate != null ? parseFloat(u.hourly_rate) : null,
+    manager_id: u.manager_id || null,
     role_name: u.role_name,
     competencies: byUser[u.id] || [],
     avg_score: scoreByUser[u.id]?.avg_score ?? null,
@@ -198,16 +201,48 @@ router.get('/', (req, res) => {
   res.json(list);
 });
 
+// Hiérarchie équipe (tree) — avant /:id
+router.get('/team-hierarchy', (req, res) => {
+  const rows = db.prepare(`
+    SELECT u.id, u.first_name, u.last_name, u.manager_id, r.name as role_name
+    FROM users u
+    JOIN roles r ON u.role_id = r.id
+    WHERE u.is_active = 1 AND r.name IN ('technicien', 'responsable_maintenance')
+    ORDER BY u.last_name, u.first_name
+  `).all();
+  const byId = {};
+  rows.forEach(r => {
+    byId[r.id] = {
+      id: r.id,
+      label: `${r.first_name} ${r.last_name}`,
+      role_name: r.role_name,
+      manager_id: r.manager_id || null,
+      children: []
+    };
+  });
+  const roots = [];
+  rows.forEach(r => {
+    const node = byId[r.id];
+    if (!r.manager_id || !byId[r.manager_id]) {
+      roots.push(node);
+    } else {
+      byId[r.manager_id].children.push(node);
+    }
+  });
+  res.json(roots);
+});
+
 // Détail d'un technicien + compétences + évaluations
 router.get('/:id', param('id').isInt(), (req, res) => {
   const id = parseInt(req.params.id);
   const user = db.prepare(`
-    SELECT u.id, u.first_name, u.last_name, u.email, u.is_active, r.name as role_name
+    SELECT u.id, u.first_name, u.last_name, u.email, u.is_active, u.hourly_rate, u.manager_id, r.name as role_name
     FROM users u
     JOIN roles r ON u.role_id = r.id
     WHERE u.id = ? AND r.name IN ('technicien', 'responsable_maintenance')
   `).get(id);
   if (!user) return res.status(404).json({ error: 'Technicien introuvable' });
+  if (user.hourly_rate != null) user.hourly_rate = parseFloat(user.hourly_rate);
   const comps = db.prepare(`
     SELECT tc.competence_id, tc.level, c.code, c.name
     FROM technician_competencies tc
@@ -234,6 +269,57 @@ router.get('/:id', param('id').isInt(), (req, res) => {
     avg_score: scoreRow?.avg_score ? Math.round(scoreRow.avg_score * 10) / 10 : null,
     evaluation_count: scoreRow?.evaluation_count ?? 0
   });
+});
+
+// Mise à jour du profil technicien (taux horaire, nom, prénom)
+router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+  param('id').isInt(),
+  body('hourlyRate').optional()
+], (req, res) => {
+  const id = parseInt(req.params.id);
+  const existing = db.prepare(`
+    SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id
+    WHERE u.id = ? AND r.name IN ('technicien', 'responsable_maintenance')
+  `).get(id);
+  if (!existing) return res.status(404).json({ error: 'Technicien introuvable' });
+  const { hourlyRate, firstName, lastName, managerId } = req.body;
+  const updates = [];
+  const values = [];
+  if (hourlyRate !== undefined) {
+    const v = hourlyRate === null || hourlyRate === '' ? null : parseFloat(String(hourlyRate).replace(',', '.'));
+    updates.push('hourly_rate = ?');
+    values.push(v);
+  }
+  if (managerId !== undefined) {
+    const mid = managerId === null || managerId === '' ? null : parseInt(managerId, 10);
+    if (mid === id) return res.status(400).json({ error: 'Un technicien ne peut pas être son propre responsable' });
+    updates.push('manager_id = ?');
+    values.push(mid);
+  }
+  if (firstName !== undefined && firstName !== '') {
+    updates.push('first_name = ?');
+    values.push(String(firstName).trim());
+  }
+  if (lastName !== undefined && lastName !== '') {
+    updates.push('last_name = ?');
+    values.push(String(lastName).trim());
+  }
+  if (updates.length === 0) {
+    const user = db.prepare(`
+      SELECT u.id, u.first_name, u.last_name, u.email, u.hourly_rate, u.manager_id, r.name as role_name
+      FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?
+    `).get(id);
+    if (user?.hourly_rate != null) user.hourly_rate = parseFloat(user.hourly_rate);
+    return res.json(user);
+  }
+  values.push(id);
+  db.prepare(`UPDATE users SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(...values);
+  const user = db.prepare(`
+    SELECT u.id, u.first_name, u.last_name, u.email, u.hourly_rate, u.manager_id, r.name as role_name
+    FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?
+  `).get(id);
+  if (user?.hourly_rate != null) user.hourly_rate = parseFloat(user.hourly_rate);
+  res.json(user);
 });
 
 // Mise à jour des compétences d'un technicien

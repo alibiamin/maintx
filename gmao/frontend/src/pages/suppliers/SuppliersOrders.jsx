@@ -17,8 +17,10 @@ import {
 } from '@mui/material';
 import { Search, ShoppingCart } from '@mui/icons-material';
 import api from '../../services/api';
+import { useCurrency } from '../../context/CurrencyContext';
 
 export default function SuppliersOrders() {
+  const currency = useCurrency();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -100,7 +102,7 @@ export default function SuppliersOrders() {
                     <TableCell>{order.orderNumber}</TableCell>
                     <TableCell>{order.supplierName}</TableCell>
                     <TableCell>{new Date(order.order_date).toLocaleDateString('fr-FR')}</TableCell>
-                    <TableCell>{order.total_amount?.toFixed(2) || '0.00'} €</TableCell>
+                    <TableCell>{order.total_amount?.toFixed(2) || '0.00'} {currency}</TableCell>
                     <TableCell>
                       <Chip
                         icon={order.status === 'received' ? <ShoppingCart /> : undefined}

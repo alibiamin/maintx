@@ -30,6 +30,7 @@ import { ArrowBack, Star, Edit, Add } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useSnackbar } from '../../context/SnackbarContext';
+import { useCurrency } from '../../context/CurrencyContext';
 
 const roleLabels = { technicien: 'Technicien', responsable_maintenance: 'Responsable maintenance' };
 
@@ -46,18 +47,28 @@ export default function TechnicianDetail() {
   const [evalComment, setEvalComment] = useState('');
   const [evalWoId, setEvalWoId] = useState('');
   const [saving, setSaving] = useState(false);
+  const [hourlyRateEdit, setHourlyRateEdit] = useState('');
+  const [savingRate, setSavingRate] = useState(false);
+  const [techniciansList, setTechniciansList] = useState([]);
+  const [managerId, setManagerId] = useState('');
+  const [savingManager, setSavingManager] = useState(false);
   const { user } = useAuth();
   const snackbar = useSnackbar();
+  const currency = useCurrency();
   const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
 
   useEffect(() => {
     Promise.all([
       api.get(`/technicians/${id}`),
-      api.get('/competencies').catch(() => [])
-    ]).then(([r, comps]) => {
+      api.get('/competencies').catch(() => []),
+      api.get('/technicians').catch(() => [])
+    ]).then(([r, comps, listRes]) => {
       setTech(r.data);
       setCompetencies(comps.data || comps);
       setSelectedComps((r.data.competencies || []).map(c => ({ competence_id: c.competence_id, level: c.level })));
+      setHourlyRateEdit(r.data.hourly_rate != null ? String(r.data.hourly_rate) : '');
+      setManagerId(r.data.manager_id != null ? String(r.data.manager_id) : '');
+      setTechniciansList(listRes.data || []);
     }).catch(() => navigate('/technicians')).finally(() => setLoading(false));
   }, [id, navigate]);
 
@@ -104,7 +115,35 @@ export default function TechnicianDetail() {
   };
 
   const loadTech = () => {
-    api.get(`/technicians/${id}`).then(r => setTech(r.data)).catch(() => {});
+    api.get(`/technicians/${id}`).then(r => {
+      setTech(r.data);
+      setHourlyRateEdit(r.data.hourly_rate != null ? String(r.data.hourly_rate) : '');
+      setManagerId(r.data.manager_id != null ? String(r.data.manager_id) : '');
+    }).catch(() => {});
+  };
+
+  const handleSaveManager = () => {
+    setSavingManager(true);
+    api.put(`/technicians/${id}`, { managerId: managerId === '' ? null : parseInt(managerId, 10) })
+      .then(() => {
+        setTech(prev => ({ ...prev, manager_id: managerId ? parseInt(managerId, 10) : null }));
+        snackbar.showSuccess('Responsable enregistré');
+      })
+      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'))
+      .finally(() => setSavingManager(false));
+  };
+
+  const handleSaveHourlyRate = () => {
+    const v = hourlyRateEdit.trim() === '' ? null : parseFloat(hourlyRateEdit.replace(',', '.'));
+    if (hourlyRateEdit.trim() !== '' && (isNaN(v) || v < 0)) return;
+    setSavingRate(true);
+    api.put(`/technicians/${id}`, { hourlyRate: v })
+      .then((r) => {
+        setTech(prev => ({ ...prev, hourly_rate: r.data.hourly_rate }));
+        snackbar.showSuccess('Taux horaire enregistré');
+      })
+      .catch(() => snackbar.showError('Erreur'))
+      .finally(() => setSavingRate(false));
   };
 
   if (loading || !tech) return <Box p={4}><CircularProgress /></Box>;
@@ -123,6 +162,61 @@ export default function TechnicianDetail() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 2 }}>
                 <Star sx={{ color: 'warning.main' }} />
                 <Typography fontWeight={600}>{tech.avg_score != null ? `${tech.avg_score}/5` : 'Aucune note'} ({tech.evaluation_count} évaluation(s))</Typography>
+              </Box>
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" color="text.secondary">Taux horaire (coûts main d'œuvre)</Typography>
+                {canEdit ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                    <TextField
+                      size="small"
+                      type="number"
+                      placeholder="Défaut"
+                      value={hourlyRateEdit}
+                      onChange={(e) => setHourlyRateEdit(e.target.value)}
+                      inputProps={{ min: 0, step: 0.01 }}
+                      sx={{ width: 100 }}
+                    />
+                    <Typography variant="body2">{currency}/h</Typography>
+                    <Button size="small" variant="outlined" disabled={savingRate} onClick={handleSaveHourlyRate}>
+                      {savingRate ? '...' : 'Enregistrer'}
+                    </Button>
+                  </Box>
+                ) : (
+                  <Typography fontWeight={500}>{tech.hourly_rate != null ? `${Number(tech.hourly_rate).toFixed(2)} ${currency}/h` : 'Non renseigné'}</Typography>
+                )}
+              </Box>
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" color="text.secondary">Responsable hiérarchique (équipe)</Typography>
+                {canEdit ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
+                    <FormControl size="small" sx={{ minWidth: 200 }}>
+                      <Select
+                        value={managerId}
+                        displayEmpty
+                        onChange={(e) => setManagerId(e.target.value)}
+                        renderValue={(v) => {
+                          if (!v) return 'Aucun';
+                          const t = techniciansList.find(x => x.id === parseInt(v, 10));
+                          return t ? `${t.first_name} ${t.last_name}` : 'Aucun';
+                        }}
+                      >
+                        <MenuItem value="">Aucun</MenuItem>
+                        {techniciansList.filter(t => t.id !== parseInt(id, 10)).map((t) => (
+                          <MenuItem key={t.id} value={String(t.id)}>{t.first_name} {t.last_name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Button size="small" variant="outlined" disabled={savingManager} onClick={handleSaveManager}>
+                      {savingManager ? '...' : 'Enregistrer'}
+                    </Button>
+                  </Box>
+                ) : (
+                  <Typography fontWeight={500}>
+                    {tech.manager_id != null
+                      ? (techniciansList.find(t => t.id === tech.manager_id)?.first_name + ' ' + techniciansList.find(t => t.id === tech.manager_id)?.last_name) || '—'
+                      : 'Aucun'}
+                  </Typography>
+                )}
               </Box>
             </CardContent>
           </Card>

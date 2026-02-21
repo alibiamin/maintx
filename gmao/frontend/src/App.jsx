@@ -48,6 +48,7 @@ import Checklists from './pages/Checklists';
 import Creation from './pages/Creation';
 import TechnicianList from './pages/technicians/TechnicianList';
 import TechnicianDetail from './pages/technicians/TechnicianDetail';
+import TeamPage from './pages/technicians/TeamPage';
 import CompetenciesPage from './pages/technicians/CompetenciesPage';
 import TypeCompetenciesPage from './pages/technicians/TypeCompetenciesPage';
 
@@ -106,6 +107,7 @@ export default function App() {
         <Route path="settings/roles" element={<SettingsRoles />} />
         <Route path="users" element={<Users />} />
         <Route path="technicians" element={<TechnicianList />} />
+        <Route path="technicians/team" element={<TeamPage />} />
         <Route path="technicians/competencies" element={<CompetenciesPage />} />
         <Route path="technicians/type-competencies" element={<TypeCompetenciesPage />} />
         <Route path="technicians/:id" element={<TechnicianDetail />} />

@@ -26,6 +26,7 @@ import {
 } from '@mui/material';
 import { Edit, Delete, Warning } from '@mui/icons-material';
 import api from '../services/api';
+import { useCurrency } from '../context/CurrencyContext';
 
 const emptyForm = {
   contract_number: '',
@@ -42,6 +43,7 @@ const emptyForm = {
 };
 
 export default function Contracts() {
+  const currency = useCurrency();
   const [contracts, setContracts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [equipment, setEquipment] = useState([]);
@@ -198,7 +200,7 @@ export default function Contracts() {
                         )}
                       </Box>
                     </TableCell>
-                    <TableCell>{contract.annual_cost != null ? Number(contract.annual_cost).toLocaleString('fr-FR') : '-'} €</TableCell>
+                    <TableCell>{contract.annual_cost != null ? Number(contract.annual_cost).toLocaleString('fr-FR') : '-'} {currency}</TableCell>
                     <TableCell>
                       <Chip
                         label={contract.is_active ? 'Actif' : 'Inactif'}
