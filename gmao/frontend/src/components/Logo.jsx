@@ -118,39 +118,33 @@ export default function Logo({ variant = 'dark', size = 'medium', showText = tru
   );
 }
 
-/** Logo compact header : nom seul avec animation */
-const headerLogoKeyframes = `
-  @keyframes maintxShine {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.88; }
-  }
-  @keyframes maintxBreath {
-    0%, 100% { letter-spacing: -0.03em; transform: scale(1); }
-    50% { letter-spacing: 0.01em; transform: scale(1.02); }
-  }
-`;
-
-/** Logo compact (nom seul, animé) pour le header */
+/** Logo compact pour le header : image + nom, sans animation */
 export function LogoCompact({ variant = 'light', size = 40, sx = {} }) {
   const colors = LOGO_COLORS[variant] || LOGO_COLORS.light;
+  const iconSize = Math.round(size * 0.85);
   const fontSize = Math.max(size * 0.5, 18);
   return (
     <Box
       sx={{
         display: 'inline-flex',
         alignItems: 'center',
+        gap: 1.25,
         ...sx
       }}
     >
-      <style>{headerLogoKeyframes}</style>
+      <Box
+        component="img"
+        src={LOGO_IMAGE_SRC}
+        alt=""
+        sx={{ width: iconSize, height: iconSize, flexShrink: 0, objectFit: 'contain' }}
+      />
       <Typography
         component="span"
         sx={{
           fontSize,
-          fontWeight: 800,
+          fontWeight: 700,
           letterSpacing: '-0.02em',
           color: colors.main,
-          animation: 'maintxShine 2.5s ease-in-out infinite, maintxBreath 5s ease-in-out infinite',
           textTransform: 'lowercase',
           fontFamily: '"Outfit", "Segoe UI", system-ui, sans-serif'
         }}

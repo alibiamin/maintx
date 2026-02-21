@@ -92,14 +92,47 @@ router.post('/login', [
 /**
  * GET /api/auth/me
  * Profil utilisateur courant (nécessite authentification)
+ * Inclut pinnedMenuItems (entrées de menu épinglées pour l'accès rapide).
  */
 router.get('/me', authenticate, (req, res) => {
+  const row = db.prepare(`
+    SELECT id, email, first_name, last_name, pinned_menu_items
+    FROM users WHERE id = ?
+  `).get(req.user.id);
+  if (!row) return res.status(404).json({ error: 'Utilisateur non trouvé' });
+  let pinnedMenuItems = [];
+  try {
+    if (row.pinned_menu_items) {
+      const parsed = JSON.parse(row.pinned_menu_items);
+      pinnedMenuItems = Array.isArray(parsed) ? parsed : [];
+    }
+  } catch (_) {}
+  res.json({
+    id: row.id,
+    email: row.email,
+    firstName: row.first_name,
+    lastName: row.last_name,
+    role: req.user.role_name,
+    pinnedMenuItems
+  });
+});
+
+/**
+ * PUT /api/auth/me
+ * Mise à jour du profil (ex. épingles menu)
+ * Body: { pinnedMenuItems: [{ path, label }, ...] }
+ */
+router.put('/me', authenticate, (req, res) => {
+  const { pinnedMenuItems } = req.body || {};
+  const payload = Array.isArray(pinnedMenuItems)
+    ? pinnedMenuItems
+    : [];
+  const json = JSON.stringify(payload);
+  db.prepare('UPDATE users SET pinned_menu_items = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+    .run(json, req.user.id);
   res.json({
     id: req.user.id,
-    email: req.user.email,
-    firstName: req.user.first_name,
-    lastName: req.user.last_name,
-    role: req.user.role_name
+    pinnedMenuItems: payload
   });
 });
 

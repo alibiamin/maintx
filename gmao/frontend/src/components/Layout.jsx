@@ -47,6 +47,7 @@ import {
   Search,
   Help,
   Star,
+  StarBorder,
   ExpandMore,
   ExpandLess,
   Close,
@@ -327,6 +328,32 @@ export default function Layout() {
   const [unreadCount, setUnreadCount] = useState(0);
   const { user, logout } = useAuth();
 
+  // Épingles (accès rapide) — par utilisateur, stockées en base (profil)
+  const [pinnedItems, setPinnedItems] = useState([]);
+  useEffect(() => {
+    if (!user?.id) {
+      setPinnedItems([]);
+      return;
+    }
+    api.get('/auth/me')
+      .then((r) => {
+        const list = r.data?.pinnedMenuItems;
+        setPinnedItems(Array.isArray(list) ? list : []);
+      })
+      .catch(() => setPinnedItems([]));
+  }, [user?.id]);
+  const isPinned = (path) => pinnedItems.some((p) => p.path === path);
+  const togglePin = (item) => {
+    const path = item.path;
+    const next = pinnedItems.some((p) => p.path === path)
+      ? pinnedItems.filter((p) => p.path !== path)
+      : [...pinnedItems, { path, label: item.label }];
+    setPinnedItems(next);
+    api.put('/auth/me', { pinnedMenuItems: next }).catch(() => {
+      setPinnedItems(pinnedItems);
+    });
+  };
+
   const fetchUnreadCount = () => {
     api.get('/alerts/unread-count').then((r) => setUnreadCount(r.data?.count ?? 0)).catch(() => {});
   };
@@ -522,17 +549,19 @@ export default function Layout() {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      {/* Header global sombre comme Sage X3 */}
+      {/* Header épuré : fond clair, bordure basse, logo simple */}
       <AppBar
         position="static"
         elevation={0}
         sx={{
-          bgcolor: '#2C2C2C',
-          color: 'white',
-          minHeight: 64
+          bgcolor: '#fff',
+          color: 'text.primary',
+          minHeight: 56,
+          borderBottom: '1px solid',
+          borderColor: 'divider'
         }}
       >
-        <Toolbar sx={{ gap: 2, minHeight: '64px !important' }}>
+        <Toolbar sx={{ gap: 2, minHeight: '56px !important', px: 2 }}>
           {/* Logo maintx — cliquable vers accueil */}
           <Box
             component={RouterLink}
@@ -543,18 +572,14 @@ export default function Layout() {
               textDecoration: 'none',
               color: 'inherit',
               transition: 'opacity 0.2s ease',
-              pr: 1.5,
-              py: 0.5,
-              borderRadius: 1,
-              bgcolor: 'rgba(255,255,255,0.08)',
-              '&:hover': { opacity: 0.95, bgcolor: 'rgba(255,255,255,0.12)' }
+              '&:hover': { opacity: 0.85 }
             }}
           >
-            <LogoCompact variant="light" size={40} />
+            <LogoCompact variant="dark" size={36} />
           </Box>
 
           {/* Recherche globale */}
-          <Box sx={{ flex: 1, maxWidth: 600 }}>
+          <Box sx={{ flex: 1, maxWidth: 520 }}>
             <TextField
               fullWidth
               size="small"
@@ -564,21 +589,14 @@ export default function Layout() {
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <Search sx={{ color: 'rgba(255,255,255,0.7)' }} />
+                    <Search fontSize="small" sx={{ color: 'text.secondary' }} />
                   </InputAdornment>
                 ),
                 sx: {
-                  bgcolor: 'rgba(255,255,255,0.1)',
-                  borderRadius: 1,
+                  bgcolor: 'action.hover',
+                  borderRadius: 1.5,
                   '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'rgba(255,255,255,0.2)'
-                  },
-                  '& input': {
-                    color: 'white',
-                    '&::placeholder': {
-                      color: 'rgba(255,255,255,0.5)',
-                      opacity: 1
-                    }
+                    borderColor: 'divider'
                   }
                 }
               }}
@@ -586,38 +604,36 @@ export default function Layout() {
           </Box>
 
           {/* Infos utilisateur et icônes */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <IconButton
               size="small"
-              sx={{ color: 'white' }}
               onClick={openAlertsMenu}
               aria-label="Notifications"
             >
               <Badge badgeContent={unreadCount} color="error">
-                <NotificationsIcon />
+                <NotificationsIcon fontSize="small" />
               </Badge>
             </IconButton>
-            <IconButton size="small" sx={{ color: 'white' }}>
-              <Help />
+            <IconButton size="small">
+              <Help fontSize="small" />
             </IconButton>
-            <IconButton size="small" sx={{ color: 'white' }}>
-              <Star />
+            <IconButton size="small">
+              <Star fontSize="small" />
             </IconButton>
             <Chip
               label={user?.role || 'Utilisateur'}
               size="small"
-              sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'white', height: 28 }}
+              sx={{ bgcolor: 'action.selected', color: 'text.primary', height: 28, fontWeight: 500 }}
             />
             <IconButton
               onClick={(e) => setAnchorEl(e.currentTarget)}
               size="small"
-              sx={{ color: 'white' }}
             >
               <Avatar
                 sx={{
                   width: 32,
                   height: 32,
-                  bgcolor: '#2EB23E',
+                  bgcolor: 'primary.main',
                   fontSize: '0.875rem'
                 }}
               >
@@ -627,6 +643,40 @@ export default function Layout() {
           </Box>
         </Toolbar>
       </AppBar>
+
+      {/* Sous-header : accès rapide aux entrées épinglées (par profil) */}
+      {pinnedItems.length > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 2,
+            py: 1,
+            minHeight: 40,
+            bgcolor: 'action.hover',
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            flexWrap: 'wrap'
+          }}
+        >
+          {pinnedItems.map((p) => (
+            <Chip
+              key={p.path}
+              component={RouterLink}
+              to={p.path}
+              label={p.label}
+              size="small"
+              icon={<Star sx={{ fontSize: 16, color: 'primary.main' }} />}
+              onDelete={() => togglePin(p)}
+              sx={{
+                '& .MuiChip-icon': { color: 'primary.main' },
+                fontWeight: 500
+              }}
+            />
+          ))}
+        </Box>
+      )}
 
       {/* Menu utilisateur */}
       <Menu
@@ -937,6 +987,7 @@ export default function Layout() {
                           const itemPathOnly = item.path.split('?')[0];
                           const itemSearch = item.path.includes('?') ? item.path.slice(item.path.indexOf('?')) : '';
                           const isActive = location.pathname === itemPathOnly && (itemSearch ? location.search === itemSearch : !location.search);
+                          const pinned = isPinned(item.path);
                           return (
                             <Box
                               key={itemIndex}
@@ -946,8 +997,12 @@ export default function Layout() {
                               }}
                               sx={{
                                 p: 1.5,
+                                pl: 1,
                                 borderRadius: 1.5,
                                 cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 0.5,
                                 bgcolor: isActive
                                   ? alpha(theme.palette.primary.main, 0.12)
                                   : 'transparent',
@@ -960,9 +1015,25 @@ export default function Layout() {
                                 transition: 'all 0.2s ease'
                               }}
                             >
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  togglePin(item);
+                                }}
+                                sx={{ p: 0.25 }}
+                                aria-label={pinned ? 'Désépingler' : 'Épingler'}
+                              >
+                                {pinned ? (
+                                  <Star fontSize="small" sx={{ color: 'primary.main' }} />
+                                ) : (
+                                  <StarBorder fontSize="small" sx={{ color: 'text.secondary' }} />
+                                )}
+                              </IconButton>
                               <Typography
                                 variant="body2"
                                 sx={{
+                                  flex: 1,
                                   color: isActive ? 'primary.main' : 'text.secondary',
                                   fontWeight: isActive ? 600 : 400
                                 }}
