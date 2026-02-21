@@ -45,31 +45,55 @@ router.get('/kpis', (req, res) => {
   const oee = parseFloat(availabilityRate);
 
   // Coût maintenance période (pièces + main d'œuvre par technicien)
+  // Période : OT clôturés dont la date de fin (actual_end) est dans les N derniers jours
   let defaultRate = 45;
   try {
     const r = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('hourly_rate');
     if (r?.value) defaultRate = parseFloat(r.value);
   } catch (_) {}
+
+  // Pièces : somme (quantité × prix unitaire) pour les interventions des OT complétés dans la période
   const partsRow = db.prepare(`
-    SELECT COALESCE(SUM(i.quantity_used * sp.unit_price), 0) as parts
+    SELECT COALESCE(SUM(COALESCE(i.quantity_used, 0) * COALESCE(sp.unit_price, 0)), 0) as parts
     FROM work_orders wo
     LEFT JOIN interventions i ON i.work_order_id = wo.id
     LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id
-    WHERE wo.status = 'completed' AND wo.actual_end >= ${since}
+    WHERE wo.status = 'completed' AND wo.actual_end IS NOT NULL AND date(wo.actual_end) >= ${since}
   `).get();
-  const partsCost = partsRow?.parts || 0;
+  const partsCost = Number(partsRow?.parts) || 0;
+
+  // Main d'œuvre : heures × taux horaire (technicien ou défaut) pour les interventions des OT complétés dans la période
   const interventionRows = db.prepare(`
     SELECT i.hours_spent, u.hourly_rate
     FROM work_orders wo
     JOIN interventions i ON i.work_order_id = wo.id
     LEFT JOIN users u ON i.technician_id = u.id
-    WHERE wo.status = 'completed' AND wo.actual_end >= ${since}
+    WHERE wo.status = 'completed' AND wo.actual_end IS NOT NULL AND date(wo.actual_end) >= ${since}
   `).all();
-  const laborCost = interventionRows.reduce((sum, row) => {
+  let laborCost = interventionRows.reduce((sum, row) => {
     const hours = parseFloat(row.hours_spent) || 0;
-    const rate = row.hourly_rate != null ? parseFloat(row.hourly_rate) : defaultRate;
+    const rate = row.hourly_rate != null && row.hourly_rate !== '' ? parseFloat(row.hourly_rate) : defaultRate;
     return sum + hours * rate;
   }, 0);
+
+  // Complément : OT clôturés dans la période sans interventions (ou sans heures) → durée réelle × taux du technicien assigné
+  const woWithoutInterventions = db.prepare(`
+    SELECT wo.id,
+           (julianday(wo.actual_end) - julianday(wo.actual_start)) * 24 as duration_hours,
+           u.hourly_rate
+    FROM work_orders wo
+    LEFT JOIN users u ON wo.assigned_to = u.id
+    WHERE wo.status = 'completed' AND wo.actual_end IS NOT NULL AND wo.actual_start IS NOT NULL
+      AND date(wo.actual_end) >= ${since}
+      AND NOT EXISTS (SELECT 1 FROM interventions i WHERE i.work_order_id = wo.id AND COALESCE(i.hours_spent, 0) > 0)
+  `).all();
+  woWithoutInterventions.forEach((row) => {
+    const hours = parseFloat(row.duration_hours) || 0;
+    if (hours <= 0) return;
+    const rate = row.hourly_rate != null && row.hourly_rate !== '' ? parseFloat(row.hourly_rate) : defaultRate;
+    laborCost += hours * rate;
+  });
+
   const totalCost = partsCost + laborCost;
 
   // Taux respect plans préventifs (exécutés à temps)

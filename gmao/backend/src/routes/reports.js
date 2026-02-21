@@ -40,7 +40,7 @@ router.get('/maintenance-costs', (req, res) => {
     JOIN equipment e ON wo.equipment_id = e.id
     LEFT JOIN interventions i ON i.work_order_id = wo.id
     LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id
-    WHERE wo.status = 'completed' AND wo.actual_end BETWEEN ? AND ?
+    WHERE wo.status = 'completed' AND wo.actual_end IS NOT NULL AND date(wo.actual_end) BETWEEN ? AND ?
   `;
   const params = [start, end];
   if (siteId) {
@@ -75,11 +75,12 @@ router.get('/availability', (req, res) => {
     params.push(equipmentId);
   }
   const rows = db.prepare(`
-    SELECT e.code, e.name, e.status,
-           (SELECT COUNT(*) FROM work_orders w WHERE w.equipment_id = e.id AND w.actual_end BETWEEN ? AND ?) as intervention_count,
+    SELECT e.id, e.code, e.name, e.status,
+           (SELECT COUNT(*) FROM work_orders w WHERE w.equipment_id = e.id AND w.status = 'completed'
+            AND w.actual_end IS NOT NULL AND date(w.actual_end) BETWEEN ? AND ?) as intervention_count,
            (SELECT COALESCE(SUM((julianday(w.actual_end) - julianday(w.actual_start)) * 24), 0)
             FROM work_orders w WHERE w.equipment_id = e.id AND w.status = 'completed'
-            AND w.actual_start IS NOT NULL AND w.actual_end IS NOT NULL AND w.actual_end BETWEEN ? AND ?) as total_downtime_hours
+            AND w.actual_start IS NOT NULL AND w.actual_end IS NOT NULL AND date(w.actual_end) BETWEEN ? AND ?) as total_downtime_hours
     FROM equipment e
     WHERE ${where}
     ORDER BY total_downtime_hours DESC

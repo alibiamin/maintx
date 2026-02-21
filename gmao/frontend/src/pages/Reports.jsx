@@ -293,18 +293,25 @@ export default function Reports() {
                     <TableCell>Statut</TableCell>
                     <TableCell align="right">Interventions</TableCell>
                     <TableCell align="right">Temps arrêt (h)</TableCell>
+                    <TableCell align="right">Disponibilité %</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {availability.map((row) => (
-                    <TableRow key={row.code}>
-                      <TableCell>{row.code}</TableCell>
-                      <TableCell>{row.name}</TableCell>
-                      <TableCell>{row.status}</TableCell>
-                      <TableCell align="right">{row.intervention_count ?? 0}</TableCell>
-                      <TableCell align="right">{row.total_downtime_hours ? parseFloat(row.total_downtime_hours).toFixed(2) : '0.00'}</TableCell>
-                    </TableRow>
-                  ))}
+                  {availability.map((row) => {
+                    const periodHours = (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60);
+                    const down = parseFloat(row.total_downtime_hours || 0);
+                    const availPct = periodHours > 0 ? Math.max(0, ((periodHours - down) / periodHours) * 100) : null;
+                    return (
+                      <TableRow key={row.id ?? row.code}>
+                        <TableCell>{row.code}</TableCell>
+                        <TableCell>{row.name}</TableCell>
+                        <TableCell>{row.status}</TableCell>
+                        <TableCell align="right">{row.intervention_count ?? 0}</TableCell>
+                        <TableCell align="right">{row.total_downtime_hours ? down.toFixed(2) : '0.00'}</TableCell>
+                        <TableCell align="right">{availPct != null ? `${availPct.toFixed(1)} %` : '—'}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
