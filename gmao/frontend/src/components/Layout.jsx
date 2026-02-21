@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback, Suspense } from 'react';
 import { Outlet } from 'react-router-dom';
 import {
   Box,
@@ -24,7 +24,9 @@ import {
   Breadcrumbs,
   Link,
   useTheme,
-  alpha
+  alpha,
+  Popper,
+  CircularProgress
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -55,10 +57,13 @@ import {
   ChevronRight,
   Notifications as NotificationsIcon,
   Warning as WarningIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
+  DarkMode as DarkModeIcon,
+  LightMode as LightModeIcon
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
+import { useThemeMode } from '../theme';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import api from '../services/api';
 import { LogoCompact } from './Logo';
@@ -180,6 +185,10 @@ export default function Layout() {
   const [alertAnchorEl, setAlertAnchorEl] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [searchResults, setSearchResults] = useState({ equipment: [], workOrders: [], parts: [], technicians: [] });
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchInputRef = useRef(null);
+  const searchDebounceRef = useRef(null);
   const { user, logout } = useAuth();
 
   const menuStructure = React.useMemo(() => getMenuStructure(), []);
@@ -308,6 +317,7 @@ export default function Layout() {
   const location = useLocation();
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
+  const { mode: themeMode, toggleTheme } = useThemeMode();
 
   // Déterminer le menu sélectionné basé sur la route actuelle (pathname + chemins des sous-items)
   const currentMenuId = useMemo(() => {
@@ -415,6 +425,56 @@ export default function Layout() {
     );
   };
 
+  const searchOpen = globalSearch.trim().length >= 2;
+  useEffect(() => {
+    const q = globalSearch.trim();
+    if (q.length < 2) {
+      setSearchResults({ equipment: [], workOrders: [], parts: [], technicians: [] });
+      return;
+    }
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setSearchLoading(true);
+      api.get('/search', { params: { q } })
+        .then((r) => setSearchResults(r.data || { equipment: [], workOrders: [], parts: [], technicians: [] }))
+        .catch(() => setSearchResults({ equipment: [], workOrders: [], parts: [], technicians: [] }))
+        .finally(() => setSearchLoading(false));
+    }, 300);
+    return () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); };
+  }, [globalSearch]);
+
+  const handleSearchResultClick = useCallback((path) => {
+    navigate(path);
+    setGlobalSearch('');
+  }, [navigate]);
+
+  const hasSearchResults = searchResults.equipment?.length > 0 || searchResults.workOrders?.length > 0 ||
+    searchResults.parts?.length > 0 || searchResults.technicians?.length > 0;
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const inInput = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) || e.target?.getAttribute('contenteditable') === 'true';
+      if (e.key === 'Escape') {
+        setAnchorEl(null);
+        setLangAnchorEl(null);
+        setAlertAnchorEl(null);
+        setGlobalSearch('');
+        return;
+      }
+      if (e.key === '/' && !inInput) {
+        e.preventDefault();
+        searchInputRef.current?.querySelector('input')?.focus();
+        return;
+      }
+      if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !inInput) {
+        e.preventDefault();
+        navigate('/work-orders/new');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [navigate]);
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       {/* Header épuré : fond clair, bordure basse, logo simple */}
@@ -447,7 +507,7 @@ export default function Layout() {
           </Box>
 
           {/* Recherche globale */}
-          <Box sx={{ flex: 1, maxWidth: 520 }}>
+          <Box sx={{ flex: 1, maxWidth: 520 }} ref={searchInputRef}>
             <TextField
               fullWidth
               size="small"
@@ -469,10 +529,71 @@ export default function Layout() {
                 }
               }}
             />
+            <Popper
+              open={searchOpen}
+              anchorEl={searchInputRef.current}
+              placement="bottom-start"
+              style={{ zIndex: 1400, width: searchInputRef.current?.offsetWidth || 520 }}
+            >
+              <Paper elevation={8} sx={{ mt: 0.5, maxHeight: 400, overflow: 'auto' }}>
+                {searchLoading ? (
+                  <Box sx={{ p: 2, display: 'flex', justifyContent: 'center' }}><CircularProgress size={24} /></Box>
+                ) : (
+                  <>
+                    {searchResults.equipment?.length > 0 && (
+                      <Box sx={{ py: 1 }}>
+                        <Typography variant="caption" sx={{ px: 2, color: 'text.secondary', fontWeight: 600 }}>{t('menu.equipment')}</Typography>
+                        {searchResults.equipment.map((r) => (
+                          <ListItemButton key={`eq-${r.id}`} onClick={() => handleSearchResultClick(`/equipment/${r.id}`)}>
+                            <ListItemText primary={`${r.code} — ${r.name}`} primaryTypographyProps={{ variant: 'body2' }} />
+                          </ListItemButton>
+                        ))}
+                      </Box>
+                    )}
+                    {searchResults.workOrders?.length > 0 && (
+                      <Box sx={{ py: 1 }}>
+                        <Typography variant="caption" sx={{ px: 2, color: 'text.secondary', fontWeight: 600 }}>{t('path.work-orders')}</Typography>
+                        {searchResults.workOrders.map((r) => (
+                          <ListItemButton key={`wo-${r.id}`} onClick={() => handleSearchResultClick(`/work-orders/${r.id}`)}>
+                            <ListItemText primary={`${r.number} — ${r.title || ''}`} primaryTypographyProps={{ variant: 'body2' }} />
+                          </ListItemButton>
+                        ))}
+                      </Box>
+                    )}
+                    {searchResults.parts?.length > 0 && (
+                      <Box sx={{ py: 1 }}>
+                        <Typography variant="caption" sx={{ px: 2, color: 'text.secondary', fontWeight: 600 }}>{t('path.stock')}</Typography>
+                        {searchResults.parts.map((r) => (
+                          <ListItemButton key={`p-${r.id}`} onClick={() => handleSearchResultClick('/stock')}>
+                            <ListItemText primary={`${r.code} — ${r.name}`} primaryTypographyProps={{ variant: 'body2' }} />
+                          </ListItemButton>
+                        ))}
+                      </Box>
+                    )}
+                    {searchResults.technicians?.length > 0 && (
+                      <Box sx={{ py: 1 }}>
+                        <Typography variant="caption" sx={{ px: 2, color: 'text.secondary', fontWeight: 600 }}>{t('menu.effectif')}</Typography>
+                        {searchResults.technicians.map((r) => (
+                          <ListItemButton key={`t-${r.id}`} onClick={() => handleSearchResultClick(`/technicians/${r.id}`)}>
+                            <ListItemText primary={`${r.firstName} ${r.lastName}`} secondary={r.email} primaryTypographyProps={{ variant: 'body2' }} />
+                          </ListItemButton>
+                        ))}
+                      </Box>
+                    )}
+                    {!searchLoading && !hasSearchResults && globalSearch.trim().length >= 2 && (
+                      <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 2 }}>Aucun résultat</Typography>
+                    )}
+                  </>
+                )}
+              </Paper>
+            </Popper>
           </Box>
 
           {/* Infos utilisateur et icônes */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <IconButton size="small" onClick={toggleTheme} aria-label={themeMode === 'dark' ? 'Mode clair' : 'Mode sombre'}>
+              {themeMode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+            </IconButton>
             <IconButton
               size="small"
               onClick={(e) => setLangAnchorEl(e.currentTarget)}
@@ -978,7 +1099,13 @@ export default function Layout() {
                 );
               })}
             </Breadcrumbs>
-            <Outlet />
+            <Suspense fallback={
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
+                <CircularProgress />
+              </Box>
+            }>
+              <Outlet />
+            </Suspense>
           </Box>
         </Box>
       </Box>

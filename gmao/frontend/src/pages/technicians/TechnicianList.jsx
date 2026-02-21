@@ -13,7 +13,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField
+  TextField,
+  TablePagination
 } from '@mui/material';
 import { PersonAdd, Star } from '@mui/icons-material';
 import api from '../../services/api';
@@ -26,7 +27,10 @@ const roleLabels = { technicien: 'Technicien', responsable_maintenance: 'Respons
 function TechnicianList() {
   const navigate = useNavigate();
   const [list, setList] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({
     email: '', password: '', firstName: '', lastName: '', hourlyRate: '',
@@ -40,10 +44,26 @@ function TechnicianList() {
   const canAdd = ['administrateur', 'responsable_maintenance'].includes(user?.role);
 
   const load = () => {
-    api.get('/technicians').then(r => setList(r.data)).catch(() => setList([])).finally(() => setLoading(false));
+    setLoading(true);
+    api.get('/technicians', { params: { page: page + 1, limit: rowsPerPage } })
+      .then(r => {
+        const res = r.data;
+        if (Array.isArray(res)) {
+          setList(res);
+          setTotal(res.length);
+        } else {
+          setList(res?.data ?? []);
+          setTotal(res?.total ?? 0);
+        }
+      })
+      .catch(() => setList([]))
+      .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [page, rowsPerPage]);
+
+  const handleChangePage = (_, newPage) => setPage(newPage);
+  const handleChangeRowsPerPage = (e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); };
 
   const handleOpenDialog = () => {
     setForm({
@@ -81,6 +101,7 @@ function TechnicianList() {
     })
       .then((r) => {
         setDialogOpen(false);
+        setPage(0);
         load();
         snackbar.showSuccess('Technicien créé.');
         if (r.data?.id) navigate(`/technicians/${r.data.id}`);
@@ -194,6 +215,19 @@ function TechnicianList() {
           ))
         )}
       </Grid>
+      {!loading && total > 0 && (
+        <TablePagination
+          component="div"
+          count={total}
+          page={page}
+          onPageChange={handleChangePage}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+          rowsPerPageOptions={[10, 20, 50]}
+          labelRowsPerPage="Lignes par page"
+          sx={{ mt: 2 }}
+        />
+      )}
     </Box>
   );
 }

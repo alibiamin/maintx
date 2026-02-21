@@ -25,25 +25,42 @@ function updateBalance(sparePartId, quantityDelta) {
 
 /**
  * GET /api/stock/parts
+ * Query: belowMin, search, page (1-based), limit (default 20)
+ * If page/limit provided: Response { data: [...], total: N }. Otherwise: array.
  */
 router.get('/parts', (req, res) => {
-  const { belowMin, search } = req.query;
-  let sql = `
-    SELECT sp.*, s.name as supplier_name, COALESCE(sb.quantity, 0) as stock_quantity,
-           CASE WHEN COALESCE(sb.quantity, 0) <= sp.min_stock THEN 1 ELSE 0 END as below_minimum
+  const { belowMin, search, page, limit } = req.query;
+  const usePagination = page !== undefined && page !== '';
+  const limitNum = usePagination ? Math.min(parseInt(limit, 10) || 20, 100) : 1e6;
+  const offset = usePagination ? ((parseInt(page, 10) || 1) - 1) * limitNum : 0;
+  let where = `
     FROM spare_parts sp
     LEFT JOIN suppliers s ON sp.supplier_id = s.id
     LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
     WHERE 1=1
   `;
   const params = [];
-  if (belowMin === 'true') sql += ' AND COALESCE(sb.quantity, 0) <= sp.min_stock';
-  if (search) { sql += ' AND (sp.code LIKE ? OR sp.name LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
-  sql += ' ORDER BY below_minimum DESC, sp.code';
-  const rows = db.prepare(sql).all(...params);
+  if (belowMin === 'true') where += ' AND COALESCE(sb.quantity, 0) <= sp.min_stock';
+  if (search) { where += ' AND (sp.code LIKE ? OR sp.name LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+  let total = 0;
+  if (usePagination) {
+    const countRow = db.prepare(`SELECT COUNT(*) as total ${where}`).get(...params);
+    total = countRow?.total ?? 0;
+  }
+  const sortBy = req.query.sortBy === 'name' ? 'sp.name' : 'sp.code';
+  const order = (req.query.order || 'asc') === 'asc' ? 'ASC' : 'DESC';
+  const sql = `
+    SELECT sp.*, s.name as supplier_name, COALESCE(sb.quantity, 0) as stock_quantity,
+           CASE WHEN COALESCE(sb.quantity, 0) <= sp.min_stock THEN 1 ELSE 0 END as below_minimum
+    ${where}
+    ORDER BY below_minimum DESC, ${sortBy} ${order} LIMIT ? OFFSET ?
+  `;
+  const rows = db.prepare(sql).all(...params, limitNum, offset);
   const byId = new Map();
   rows.forEach((r) => { if (!byId.has(r.id)) byId.set(r.id, r); });
-  res.json([...byId.values()]);
+  const data = [...byId.values()];
+  if (usePagination) res.json({ data, total });
+  else res.json(data);
 });
 
 /**

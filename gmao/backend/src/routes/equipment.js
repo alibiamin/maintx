@@ -36,25 +36,43 @@ function formatEquipment(row) {
   };
 }
 
+/**
+ * GET /api/equipment
+ * Query: categoryId, ligneId, status, search, page (1-based), limit (default 20)
+ * If page/limit provided: Response { data: [...], total: N }. Otherwise: array.
+ */
 router.get('/', (req, res) => {
-  const { categoryId, ligneId, status, search } = req.query;
-  let sql = `
+  const { categoryId, ligneId, status, search, page, limit } = req.query;
+  const usePagination = page !== undefined && page !== '';
+  const limitNum = usePagination ? Math.min(parseInt(limit, 10) || 20, 100) : 1e6;
+  const offset = usePagination ? ((parseInt(page, 10) || 1) - 1) * limitNum : 0;
+  let where = ' WHERE 1=1';
+  const params = [];
+  if (categoryId) { where += ' AND e.category_id = ?'; params.push(categoryId); }
+  if (ligneId) { where += ' AND e.ligne_id = ?'; params.push(ligneId); }
+  if (status) { where += ' AND e.status = ?'; params.push(status); }
+  if (search) { where += ' AND (e.code LIKE ? OR e.name LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+  let total = 0;
+  if (usePagination) {
+    const countRow = db.prepare(`SELECT COUNT(*) as total FROM equipment e ${where}`).get(...params);
+    total = countRow?.total ?? 0;
+  }
+  const sortBy = req.query.sortBy === 'name' ? 'e.name' : 'e.code';
+  const order = req.query.order === 'asc' ? 'ASC' : 'DESC';
+  const sql = `
     SELECT e.*, c.name as category_name, l.name as ligne_name
     FROM equipment e
     LEFT JOIN equipment_categories c ON e.category_id = c.id
     LEFT JOIN lignes l ON e.ligne_id = l.id
-    WHERE 1=1
+    ${where}
+    ORDER BY ${sortBy} ${order} LIMIT ? OFFSET ?
   `;
-  const params = [];
-  if (categoryId) { sql += ' AND e.category_id = ?'; params.push(categoryId); }
-  if (ligneId) { sql += ' AND e.ligne_id = ?'; params.push(ligneId); }
-  if (status) { sql += ' AND e.status = ?'; params.push(status); }
-  if (search) { sql += ' AND (e.code LIKE ? OR e.name LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
-  sql += ' ORDER BY e.code';
-  const rows = db.prepare(sql).all(...params);
+  const rows = db.prepare(sql).all(...params, limitNum, offset);
   const byId = new Map();
   rows.forEach((r) => { if (!byId.has(r.id)) byId.set(r.id, r); });
-  res.json([...byId.values()].map(formatEquipment));
+  const data = [...byId.values()].map(formatEquipment);
+  if (usePagination) res.json({ data, total });
+  else res.json(data);
 });
 
 /**

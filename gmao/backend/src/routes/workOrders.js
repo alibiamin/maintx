@@ -36,7 +36,10 @@ function formatWO(row) {
     failureDate: row.failure_date,
     createdBy: row.created_by,
     createdAt: row.created_at,
-    updatedAt: row.updated_at
+    updatedAt: row.updated_at,
+    completedBy: row.completed_by,
+    completedAt: row.completed_at,
+    signatureName: row.signature_name
   };
 }
 
@@ -52,28 +55,44 @@ function generateOTNumber() {
 
 /**
  * GET /api/work-orders
+ * Query: status, assignedTo, equipmentId, priority, page (1-based), limit (default 20)
+ * If page/limit provided: Response { data: [...], total: N }. Otherwise: array (backward compatible).
  */
 router.get('/', (req, res) => {
-  const { status, assignedTo, equipmentId, priority } = req.query;
-  let sql = `
+  const { status, assignedTo, equipmentId, priority, page, limit } = req.query;
+  const usePagination = page !== undefined && page !== '';
+  const limitNum = usePagination ? Math.min(parseInt(limit, 10) || 20, 100) : 1e6;
+  const offset = usePagination ? ((parseInt(page, 10) || 1) - 1) * limitNum : 0;
+  let where = ' WHERE 1=1';
+  const params = [];
+  if (status) { where += ' AND wo.status = ?'; params.push(status); }
+  if (assignedTo) { where += ' AND wo.assigned_to = ?'; params.push(assignedTo); }
+  if (equipmentId) { where += ' AND wo.equipment_id = ?'; params.push(equipmentId); }
+  if (priority) { where += ' AND wo.priority = ?'; params.push(priority); }
+  let total = 0;
+  if (usePagination) {
+    const countRow = db.prepare(`SELECT COUNT(*) as total FROM work_orders wo ${where}`).get(...params);
+    total = countRow?.total ?? 0;
+  }
+  const sortBy = (req.query.sortBy === 'title' || req.query.sortBy === 'number') ? req.query.sortBy : 'created_at';
+  const order = req.query.order === 'asc' ? 'ASC' : 'DESC';
+  const orderCol = sortBy === 'number' ? 'wo.number' : sortBy === 'title' ? 'wo.title' : 'wo.created_at';
+  const sql = `
     SELECT wo.*, e.name as equipment_name, e.code as equipment_code, t.name as type_name,
            u.first_name || ' ' || u.last_name as assigned_name
     FROM work_orders wo
     LEFT JOIN equipment e ON wo.equipment_id = e.id
     LEFT JOIN work_order_types t ON wo.type_id = t.id
     LEFT JOIN users u ON wo.assigned_to = u.id
-    WHERE 1=1
+    ${where}
+    ORDER BY ${orderCol} ${order} LIMIT ? OFFSET ?
   `;
-  const params = [];
-  if (status) { sql += ' AND wo.status = ?'; params.push(status); }
-  if (assignedTo) { sql += ' AND wo.assigned_to = ?'; params.push(assignedTo); }
-  if (equipmentId) { sql += ' AND wo.equipment_id = ?'; params.push(equipmentId); }
-  if (priority) { sql += ' AND wo.priority = ?'; params.push(priority); }
-  sql += ' ORDER BY wo.created_at DESC';
-  const rows = db.prepare(sql).all(...params);
+  const rows = db.prepare(sql).all(...params, limitNum, offset);
   const byId = new Map();
   rows.forEach((r) => { if (!byId.has(r.id)) byId.set(r.id, r); });
-  res.json([...byId.values()].map(formatWO));
+  const data = [...byId.values()].map(formatWO);
+  if (usePagination) res.json({ data, total });
+  else res.json(data);
 });
 
 /**
@@ -224,13 +243,25 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), 
   const id = req.params.id;
   const existing = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
-  const fields = ['title', 'description', 'equipment_id', 'type_id', 'priority', 'status', 'assigned_to', 'planned_start', 'planned_end', 'actual_start', 'actual_end'];
-  const mapping = { equipmentId: 'equipment_id', typeId: 'type_id', assignedTo: 'assigned_to', plannedStart: 'planned_start', plannedEnd: 'planned_end', actualStart: 'actual_start', actualEnd: 'actual_end' };
+  const fields = ['title', 'description', 'equipment_id', 'type_id', 'priority', 'status', 'assigned_to', 'planned_start', 'planned_end', 'actual_start', 'actual_end', 'completed_by', 'completed_at', 'signature_name'];
+  const mapping = { equipmentId: 'equipment_id', typeId: 'type_id', assignedTo: 'assigned_to', plannedStart: 'planned_start', plannedEnd: 'planned_end', actualStart: 'actual_start', actualEnd: 'actual_end', completedBy: 'completed_by', completedAt: 'completed_at', signatureName: 'signature_name' };
   const updates = [];
   const values = [];
+  if (req.body.status === 'completed') {
+    updates.push('completed_at = ?');
+    values.push(new Date().toISOString().slice(0, 19));
+    if (req.body.completedBy != null) {
+      updates.push('completed_by = ?');
+      values.push(req.body.completedBy);
+    }
+    if (req.body.signatureName != null && String(req.body.signatureName).trim()) {
+      updates.push('signature_name = ?');
+      values.push(String(req.body.signatureName).trim());
+    }
+  }
   for (const [key, val] of Object.entries(req.body)) {
     const col = mapping[key] || key;
-    if (fields.includes(col) && val !== undefined) {
+    if (fields.includes(col) && val !== undefined && !['completed_by', 'completed_at', 'signature_name'].includes(col)) {
       updates.push(`${col} = ?`);
       values.push(val);
     }

@@ -164,7 +164,21 @@ router.put('/type-competencies/save', authorize(ROLES.ADMIN, ROLES.RESPONSABLE),
 });
 
 // Liste des techniciens (et responsables) avec compétences, note moyenne et taux horaire
+// Query: page (1-based), limit (default 20). If omitted, returns full array (backward compatible).
+// With pagination: response { data: [...], total: N }
 router.get('/', (req, res) => {
+  const { page, limit } = req.query;
+  const usePagination = page !== undefined && page !== '';
+  const limitNum = usePagination ? Math.min(parseInt(limit, 10) || 20, 100) : 1e6;
+  const offset = usePagination ? ((parseInt(page, 10) || 1) - 1) * limitNum : 0;
+
+  const countRow = db.prepare(`
+    SELECT COUNT(*) as total FROM users u
+    JOIN roles r ON u.role_id = r.id
+    WHERE u.is_active = 1 AND r.name IN ('technicien', 'responsable_maintenance')
+  `).get();
+  const total = countRow?.total ?? 0;
+
   const users = db.prepare(`
     SELECT u.id, u.first_name, u.last_name, u.email, u.hourly_rate, u.manager_id,
       u.phone, u.address, u.city, u.postal_code, u.employee_number, u.job_title, u.department, u.hire_date, u.contract_type,
@@ -173,7 +187,8 @@ router.get('/', (req, res) => {
     JOIN roles r ON u.role_id = r.id
     WHERE u.is_active = 1 AND r.name IN ('technicien', 'responsable_maintenance')
     ORDER BY u.last_name, u.first_name
-  `).all();
+    LIMIT ? OFFSET ?
+  `).all(limitNum, offset);
 
   const competencies = db.prepare(`
     SELECT tc.user_id, tc.competence_id, tc.level, c.code, c.name
@@ -218,7 +233,12 @@ router.get('/', (req, res) => {
     avg_score: scoreByUser[u.id]?.avg_score ?? null,
     evaluation_count: scoreByUser[u.id]?.evaluation_count ?? 0
   }));
-  res.json(list);
+
+  if (usePagination) {
+    res.json({ data: list, total });
+  } else {
+    res.json(list);
+  }
 });
 
 // Hiérarchie équipe (tree) — avant /:id

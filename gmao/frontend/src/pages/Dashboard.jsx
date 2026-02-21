@@ -12,7 +12,14 @@ import {
   ToggleButton,
   LinearProgress,
   Skeleton,
-  alpha
+  alpha,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControlLabel,
+  Checkbox
 } from '@mui/material';
 import {
   TrendingUp,
@@ -33,7 +40,8 @@ import {
   Add,
   Assessment,
   ArrowForward,
-  NotificationsActive
+  NotificationsActive,
+  DashboardCustomize
 } from '@mui/icons-material';
 import {
   BarChart,
@@ -80,6 +88,16 @@ function formatRelative(dateStr) {
 const STATUS_LABELS = { pending: 'En attente', in_progress: 'En cours', completed: 'Terminé', cancelled: 'Annulé', deferred: 'Reporté' };
 const PRIORITY_LABELS = { low: 'Basse', medium: 'Moyenne', high: 'Haute', critical: 'Critique' };
 
+const DEFAULT_DASHBOARD_LAYOUT = ['alerts', 'kpis', 'summary', 'charts', 'recent', 'topFailures'];
+const WIDGET_LABELS = {
+  alerts: 'Alertes (stock, SLA, plans)',
+  kpis: 'Indicateurs clés (dispo, coût, MTTR, préventif)',
+  summary: 'Résumé période et accès rapide',
+  charts: 'Graphiques (statuts, priorités, évolution)',
+  recent: 'Activité récente (OT)',
+  topFailures: 'Équipements les plus en panne'
+};
+
 export default function Dashboard() {
   const [kpis, setKpis] = useState(null);
   const [charts, setCharts] = useState(null);
@@ -89,6 +107,9 @@ export default function Dashboard() {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState(30);
+  const [profile, setProfile] = useState(null);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [customLayout, setCustomLayout] = useState([...DEFAULT_DASHBOARD_LAYOUT]);
   const navigate = useNavigate();
   const muiTheme = useTheme();
   const currency = useCurrency();
@@ -96,6 +117,10 @@ export default function Dashboard() {
   const tickStyle = { fill: isDark ? '#94a3b8' : '#64748b', fontSize: 11 };
   const tooltipBg = isDark ? 'rgba(30, 41, 59, 0.98)' : 'rgba(255,255,255,0.98)';
   const tooltipBorder = isDark ? 'rgba(148,163,184,0.2)' : 'rgba(0,0,0,0.08)';
+
+  useEffect(() => {
+    api.get('/auth/me').then(r => setProfile(r.data)).catch(() => setProfile(null));
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -115,6 +140,23 @@ export default function Dashboard() {
       setSummary(s.data);
     }).catch(console.error).finally(() => setLoading(false));
   }, [period]);
+
+  const visibleOrder = (profile?.dashboardLayout?.length ? profile.dashboardLayout : DEFAULT_DASHBOARD_LAYOUT).filter(id => WIDGET_LABELS[id]);
+
+  const openCustomize = () => {
+    setCustomLayout(profile?.dashboardLayout?.length ? [...profile.dashboardLayout] : [...DEFAULT_DASHBOARD_LAYOUT]);
+    setCustomizeOpen(true);
+  };
+  const saveDashboardLayout = () => {
+    api.put('/auth/me', {
+      pinnedMenuItems: profile?.pinnedMenuItems ?? [],
+      dashboardLayout: customLayout
+    }).then(r => {
+      setProfile(prev => ({ ...prev, ...r.data }));
+      setCustomizeOpen(false);
+    }).catch(console.error);
+  };
+  const resetDashboardLayout = () => setCustomLayout([...DEFAULT_DASHBOARD_LAYOUT]);
 
   const statusColors = { pending: 'warning', in_progress: 'info', completed: 'success', cancelled: 'default', deferred: 'default' };
   const byStatusData = (charts?.byStatus || []).map(s => ({ ...s, label: STATUS_LABELS[s.status] || s.status }));
@@ -195,6 +237,15 @@ export default function Dashboard() {
               sx={{ cursor: 'pointer', fontWeight: 600 }}
             />
           )}
+          <Button
+            startIcon={<DashboardCustomize />}
+            onClick={openCustomize}
+            size="small"
+            variant="outlined"
+            sx={{ textTransform: 'none', fontWeight: 600 }}
+          >
+            Personnaliser
+          </Button>
           <ToggleButtonGroup
             value={period}
             exclusive
@@ -217,8 +268,36 @@ export default function Dashboard() {
         </Box>
       </Box>
 
+      <Dialog open={customizeOpen} onClose={() => setCustomizeOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Widgets du tableau de bord</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, pt: 1 }}>
+            {(Object.keys(WIDGET_LABELS)).map(id => (
+              <FormControlLabel
+                key={id}
+                control={
+                  <Checkbox
+                    checked={customLayout.includes(id)}
+                    onChange={(_, checked) => {
+                      if (checked) setCustomLayout(prev => [...prev, id]);
+                      else setCustomLayout(prev => prev.filter(x => x !== id));
+                    }}
+                  />
+                }
+                label={WIDGET_LABELS[id]}
+              />
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={resetDashboardLayout}>Réinitialiser</Button>
+          <Button onClick={() => setCustomizeOpen(false)}>Annuler</Button>
+          <Button variant="contained" onClick={saveDashboardLayout}>Enregistrer</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Alertes — bandeau compact */}
-      {(alerts.stock?.length > 0 || alerts.sla?.length > 0 || alerts.overduePlans?.length > 0) && (
+      {visibleOrder.includes('alerts') && (alerts.stock?.length > 0 || alerts.sla?.length > 0 || alerts.overduePlans?.length > 0) && (
         <Box id="dashboard-alerts" sx={{ mb: 3 }}>
           <Typography variant="subtitle2" fontWeight={700} color="text.secondary" sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
             <Warning fontSize="small" /> Alertes
@@ -292,6 +371,7 @@ export default function Dashboard() {
       )}
 
       {/* KPIs principaux — cartes avec jauge radiale */}
+      {visibleOrder.includes('kpis') && (
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={{ borderRadius: 2, overflow: 'hidden', height: '100%', border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}` }}>
@@ -358,8 +438,10 @@ export default function Dashboard() {
           </Card>
         </Grid>
       </Grid>
+      )}
 
       {/* Indicateurs période — bandeau compact */}
+      {visibleOrder.includes('summary') && (
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 3 }}>
         {[
           { label: 'OT créés', value: summary?.workOrdersCreatedPeriod ?? 0, icon: AddTask, color: CHART_COLORS[2] },
@@ -391,9 +473,10 @@ export default function Dashboard() {
           </Card>
         ))}
       </Box>
+      )}
 
       {/* Accès rapide — grille visuelle */}
-      {summary && (
+      {visibleOrder.includes('summary') && summary && (
         <Card sx={{ borderRadius: 2, mb: 3, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden' }}>
           <CardContent>
             <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -442,6 +525,7 @@ export default function Dashboard() {
       )}
 
       {/* Graphiques — ligne 1 */}
+      {visibleOrder.includes('charts') && (
       <Grid container spacing={3}>
         <Grid item xs={12} lg={6}>
           <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden' }}>
@@ -547,7 +631,7 @@ export default function Dashboard() {
           </Card>
         </Grid>
 
-        {/* Interventions par type + Top pannes */}
+        {/* Interventions par type */}
         <Grid item xs={12} md={6}>
           <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden' }}>
             <CardContent>
@@ -576,6 +660,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Grid>
+        {visibleOrder.includes('topFailures') && (
         <Grid item xs={12} md={6}>
           <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden' }}>
             <CardContent>
@@ -629,8 +714,10 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Grid>
+        )}
 
         {/* Activité récente — timeline */}
+        {visibleOrder.includes('recent') && (
         <Grid item xs={12}>
           <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden' }}>
             <CardContent>
@@ -677,7 +764,9 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Grid>
+        )}
       </Grid>
+      )}
     </Box>
   );
 }

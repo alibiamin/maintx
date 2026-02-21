@@ -7,11 +7,15 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TablePagination,
   Chip,
   TextField,
   InputAdornment,
   Button,
-  CircularProgress
+  CircularProgress,
+  FormControl,
+  Select,
+  MenuItem
 } from '@mui/material';
 import { Search, Warning } from '@mui/icons-material';
 import api from '../../services/api';
@@ -21,26 +25,38 @@ import { useCurrency } from '../../context/CurrencyContext';
 export default function StockList() {
   const currency = useCurrency();
   const [parts, setParts] = useState([]);
+  const [total, setTotal] = useState(0);
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showAlerts, setShowAlerts] = useState(false);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [sortBy, setSortBy] = useState('code');
+  const [sortOrder, setSortOrder] = useState('asc');
   const { user } = useAuth();
   const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
 
   useEffect(() => {
     const fetch = () => {
       setLoading(true);
-      const params = {};
+      const params = { page: page + 1, limit: rowsPerPage, sortBy, order: sortOrder };
       if (search) params.search = search;
       if (showAlerts) params.belowMin = 'true';
       api.get('/stock/parts', { params })
-        .then(r => setParts(r.data))
+        .then(r => {
+          const res = r.data;
+          setParts(Array.isArray(res) ? res : (res?.data ?? []));
+          setTotal(res?.total ?? (res?.data?.length ?? res?.length ?? 0));
+        })
         .catch(console.error)
         .finally(() => setLoading(false));
     };
     fetch();
-  }, [search, showAlerts]);
+  }, [search, showAlerts, page, rowsPerPage, sortBy, sortOrder]);
+
+  const handleChangePage = (_, newPage) => setPage(newPage);
+  const handleChangeRowsPerPage = (e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); };
 
   useEffect(() => {
     api.get('/stock/alerts').then(r => setAlerts(r.data)).catch(console.error);
@@ -71,6 +87,19 @@ export default function StockList() {
           <Button variant={showAlerts ? 'contained' : 'outlined'} size="small" onClick={() => setShowAlerts(!showAlerts)}>
             Stock minimum
           </Button>
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <Select value={`${sortBy}-${sortOrder}`} displayEmpty onChange={(e) => {
+              const [s, o] = e.target.value.split('-');
+              setSortBy(s);
+              setSortOrder(o);
+              setPage(0);
+            }}>
+              <MenuItem value="code-asc">Code (A-Z)</MenuItem>
+              <MenuItem value="code-desc">Code (Z-A)</MenuItem>
+              <MenuItem value="name-asc">Désignation (A-Z)</MenuItem>
+              <MenuItem value="name-desc">Désignation (Z-A)</MenuItem>
+            </Select>
+          </FormControl>
         </Box>
       </Card>
 
@@ -113,6 +142,18 @@ export default function StockList() {
         )}
         {!loading && parts.length === 0 && (
           <Box p={4} textAlign="center" color="text.secondary">Aucune piece trouvee</Box>
+        )}
+        {!loading && total > 0 && (
+          <TablePagination
+            component="div"
+            count={total}
+            page={page}
+            onPageChange={handleChangePage}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            rowsPerPageOptions={[10, 20, 50]}
+            labelRowsPerPage="Lignes par page"
+          />
         )}
       </Card>
     </Box>

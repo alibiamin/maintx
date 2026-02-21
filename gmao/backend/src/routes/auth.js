@@ -96,7 +96,7 @@ router.post('/login', [
  */
 router.get('/me', authenticate, (req, res) => {
   const row = db.prepare(`
-    SELECT id, email, first_name, last_name, pinned_menu_items
+    SELECT id, email, first_name, last_name, pinned_menu_items, dashboard_layout
     FROM users WHERE id = ?
   `).get(req.user.id);
   if (!row) return res.status(404).json({ error: 'Utilisateur non trouvé' });
@@ -107,32 +107,42 @@ router.get('/me', authenticate, (req, res) => {
       pinnedMenuItems = Array.isArray(parsed) ? parsed : [];
     }
   } catch (_) {}
+  let dashboardLayout = null;
+  try {
+    if (row.dashboard_layout) {
+      const parsed = JSON.parse(row.dashboard_layout);
+      dashboardLayout = Array.isArray(parsed) ? parsed : null;
+    }
+  } catch (_) {}
   res.json({
     id: row.id,
     email: row.email,
     firstName: row.first_name,
     lastName: row.last_name,
     role: req.user.role_name,
-    pinnedMenuItems
+    pinnedMenuItems,
+    dashboardLayout
   });
 });
 
 /**
  * PUT /api/auth/me
- * Mise à jour du profil (ex. épingles menu)
- * Body: { pinnedMenuItems: [{ path, label }, ...] }
+ * Mise à jour du profil (ex. épingles menu, tableau de bord)
+ * Body: { pinnedMenuItems: [{ path, label }, ...], dashboardLayout: ['kpis','charts',...] }
  */
 router.put('/me', authenticate, (req, res) => {
-  const { pinnedMenuItems } = req.body || {};
-  const payload = Array.isArray(pinnedMenuItems)
-    ? pinnedMenuItems
-    : [];
-  const json = JSON.stringify(payload);
-  db.prepare('UPDATE users SET pinned_menu_items = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-    .run(json, req.user.id);
+  const { pinnedMenuItems, dashboardLayout } = req.body || {};
+  const row = db.prepare('SELECT pinned_menu_items, dashboard_layout FROM users WHERE id = ?').get(req.user.id);
+  const pinnedPayload = Array.isArray(pinnedMenuItems) ? pinnedMenuItems : (row ? JSON.parse(row.pinned_menu_items || '[]') : []);
+  const layoutPayload = dashboardLayout !== undefined
+    ? (Array.isArray(dashboardLayout) ? dashboardLayout : null)
+    : (row?.dashboard_layout ? JSON.parse(row.dashboard_layout) : null);
+  db.prepare('UPDATE users SET pinned_menu_items = ?, dashboard_layout = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+    .run(JSON.stringify(pinnedPayload), layoutPayload ? JSON.stringify(layoutPayload) : null, req.user.id);
   res.json({
     id: req.user.id,
-    pinnedMenuItems: payload
+    pinnedMenuItems: pinnedPayload,
+    dashboardLayout: layoutPayload
   });
 });
 

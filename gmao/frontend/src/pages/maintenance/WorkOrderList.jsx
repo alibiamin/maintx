@@ -8,6 +8,7 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TablePagination,
   Chip,
   IconButton,
   Button,
@@ -29,8 +30,13 @@ export default function WorkOrderList() {
   const [searchParams] = useSearchParams();
   const statusFromUrl = searchParams.get('status') || '';
   const [orders, setOrders] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState(statusFromUrl);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState('desc');
   const { user } = useAuth();
   const navigate = useNavigate();
   const canCreate = ['administrateur', 'responsable_maintenance', 'technicien', 'utilisateur'].includes(user?.role);
@@ -41,9 +47,19 @@ export default function WorkOrderList() {
 
   useEffect(() => {
     setLoading(true);
-    const params = filterStatus ? { status: filterStatus } : {};
-    api.get('/work-orders', { params }).then(r => setOrders(r.data)).catch(console.error).finally(() => setLoading(false));
-  }, [filterStatus]);
+    const params = { page: page + 1, limit: rowsPerPage, sortBy, order: sortOrder };
+    if (filterStatus) params.status = filterStatus;
+    api.get('/work-orders', { params })
+      .then(r => {
+        setOrders(r.data?.data ?? r.data ?? []);
+        setTotal(r.data?.total ?? (r.data?.length ?? 0));
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [filterStatus, page, rowsPerPage, sortBy, sortOrder]);
+
+  const handleChangePage = (_, newPage) => setPage(newPage);
+  const handleChangeRowsPerPage = (e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); };
 
   return (
     <Box>
@@ -62,17 +78,35 @@ export default function WorkOrderList() {
       <InterventionFlow workOrders={orders.filter(o => !['cancelled', 'deferred'].includes(o.status))} />
 
       <Card sx={{ mb: 2, mt: 3, p: 2 }}>
-        <FormControl size="small" sx={{ minWidth: 180 }}>
-          <InputLabel>Statut</InputLabel>
-          <Select value={filterStatus} label="Statut" onChange={(e) => setFilterStatus(e.target.value)}>
-            <MenuItem value="">Tous</MenuItem>
-            <MenuItem value="pending">En attente</MenuItem>
-            <MenuItem value="in_progress">En cours</MenuItem>
-            <MenuItem value="completed">Termine</MenuItem>
-            <MenuItem value="cancelled">Annule</MenuItem>
-            <MenuItem value="deferred">Reporte</MenuItem>
-          </Select>
-        </FormControl>
+        <Box display="flex" gap={2} flexWrap="wrap" alignItems="center">
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel>Statut</InputLabel>
+            <Select value={filterStatus} label="Statut" onChange={(e) => setFilterStatus(e.target.value)}>
+              <MenuItem value="">Tous</MenuItem>
+              <MenuItem value="pending">En attente</MenuItem>
+              <MenuItem value="in_progress">En cours</MenuItem>
+              <MenuItem value="completed">Termine</MenuItem>
+              <MenuItem value="cancelled">Annule</MenuItem>
+              <MenuItem value="deferred">Reporte</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel>Tri</InputLabel>
+            <Select value={`${sortBy}-${sortOrder}`} label="Tri" onChange={(e) => {
+              const [s, o] = e.target.value.split('-');
+              setSortBy(s);
+              setSortOrder(o);
+              setPage(0);
+            }}>
+              <MenuItem value="created_at-desc">Date (récent)</MenuItem>
+              <MenuItem value="created_at-asc">Date (ancien)</MenuItem>
+              <MenuItem value="number-desc">N° OT (Z-A)</MenuItem>
+              <MenuItem value="number-asc">N° OT (A-Z)</MenuItem>
+              <MenuItem value="title-asc">Titre (A-Z)</MenuItem>
+              <MenuItem value="title-desc">Titre (Z-A)</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
       </Card>
 
       <Card>
@@ -112,6 +146,18 @@ export default function WorkOrderList() {
         )}
         {!loading && orders.length === 0 && (
           <Box p={4} textAlign="center" color="text.secondary">Aucun ordre de travail</Box>
+        )}
+        {!loading && total > 0 && (
+          <TablePagination
+            component="div"
+            count={total}
+            page={page}
+            onPageChange={handleChangePage}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            rowsPerPageOptions={[10, 20, 50]}
+            labelRowsPerPage="Lignes par page"
+          />
         )}
       </Card>
     </Box>

@@ -8,6 +8,7 @@ import {
   TableCell,
   TableHead,
   TableRow,
+  TablePagination,
   TextField,
   InputAdornment,
   Chip,
@@ -28,6 +29,7 @@ const statusColors = { operational: 'success', maintenance: 'warning', out_of_se
 
 export default function EquipmentList() {
   const [equipment, setEquipment] = useState([]);
+  const [total, setTotal] = useState(0);
   const [categories, setCategories] = useState([]);
   const [lignes, setLignes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +37,10 @@ export default function EquipmentList() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
   const [filterLigne, setFilterLigne] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [sortBy, setSortBy] = useState('code');
+  const [sortOrder, setSortOrder] = useState('asc');
   const { user } = useAuth();
   const navigate = useNavigate();
   const { openEntityPanel, openListPanel } = useActionPanelHelpers();
@@ -52,13 +58,23 @@ export default function EquipmentList() {
 
   useEffect(() => {
     setLoading(true);
-    const params = {};
+    const params = { page: page + 1, limit: rowsPerPage, sortBy, order: sortOrder };
     if (search) params.search = search;
     if (filterStatus) params.status = filterStatus;
     if (filterCategory) params.categoryId = filterCategory;
     if (filterLigne) params.ligneId = filterLigne;
-    api.get('/equipment', { params }).then(r => setEquipment(r.data)).catch(console.error).finally(() => setLoading(false));
-  }, [search, filterStatus, filterCategory, filterLigne]);
+    api.get('/equipment', { params })
+      .then(r => {
+        const res = r.data;
+        setEquipment(res?.data ?? res ?? []);
+        setTotal(res?.total ?? (res?.length ?? 0));
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [search, filterStatus, filterCategory, filterLigne, page, rowsPerPage, sortBy, sortOrder]);
+
+  const handleChangePage = (_, newPage) => setPage(newPage);
+  const handleChangeRowsPerPage = (e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); };
 
   return (
     <Box>
@@ -115,6 +131,20 @@ export default function EquipmentList() {
               {lignes.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}
             </Select>
           </FormControl>
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel>Tri</InputLabel>
+            <Select value={`${sortBy}-${sortOrder}`} label="Tri" onChange={(e) => {
+              const [s, o] = e.target.value.split('-');
+              setSortBy(s);
+              setSortOrder(o);
+              setPage(0);
+            }}>
+              <MenuItem value="code-asc">Code (A-Z)</MenuItem>
+              <MenuItem value="code-desc">Code (Z-A)</MenuItem>
+              <MenuItem value="name-asc">Nom (A-Z)</MenuItem>
+              <MenuItem value="name-desc">Nom (Z-A)</MenuItem>
+            </Select>
+          </FormControl>
         </Box>
       </Card>
 
@@ -168,6 +198,18 @@ export default function EquipmentList() {
         )}
         {!loading && equipment.length === 0 && (
           <Box p={4} textAlign="center" color="text.secondary">Aucun équipement trouvé</Box>
+        )}
+        {!loading && total > 0 && (
+          <TablePagination
+            component="div"
+            count={total}
+            page={page}
+            onPageChange={handleChangePage}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            rowsPerPageOptions={[10, 20, 50]}
+            labelRowsPerPage="Lignes par page"
+          />
         )}
       </Card>
     </Box>

@@ -6,20 +6,11 @@ const ThemeModeContext = createContext();
 
 function getInitialTheme() {
   const current = localStorage.getItem('xmaint-theme');
-  if (current === 'light') return 'light';
-  // Toujours démarrer en mode clair : si dark était enregistré, on bascule vers light
-  if (current === 'dark') {
-    localStorage.setItem('xmaint-theme', 'light');
-    return 'light';
-  }
+  if (current === 'light' || current === 'dark') return current;
   const legacy = localStorage.getItem('gmao-theme');
-  if (legacy === 'light') {
-    localStorage.setItem('xmaint-theme', 'light');
-    return 'light';
-  }
-  if (legacy === 'dark') {
-    localStorage.setItem('xmaint-theme', 'light');
-    return 'light';
+  if (legacy === 'light' || legacy === 'dark') {
+    localStorage.setItem('xmaint-theme', legacy);
+    return legacy;
   }
   return 'light';
 }

@@ -22,9 +22,12 @@ import {
   ListItem,
   ListItemText,
   ListItemButton,
-  LinearProgress
+  ListItemSecondaryAction,
+  LinearProgress,
+  TextField,
+  IconButton
 } from '@mui/material';
-import { ArrowBack, PlayArrow, Stop, PersonSearch, Star, Schedule, Checklist, Inventory } from '@mui/icons-material';
+import { ArrowBack, PlayArrow, Stop, PersonSearch, Star, Schedule, Checklist, Inventory, Description, Download, Delete, Upload, Print } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useSnackbar } from '../../context/SnackbarContext';
@@ -50,6 +53,10 @@ export default function WorkOrderDetail() {
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [planChecklists, setPlanChecklists] = useState([]);
   const [stockMovements, setStockMovements] = useState([]);
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [signatureName, setSignatureName] = useState('');
+  const [woDocuments, setWoDocuments] = useState([]);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
   const { user } = useAuth();
   const snackbar = useSnackbar();
   const canEdit = ['administrateur', 'responsable_maintenance', 'technicien'].includes(user?.role);
@@ -78,18 +85,93 @@ export default function WorkOrderDetail() {
       .catch(() => setPlanChecklists([]));
   }, [order?.maintenancePlanId]);
 
+  // Dédupliquer par id pour éviter affichages en double (API ou intercepteur peuvent renvoyer des doublons)
+  const dedupeById = (arr) => {
+    if (!Array.isArray(arr) || arr.length === 0) return arr;
+    const seen = new Set();
+    return arr.filter((item) => {
+      const id = item?.id;
+      if (id == null || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  };
+
   useEffect(() => {
     if (!order?.id) return;
     api.get('/stock/movements', { params: { work_order_id: order.id } })
-      .then(r => setStockMovements(r.data || []))
+      .then(r => setStockMovements(dedupeById(r.data || [])))
       .catch(() => setStockMovements([]));
   }, [order?.id]);
 
+  useEffect(() => {
+    if (!order?.id) return;
+    api.get('/documents', { params: { entity_type: 'work_order', entity_id: order.id } })
+      .then(r => setWoDocuments(dedupeById(r.data || [])))
+      .catch(() => setWoDocuments([]));
+  }, [order?.id]);
+
+  const handleDownloadDoc = (docId) => {
+    api.get(`/documents/${docId}/download`, { responseType: 'blob' })
+      .then(res => {
+        const url = window.URL.createObjectURL(res.data);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = woDocuments.find(d => d.id === docId)?.original_filename || 'document';
+        a.click();
+        window.URL.revokeObjectURL(url);
+      })
+      .catch((err) => {
+        const msg = err.response?.status === 404 ? 'Fichier introuvable sur le serveur' : 'Téléchargement impossible';
+        snackbar.showError(msg);
+      });
+  };
+
+  const handleUploadDoc = (e) => {
+    const file = e.target?.files?.[0];
+    if (!file || !order?.id) return;
+    setUploadingDoc(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('entity_type', 'work_order');
+    formData.append('entity_id', String(order.id));
+    api.post('/documents', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      .then(() => api.get('/documents', { params: { entity_type: 'work_order', entity_id: order.id } }))
+      .then(r => { setWoDocuments(dedupeById(r.data || [])); snackbar.showSuccess('Document ajouté'); e.target.value = ''; })
+      .catch(err => snackbar.showError(err.response?.data?.error || 'Erreur'))
+      .finally(() => setUploadingDoc(false));
+  };
+
+  const handleDeleteDoc = (docId) => {
+    if (!window.confirm('Supprimer ce document ?')) return;
+    api.delete(`/documents/${docId}`)
+      .then(() => setWoDocuments(prev => prev.filter(d => d.id !== docId)))
+      .catch(() => snackbar.showError('Erreur'));
+  };
+
   const handleStatusChange = (newStatus) => {
     if (!canEdit || !order?.id) return;
+    if (newStatus === 'completed' && canClose) {
+      setSignatureName([user?.firstName, user?.lastName].filter(Boolean).join(' ') || '');
+      setCloseDialogOpen(true);
+      return;
+    }
     setActionLoading(true);
     api.put(`/work-orders/${order.id}`, { ...order, status: newStatus })
       .then(r => { setOrder(r.data); snackbar.showSuccess('Statut mis à jour'); })
+      .catch(err => { snackbar.showError(err.response?.data?.error || 'Erreur'); })
+      .finally(() => setActionLoading(false));
+  };
+
+  const handleConfirmClose = () => {
+    if (!order?.id) return;
+    setActionLoading(true);
+    api.put(`/work-orders/${order.id}`, {
+      status: 'completed',
+      signatureName: signatureName.trim() || undefined,
+      completedBy: user?.id
+    })
+      .then(r => { setOrder(r.data); setCloseDialogOpen(false); snackbar.showSuccess('OT clôturé avec signature.'); })
       .catch(err => { snackbar.showError(err.response?.data?.error || 'Erreur'); })
       .finally(() => setActionLoading(false));
   };
@@ -131,6 +213,20 @@ export default function WorkOrderDetail() {
       .finally(() => setActionLoading(false));
   };
 
+  const handlePrintPdf = () => {
+    if (!order?.id) return;
+    setActionLoading(true);
+    api.get(`/reports/export/pdf/work-order/${order.id}`, { responseType: 'blob' })
+      .then((res) => {
+        const url = URL.createObjectURL(res.data);
+        const w = window.open(url, '_blank');
+        if (w) w.onload = () => URL.revokeObjectURL(url);
+        else { URL.revokeObjectURL(url); snackbar.showSuccess('PDF téléchargé (ouvrez les téléchargements si la fenêtre a été bloquée).'); }
+      })
+      .catch(() => snackbar.showError('Erreur lors de la génération du PDF'))
+      .finally(() => setActionLoading(false));
+  };
+
   if (id === 'new') return <Navigate to="/creation" replace />;
   if (loading || !order) return <Box p={4}><CircularProgress /></Box>;
 
@@ -144,7 +240,12 @@ export default function WorkOrderDetail() {
 
   return (
     <Box>
-      <Button startIcon={<ArrowBack />} onClick={() => navigate('/work-orders')} sx={{ mb: 2 }}>Retour</Button>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+        <Button startIcon={<ArrowBack />} onClick={() => navigate('/work-orders')}>Retour</Button>
+        <Button startIcon={<Print />} onClick={handlePrintPdf} disabled={actionLoading} variant="outlined" size="small">
+          Imprimer / PDF
+        </Button>
+      </Box>
       <Card>
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
@@ -185,6 +286,12 @@ export default function WorkOrderDetail() {
               )}
               {canEdit && !canClose && order.status === 'in_progress' && order.actualEnd && (
                 <Alert severity="info" sx={{ mt: 1 }}>En attente de clôture par un responsable ou administrateur.</Alert>
+              )}
+              {order.status === 'completed' && (order.completedAt || order.signatureName) && (
+                <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
+                  Clôturé{order.completedAt ? ` le ${new Date(order.completedAt).toLocaleString('fr-FR')}` : ''}
+                  {order.signatureName ? ` — Signé par ${order.signatureName}` : ''}
+                </Typography>
               )}
             </Box>
           </Box>
@@ -265,6 +372,51 @@ export default function WorkOrderDetail() {
         </Card>
       )}
 
+      <Card sx={{ mt: 2 }}>
+        <CardContent>
+          <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
+            <Typography variant="subtitle1" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Description /> Pièces jointes
+            </Typography>
+            {canEdit && (
+              <Button size="small" variant="outlined" component="label" startIcon={<Upload />} disabled={uploadingDoc}>
+                {uploadingDoc ? 'Envoi...' : 'Ajouter un fichier'}
+                <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.txt" onChange={handleUploadDoc} />
+              </Button>
+            )}
+          </Box>
+          {woDocuments.length === 0 ? (
+            <Typography color="text.secondary" variant="body2">Aucune pièce jointe</Typography>
+          ) : (
+            <List dense disablePadding>
+              {woDocuments.map((doc) => (
+                <ListItem key={doc.id} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, mb: 0.5 }}
+                  secondaryAction={
+                    <Box>
+                      <IconButton size="small" onClick={() => handleDownloadDoc(doc.id)}><Download /></IconButton>
+                      {canEdit && <IconButton size="small" onClick={() => handleDeleteDoc(doc.id)}><Delete /></IconButton>}
+                    </Box>
+                  }
+                >
+                  <ListItemText
+                    primary={doc.original_filename}
+                    secondaryTypographyProps={{ component: 'div' }}
+                    secondary={
+                      <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                        <Chip label={doc.document_type || 'other'} size="small" variant="outlined" />
+                        <Typography component="span" variant="caption" color="text.secondary">
+                          {(doc.file_size / 1024).toFixed(1)} KB · {new Date(doc.created_at).toLocaleDateString('fr-FR')}
+                        </Typography>
+                      </Box>
+                    }
+                  />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </CardContent>
+      </Card>
+
       {stockMovements.length > 0 && (
         <Card sx={{ mt: 2 }}>
           <CardContent>
@@ -318,11 +470,12 @@ export default function WorkOrderDetail() {
                   <ListItemButton onClick={() => handleAssign(t.id)}>
                     <ListItemText
                       primary={`${t.first_name} ${t.last_name}`}
+                      secondaryTypographyProps={{ component: 'div' }}
                       secondary={
-                        <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
                           <Chip size="small" label={`Score ${t.suggestion_score}%`} color="primary" variant="outlined" />
-                          {t.match_score != null && <Typography variant="caption">Adéquation {t.match_score}%</Typography>}
-                          {t.avg_evaluation != null && <Typography variant="caption"><Star sx={{ fontSize: 14, verticalAlign: 'middle' }} /> {t.avg_evaluation}/5</Typography>}
+                          {t.match_score != null && <Typography component="span" variant="caption">Adéquation {t.match_score}%</Typography>}
+                          {t.avg_evaluation != null && <Typography component="span" variant="caption"><Star sx={{ fontSize: 14, verticalAlign: 'middle' }} /> {t.avg_evaluation}/5</Typography>}
                         </Box>
                       }
                     />
@@ -334,6 +487,28 @@ export default function WorkOrderDetail() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSuggestOpen(false)}>Fermer</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={closeDialogOpen} onClose={() => setCloseDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Clôturer l&apos;OT — Signature</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Enregistrez le nom du signataire pour valider la clôture de l&apos;ordre de travail.
+          </Typography>
+          <TextField
+            fullWidth
+            label="Nom du signataire"
+            value={signatureName}
+            onChange={(e) => setSignatureName(e.target.value)}
+            placeholder="Prénom Nom"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCloseDialogOpen(false)}>Annuler</Button>
+          <Button variant="contained" onClick={handleConfirmClose} disabled={actionLoading}>
+            {actionLoading ? 'Enregistrement...' : 'Confirmer la clôture'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

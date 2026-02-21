@@ -265,6 +265,92 @@ router.get('/export/pdf/stock', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req,
 });
 
 /**
+ * GET /api/reports/export/pdf/work-order/:id - Bon de travail (OT) en PDF
+ */
+router.get('/export/pdf/work-order/:id', (req, res) => {
+  const woId = req.params.id;
+  const wo = db.prepare(`
+    SELECT wo.*, e.name as equipment_name, e.code as equipment_code, t.name as type_name,
+           u.first_name || ' ' || u.last_name as assigned_name,
+           cb.first_name || ' ' || cb.last_name as created_by_name
+    FROM work_orders wo
+    LEFT JOIN equipment e ON wo.equipment_id = e.id
+    LEFT JOIN work_order_types t ON wo.type_id = t.id
+    LEFT JOIN users u ON wo.assigned_to = u.id
+    LEFT JOIN users cb ON wo.created_by = cb.id
+    WHERE wo.id = ?
+  `).get(woId);
+  if (!wo) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
+
+  const interventions = db.prepare(`
+    SELECT i.description, i.hours_spent, i.quantity_used, sp.code as part_code, sp.name as part_name, sp.unit_price,
+           u.first_name || ' ' || u.last_name as technician_name
+    FROM interventions i
+    LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id
+    LEFT JOIN users u ON i.technician_id = u.id
+    WHERE i.work_order_id = ?
+    ORDER BY i.id
+  `).all(woId);
+
+  const statusLabels = { pending: 'En attente', in_progress: 'En cours', completed: 'Terminé', cancelled: 'Annulé', deferred: 'Reporté' };
+  const priorityLabels = { low: 'Basse', medium: 'Moyenne', high: 'Haute', critical: 'Critique' };
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename=bon-travail-${(wo.number || woId).replace(/\s/g, '-')}.pdf`);
+  const doc = new PDFDocument({ margin: 50 });
+  doc.pipe(res);
+
+  let y = 50;
+  doc.fontSize(18).font('Helvetica-Bold').text('Bon de travail', 50, y);
+  y += 28;
+  doc.fontSize(11).font('Helvetica');
+  doc.text(`N° ${wo.number || '-'}`, 50, y);
+  doc.text(`Titre : ${(wo.title || '').substring(0, 60)}`, 50, y + 18);
+  doc.text(`Équipement : ${(wo.equipment_code || '')} ${(wo.equipment_name || '-')}`.trim(), 50, y + 36);
+  doc.text(`Type : ${wo.type_name || '-'}  |  Priorité : ${priorityLabels[wo.priority] || wo.priority}  |  Statut : ${statusLabels[wo.status] || wo.status}`, 50, y + 54);
+  doc.text(`Planifié : ${wo.planned_start ? wo.planned_start.slice(0, 16) : '-'} → ${wo.planned_end ? wo.planned_end.slice(0, 16) : '-'}`, 50, y + 72);
+  doc.text(`Assigné à : ${wo.assigned_name || '-'}  |  Créé par : ${wo.created_by_name || '-'}`, 50, y + 90);
+  y += 110;
+
+  if (wo.description) {
+    doc.font('Helvetica-Bold').text('Description', 50, y);
+    y += 18;
+    doc.font('Helvetica').text((wo.description || '').substring(0, 500), 50, y, { width: 500 });
+    y += 40;
+  }
+
+  doc.font('Helvetica-Bold').text('Interventions / Pièces utilisées', 50, y);
+  y += 22;
+  if (interventions.length === 0) {
+    doc.font('Helvetica').text('Aucune intervention enregistrée.', 50, y);
+    y += 24;
+  } else {
+    doc.fontSize(9).font('Helvetica-Bold');
+    ['Technicien', 'Description', 'Heures', 'Pièce', 'Qté', 'P.U.'].forEach((h, idx) => doc.text(h, 50 + [0, 100, 180, 260, 320, 380][idx], y));
+    y += 16;
+    doc.font('Helvetica');
+    interventions.forEach((i) => {
+      const line = [i.technician_name || '-', (i.description || '').substring(0, 35), i.hours_spent != null ? `${i.hours_spent} h` : '-', i.part_name ? `${i.part_code || ''} ${i.part_name}`.trim().substring(0, 28) : '-', i.quantity_used ?? '-', i.unit_price != null ? `${Number(i.unit_price).toFixed(2)}` : '-'];
+      line.forEach((val, idx) => doc.text(String(val), 50 + [0, 100, 180, 260, 320, 380][idx], y));
+      y += 16;
+    });
+    y += 8;
+  }
+
+  if (wo.status === 'completed' && (wo.completed_at || wo.signature_name)) {
+    doc.font('Helvetica-Bold').text('Clôture', 50, y);
+    y += 18;
+    doc.font('Helvetica');
+    if (wo.completed_at) doc.text(`Clôturé le : ${wo.completed_at.slice(0, 19)}`, 50, y);
+    if (wo.signature_name) doc.text(`Signé par : ${wo.signature_name}`, 50, y + 18);
+    y += 50;
+  }
+
+  doc.fontSize(9).text(`Document généré le ${new Date().toLocaleString('fr-FR')} - GMAO`, 50, doc.page.height - 40);
+  doc.end();
+});
+
+/**
  * GET /api/reports/export/pdf/kpis - Indicateurs de performance en PDF
  */
 router.get('/export/pdf/kpis', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
