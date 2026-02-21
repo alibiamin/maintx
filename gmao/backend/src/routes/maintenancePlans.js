@@ -124,7 +124,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   const id = req.params.id;
   const existing = db.prepare('SELECT id FROM maintenance_plans WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Plan non trouvé' });
-  const { name, description, frequencyDays, isActive, nextDueDate, triggerType, counterType, thresholdValue } = req.body;
+  const { name, description, frequencyDays, isActive, nextDueDate, triggerType, counterType, thresholdValue, procedureId } = req.body;
   const updates = [];
   const values = [];
   if (name !== undefined) { updates.push('name = ?'); values.push(name); }
@@ -135,6 +135,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   if (triggerType !== undefined) { updates.push('trigger_type = ?'); values.push(triggerType === 'counter' ? 'counter' : 'calendar'); }
   if (counterType !== undefined) { updates.push('counter_type = ?'); values.push(counterType || null); }
   if (thresholdValue !== undefined) { updates.push('threshold_value = ?'); values.push(thresholdValue != null ? parseFloat(thresholdValue) : null); }
+  if (procedureId !== undefined) { updates.push('procedure_id = ?'); values.push(procedureId || null); }
   if (updates.length > 0) {
     updates.push('updated_at = CURRENT_TIMESTAMP');
     values.push(id);

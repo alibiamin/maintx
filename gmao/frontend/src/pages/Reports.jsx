@@ -31,7 +31,7 @@ import api from '../services/api';
 import { CHART_COLORS } from '../shared/chartTheme';
 import { useCurrency } from '../context/CurrencyContext';
 
-const TAB_IDS = ['costs', 'availability', 'technician', 'parts'];
+const TAB_IDS = ['costs', 'availability', 'technician', 'parts', 'mttr', 'costPerHour'];
 const TAB_ID_TO_INDEX = Object.fromEntries(TAB_IDS.map((id, i) => [id, i]));
 
 export default function Reports() {
@@ -47,6 +47,8 @@ export default function Reports() {
   const [availability, setAvailability] = useState([]);
   const [timeByTech, setTimeByTech] = useState([]);
   const [partsMostUsed, setPartsMostUsed] = useState([]);
+  const [mttrData, setMttrData] = useState({ global: {}, byEquipment: [] });
+  const [costPerHourData, setCostPerHourData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -81,6 +83,22 @@ export default function Reports() {
       api.get('/reports/time-by-technician', { params: { startDate, endDate } })
         .then(r => setTimeByTech(r.data))
         .catch(console.error)
+        .finally(() => setLoading(false));
+    } else if (tab === 4) {
+      const params = { startDate, endDate };
+      if (siteId) params.siteId = siteId;
+      if (equipmentId) params.equipmentId = equipmentId;
+      api.get('/reports/mttr', { params })
+        .then(r => setMttrData(r.data || { global: {}, byEquipment: [] }))
+        .catch(() => setMttrData({ global: {}, byEquipment: [] }))
+        .finally(() => setLoading(false));
+    } else if (tab === 5) {
+      const params = { startDate, endDate };
+      if (siteId) params.siteId = siteId;
+      if (equipmentId) params.equipmentId = equipmentId;
+      api.get('/reports/cost-per-operating-hour', { params })
+        .then(r => setCostPerHourData(r.data || []))
+        .catch(() => setCostPerHourData([]))
         .finally(() => setLoading(false));
     } else {
       api.get('/reports/parts-most-used', { params: { startDate, endDate, limit: 20 } })
@@ -157,7 +175,7 @@ export default function Reports() {
           <CardContent>
             <Typography variant="body2" color="text.secondary" gutterBottom>Coût total ({currency})</Typography>
             <Typography variant="h5" fontWeight={700} color="primary.main">
-              {costs.reduce((s, c) => s + parseFloat(c.parts_cost || 0), 0).toFixed(2)}
+              {costs.reduce((s, c) => s + parseFloat(c.parts_cost || 0) + parseFloat(c.labor_cost || 0), 0).toFixed(2)}
             </Typography>
           </CardContent>
         </Card>
@@ -179,11 +197,13 @@ export default function Reports() {
         </Card>
       </Box>
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ mb: 2 }}>
         <Tab label="Coûts par équipement" />
         <Tab label="Disponibilité" />
         <Tab label="Temps par technicien" />
         <Tab label="Pièces les plus utilisées" />
+        <Tab label="MTTR" />
+        <Tab label="Coût / h fonctionnement" />
       </Tabs>
 
       {tab === 0 && (
@@ -196,7 +216,12 @@ export default function Reports() {
               <Box sx={{ mb: 3, height: 280 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={costs.map(c => ({ code: c.code, value: parseFloat(c.parts_cost || 0) }))}
+                    data={costs.map(c => ({
+                      code: c.code,
+                      total: parseFloat(c.parts_cost || 0) + parseFloat(c.labor_cost || 0),
+                      labor: parseFloat(c.labor_cost || 0),
+                      parts: parseFloat(c.parts_cost || 0)
+                    }))}
                     margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
                   >
                     <XAxis dataKey="code" tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 12 }} />
@@ -207,9 +232,10 @@ export default function Reports() {
                         border: isDark ? '1px solid rgba(148,163,184,0.2)' : '1px solid rgba(0,0,0,0.1)',
                         backgroundColor: isDark ? '#1e293b' : '#fff'
                       }}
-                      formatter={(value) => [`${Number(value).toFixed(2)} ${currency}`, 'Coût pièces']}
+                      formatter={(value) => [`${Number(value).toFixed(2)} ${currency}`, '']}
+                      labelFormatter={(_, payload) => payload[0]?.payload?.code && `Équipement: ${payload[0].payload.code}`}
                     />
-                    <Bar dataKey="value" name={`Coût pièces (${currency})`} radius={[6, 6, 0, 0]} maxBarSize={60}>
+                    <Bar dataKey="total" name={`Total (${currency})`} radius={[6, 6, 0, 0]} maxBarSize={60}>
                       {costs.map((_, i) => (
                         <Cell key={i} fill={CHART_COLORS[0]} />
                       ))}
@@ -227,18 +253,26 @@ export default function Reports() {
                     <TableCell>Code</TableCell>
                     <TableCell>Équipement</TableCell>
                     <TableCell align="right">Interventions</TableCell>
+                    <TableCell align="right">Coût main-d'œuvre ({currency})</TableCell>
                     <TableCell align="right">Coût pièces ({currency})</TableCell>
+                    <TableCell align="right">Total ({currency})</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {costs.map((row) => (
-                    <TableRow key={row.code}>
-                      <TableCell>{row.code}</TableCell>
-                      <TableCell>{row.name}</TableCell>
-                      <TableCell align="right">{row.interventions}</TableCell>
-                      <TableCell align="right">{row.parts_cost ? parseFloat(row.parts_cost).toFixed(2) : '0.00'}</TableCell>
-                    </TableRow>
-                  ))}
+                  {costs.map((row) => {
+                    const labor = parseFloat(row.labor_cost || 0);
+                    const parts = parseFloat(row.parts_cost || 0);
+                    return (
+                      <TableRow key={row.equipment_id || row.code}>
+                        <TableCell>{row.code}</TableCell>
+                        <TableCell>{row.name}</TableCell>
+                        <TableCell align="right">{row.interventions}</TableCell>
+                        <TableCell align="right">{labor.toFixed(2)}</TableCell>
+                        <TableCell align="right">{parts.toFixed(2)}</TableCell>
+                        <TableCell align="right">{(labor + parts).toFixed(2)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
@@ -429,6 +463,92 @@ export default function Reports() {
             {!loading && partsMostUsed.length === 0 && (
               <Typography color="text.secondary">Aucune pièce utilisée sur la période</Typography>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === 4 && (
+        <Card sx={{ borderRadius: 2 }}>
+          <CardContent>
+            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+              MTTR — Temps moyen de réparation (h)
+            </Typography>
+            {!loading && (
+              <>
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary">Global (période)</Typography>
+                  <Typography variant="h6">
+                    {mttrData.global?.mttr_hours != null ? Number(mttrData.global.mttr_hours).toFixed(2) : '—'} h
+                    {mttrData.global?.repair_count != null && ` (${mttrData.global.repair_count} réparation(s))`}
+                  </Typography>
+                </Box>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Code</TableCell>
+                      <TableCell>Équipement</TableCell>
+                      <TableCell align="right">Réparations</TableCell>
+                      <TableCell align="right">MTTR (h)</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {(mttrData.byEquipment || []).map((row) => (
+                      <TableRow key={row.equipment_id}>
+                        <TableCell>{row.code}</TableCell>
+                        <TableCell>{row.name}</TableCell>
+                        <TableCell align="right">{row.repair_count ?? 0}</TableCell>
+                        <TableCell align="right">{row.mttr_hours != null ? Number(row.mttr_hours).toFixed(2) : '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {(!mttrData.byEquipment || mttrData.byEquipment.length === 0) && (
+                  <Typography color="text.secondary">Aucune donnée sur la période</Typography>
+                )}
+              </>
+            )}
+            {loading && <Box display="flex" justifyContent="center" p={2}><CircularProgress /></Box>}
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === 5 && (
+        <Card sx={{ borderRadius: 2 }}>
+          <CardContent>
+            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+              Coût par heure de fonctionnement
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Basé sur les compteurs (heures) des équipements et les coûts de maintenance de la période.
+            </Typography>
+            {!loading && (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Code</TableCell>
+                    <TableCell>Équipement</TableCell>
+                    <TableCell align="right">Coût total ({currency})</TableCell>
+                    <TableCell align="right">Heures fonctionnement</TableCell>
+                    <TableCell align="right">Coût / h ({currency})</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {costPerHourData.map((row) => (
+                    <TableRow key={row.equipment_id}>
+                      <TableCell>{row.code}</TableCell>
+                      <TableCell>{row.name}</TableCell>
+                      <TableCell align="right">{row.total_cost != null ? Number(row.total_cost).toFixed(2) : '—'}</TableCell>
+                      <TableCell align="right">{row.operating_hours != null ? Number(row.operating_hours).toFixed(0) : '—'}</TableCell>
+                      <TableCell align="right">{row.cost_per_operating_hour != null ? Number(row.cost_per_operating_hour).toFixed(2) : '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+            {!loading && (!costPerHourData || costPerHourData.length === 0) && (
+              <Typography color="text.secondary">Aucune donnée (compteurs heures ou coûts)</Typography>
+            )}
+            {loading && <Box display="flex" justifyContent="center" p={2}><CircularProgress /></Box>}
           </CardContent>
         </Card>
       )}

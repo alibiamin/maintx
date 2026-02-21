@@ -7,6 +7,7 @@ const { body, param, validationResult } = require('express-validator');
 const db = require('../database/db');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
 const codification = require('../services/codification');
+const auditService = require('../services/auditService');
 
 const router = express.Router();
 router.use(authenticate);
@@ -31,6 +32,10 @@ function formatEquipment(row) {
     criticite: row.criticite || 'B',
     technicalSpecs: row.technical_specs ? (typeof row.technical_specs === 'string' ? JSON.parse(row.technical_specs) : row.technical_specs) : null,
     status: row.status,
+    acquisitionValue: row.acquisition_value,
+    depreciationYears: row.depreciation_years,
+    residualValue: row.residual_value,
+    depreciationStartDate: row.depreciation_start_date,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -224,6 +229,124 @@ router.get('/categories', (req, res) => {
   res.json(cats);
 });
 
+/**
+ * POST /api/equipment/from-model — Créer un équipement à partir d'un modèle (template)
+ */
+router.post('/from-model', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+  body('modelId').isInt(),
+  body('name').notEmpty().trim()
+], (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const model = db.prepare('SELECT * FROM equipment_models WHERE id = ?').get(req.body.modelId);
+  if (!model) return res.status(404).json({ error: 'Modèle non trouvé' });
+  const { code: codeProvided, name, ligneId, parentId, serialNumber, installationDate, location } = req.body;
+  const code = codification.generateCodeIfNeeded('machine', codeProvided);
+  if (!code || !code.trim()) return res.status(400).json({ error: 'Code requis ou configurer la codification dans Paramétrage' });
+  try {
+    const result = db.prepare(`
+      INSERT INTO equipment (code, name, description, category_id, ligne_id, parent_id, serial_number, manufacturer, model, installation_date, location, technical_specs, criticite, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      code.trim(),
+      name,
+      req.body.description != null ? req.body.description : model.description,
+      model.category_id,
+      ligneId || null,
+      parentId || null,
+      serialNumber || null,
+      model.manufacturer,
+      model.model,
+      installationDate || null,
+      location || null,
+      model.technical_specs,
+      'B',
+      'operational'
+    );
+    const newId = result.lastInsertRowid;
+    const newRow = db.prepare('SELECT e.*, c.name as category_name, l.name as ligne_name FROM equipment e LEFT JOIN equipment_categories c ON e.category_id = c.id LEFT JOIN lignes l ON e.ligne_id = l.id WHERE e.id = ?').get(newId);
+    auditService.log('equipment', newId, 'created', { userId: req.user?.id, userEmail: req.user?.email, summary: newRow?.code || newRow?.name });
+    res.status(201).json(formatEquipment(newRow));
+  } catch (e) {
+    if (e.message && e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Code équipement déjà existant' });
+    throw e;
+  }
+});
+
+/**
+ * POST /api/equipment/:id/clone — Cloner un équipement (copie champs + optionnel BOM et plans)
+ */
+router.post('/:id/clone', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), [
+  body('code').notEmpty().trim(),
+  body('name').notEmpty().trim(),
+  body('copyBom').optional().isBoolean(),
+  body('copyPlans').optional().isBoolean()
+], (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const sourceId = req.params.id;
+  const source = db.prepare('SELECT * FROM equipment WHERE id = ?').get(sourceId);
+  if (!source) return res.status(404).json({ error: 'Équipement source non trouvé' });
+  const { code, name, copyBom, copyPlans } = req.body;
+  const description = req.body.description != null ? req.body.description : source.description;
+  try {
+    const result = db.prepare(`
+      INSERT INTO equipment (code, name, description, category_id, ligne_id, parent_id, serial_number, manufacturer, model, installation_date, location, technical_specs, criticite, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      code.trim(),
+      name,
+      description,
+      source.category_id,
+      req.body.ligneId != null ? req.body.ligneId : source.ligne_id,
+      null,
+      req.body.serialNumber || null,
+      source.manufacturer,
+      source.model,
+      null,
+      source.location,
+      source.technical_specs,
+      source.criticite || 'B',
+      'operational'
+    );
+    const newId = result.lastInsertRowid;
+    if (copyBom) {
+      try {
+        const bomRows = db.prepare('SELECT spare_part_id, quantity FROM equipment_spare_parts WHERE equipment_id = ?').all(sourceId);
+        const insertBom = db.prepare('INSERT INTO equipment_spare_parts (equipment_id, spare_part_id, quantity) VALUES (?, ?, ?)');
+        bomRows.forEach((r) => insertBom.run(newId, r.spare_part_id, r.quantity));
+      } catch (e) {
+        if (!e.message || !e.message.includes('no such table')) throw e;
+      }
+    }
+    if (copyPlans) {
+      try {
+        const plans = db.prepare('SELECT name, description, frequency_days FROM maintenance_plans WHERE equipment_id = ?').all(sourceId);
+        const now = new Date();
+        now.setDate(now.getDate() + (plans[0]?.frequency_days || 30));
+        const nextDue = now.toISOString().split('T')[0];
+        try {
+          const insertPlan = db.prepare(`
+            INSERT INTO maintenance_plans (equipment_id, name, description, frequency_days, next_due_date, is_active)
+            VALUES (?, ?, ?, ?, ?, 1)
+          `);
+          plans.forEach((p) => insertPlan.run(newId, p.name, p.description || null, p.frequency_days || 30, nextDue));
+        } catch (insErr) {
+          if (!insErr.message || !insErr.message.includes('no such table')) throw insErr;
+        }
+      } catch (e) {
+        if (!e.message || !e.message.includes('no such table')) throw e;
+      }
+    }
+    const newRow = db.prepare('SELECT e.*, c.name as category_name, l.name as ligne_name FROM equipment e LEFT JOIN equipment_categories c ON e.category_id = c.id LEFT JOIN lignes l ON e.ligne_id = l.id WHERE e.id = ?').get(newId);
+    auditService.log('equipment', newId, 'created', { userId: req.user?.id, userEmail: req.user?.email, summary: newRow?.code || newRow?.name });
+    res.status(201).json(formatEquipment(newRow));
+  } catch (e) {
+    if (e.message && e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Code équipement déjà existant' });
+    throw e;
+  }
+});
+
 router.get('/:id/history', param('id').isInt(), (req, res) => {
   const workOrders = db.prepare(`
     SELECT wo.*, t.name as type_name, u.first_name || ' ' || u.last_name as assigned_name
@@ -401,6 +524,78 @@ router.delete('/:id/thresholds/:tid', authorize(ROLES.ADMIN, ROLES.RESPONSABLE),
   res.status(204).send();
 });
 
+/**
+ * GET /api/equipment/:id/bom — Nomenclature (liste des pièces liées à l'équipement)
+ */
+router.get('/:id/bom', param('id').isInt(), (req, res) => {
+  const equipmentId = req.params.id;
+  const exists = db.prepare('SELECT id FROM equipment WHERE id = ?').get(equipmentId);
+  if (!exists) return res.status(404).json({ error: 'Équipement non trouvé' });
+  const rows = db.prepare(`
+    SELECT esp.equipment_id, esp.spare_part_id, esp.quantity,
+           sp.code as part_code, sp.name as part_name, sp.unit, sp.unit_price,
+           COALESCE(sb.quantity, 0) as stock_quantity
+    FROM equipment_spare_parts esp
+    JOIN spare_parts sp ON esp.spare_part_id = sp.id
+    LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
+    WHERE esp.equipment_id = ?
+    ORDER BY sp.code
+  `).all(equipmentId);
+  res.json(rows.map(r => ({
+    equipmentId: r.equipment_id,
+    sparePartId: r.spare_part_id,
+    quantity: r.quantity,
+    partCode: r.part_code,
+    partName: r.part_name,
+    unit: r.unit,
+    unitPrice: r.unit_price,
+    stockQuantity: r.stock_quantity
+  })));
+});
+
+/**
+ * POST /api/equipment/:id/bom — Ajouter une pièce à la nomenclature
+ */
+router.post('/:id/bom', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), [
+  body('sparePartId').isInt(),
+  body('quantity').optional().isInt({ min: 1 })
+], (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const equipmentId = req.params.id;
+  const sparePartId = req.body.sparePartId;
+  const quantity = req.body.quantity || 1;
+  const exists = db.prepare('SELECT id FROM equipment WHERE id = ?').get(equipmentId);
+  if (!exists) return res.status(404).json({ error: 'Équipement non trouvé' });
+  const partExists = db.prepare('SELECT id FROM spare_parts WHERE id = ?').get(sparePartId);
+  if (!partExists) return res.status(404).json({ error: 'Pièce non trouvée' });
+  try {
+    db.prepare(`
+      INSERT INTO equipment_spare_parts (equipment_id, spare_part_id, quantity)
+      VALUES (?, ?, ?)
+      ON CONFLICT(equipment_id, spare_part_id) DO UPDATE SET quantity = excluded.quantity
+    `).run(equipmentId, sparePartId, quantity);
+  } catch (e) {
+    if (e.message && e.message.includes('FOREIGN KEY')) return res.status(400).json({ error: 'Équipement ou pièce invalide' });
+    throw e;
+  }
+  const row = db.prepare(`
+    SELECT esp.*, sp.code as part_code, sp.name as part_name
+    FROM equipment_spare_parts esp JOIN spare_parts sp ON esp.spare_part_id = sp.id
+    WHERE esp.equipment_id = ? AND esp.spare_part_id = ?
+  `).get(equipmentId, sparePartId);
+  res.status(201).json({ equipmentId: row.equipment_id, sparePartId: row.spare_part_id, quantity: row.quantity, partCode: row.part_code, partName: row.part_name });
+});
+
+/**
+ * DELETE /api/equipment/:id/bom/:sparePartId — Retirer une pièce de la nomenclature
+ */
+router.delete('/:id/bom/:sparePartId', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), param('sparePartId').isInt(), (req, res) => {
+  const result = db.prepare('DELETE FROM equipment_spare_parts WHERE equipment_id = ? AND spare_part_id = ?').run(req.params.id, req.params.sparePartId);
+  if (result.changes === 0) return res.status(404).json({ error: 'Ligne de nomenclature non trouvée' });
+  res.status(204).send();
+});
+
 router.get('/:id', param('id').isInt(), (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
@@ -440,6 +635,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
       equipmentType
     );
     const newRow = db.prepare('SELECT e.*, c.name as category_name, l.name as ligne_name FROM equipment e LEFT JOIN equipment_categories c ON e.category_id = c.id LEFT JOIN lignes l ON e.ligne_id = l.id WHERE e.id = ?').get(result.lastInsertRowid);
+    auditService.log('equipment', result.lastInsertRowid, 'created', { userId: req.user?.id, userEmail: req.user?.email, summary: newRow?.code || newRow?.name });
     res.status(201).json(formatEquipment(newRow));
   } catch (e) {
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Code equipement deja existant' });
@@ -451,8 +647,8 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(
   const id = req.params.id;
   const existing = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Equipement non trouve' });
-  const fields = ['code', 'name', 'description', 'category_id', 'ligne_id', 'parent_id', 'serial_number', 'manufacturer', 'model', 'installation_date', 'location', 'criticite', 'status'];
-  const mapping = { categoryId: 'category_id', ligneId: 'ligne_id', parentId: 'parent_id', serialNumber: 'serial_number', installationDate: 'installation_date' };
+  const fields = ['code', 'name', 'description', 'category_id', 'ligne_id', 'parent_id', 'serial_number', 'manufacturer', 'model', 'installation_date', 'location', 'criticite', 'status', 'acquisition_value', 'depreciation_years', 'residual_value', 'depreciation_start_date'];
+  const mapping = { categoryId: 'category_id', ligneId: 'ligne_id', parentId: 'parent_id', serialNumber: 'serial_number', installationDate: 'installation_date', acquisitionValue: 'acquisition_value', depreciationYears: 'depreciation_years', residualValue: 'residual_value', depreciationStartDate: 'depreciation_start_date' };
   const updates = [];
   const values = [];
   for (const [key, val] of Object.entries(req.body)) {
@@ -472,6 +668,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(
   values.push(id);
   db.prepare('UPDATE equipment SET ' + updates.join(', ') + ' WHERE id = ?').run(...values);
   const row = db.prepare('SELECT e.*, c.name as category_name, l.name as ligne_name FROM equipment e LEFT JOIN equipment_categories c ON e.category_id = c.id LEFT JOIN lignes l ON e.ligne_id = l.id WHERE e.id = ?').get(id);
+  auditService.log('equipment', id, 'updated', { userId: req.user?.id, userEmail: req.user?.email, summary: row?.code || row?.name });
   res.json(formatEquipment(row));
 });
 
@@ -483,8 +680,10 @@ router.delete('/:id', authorize(ROLES.ADMIN), param('id').isInt(), (req, res) =>
   if (hasPlans) return res.status(400).json({ error: 'Impossible de supprimer : équipement référencé par des plans de maintenance' });
   try {
     db.prepare('UPDATE equipment SET parent_id = NULL WHERE parent_id = ?').run(id);
+    const eq = db.prepare('SELECT code, name FROM equipment WHERE id = ?').get(id);
     const result = db.prepare('DELETE FROM equipment WHERE id = ?').run(id);
     if (result.changes === 0) return res.status(404).json({ error: 'Équipement non trouvé' });
+    auditService.log('equipment', id, 'deleted', { userId: req.user?.id, userEmail: req.user?.email, summary: eq ? `${eq.code} ${eq.name}` : null });
     res.status(204).send();
   } catch (e) {
     if (e.message && e.message.includes('FOREIGN KEY')) {

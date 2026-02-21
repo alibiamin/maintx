@@ -13,6 +13,7 @@ const EquipmentList = lazy(() => import('./pages/equipment/EquipmentList'));
 const EquipmentDetail = lazy(() => import('./pages/equipment/EquipmentDetail'));
 const EquipmentMap = lazy(() => import('./pages/equipment/EquipmentMap'));
 const EquipmentCategories = lazy(() => import('./pages/equipment/EquipmentCategories'));
+const EquipmentModelsList = lazy(() => import('./pages/equipment/EquipmentModelsList'));
 const EquipmentTechnical = lazy(() => import('./pages/equipment/EquipmentTechnical'));
 const EquipmentTechnicalList = lazy(() => import('./pages/equipment/EquipmentTechnicalList'));
 const EquipmentHistory = lazy(() => import('./pages/equipment/EquipmentHistory'));
@@ -21,8 +22,12 @@ const EquipmentWarranties = lazy(() => import('./pages/equipment/EquipmentWarran
 const WorkOrderList = lazy(() => import('./pages/maintenance/WorkOrderList'));
 const WorkOrderDetail = lazy(() => import('./pages/maintenance/WorkOrderDetail'));
 const WorkOrderForm = lazy(() => import('./pages/maintenance/WorkOrderForm'));
+const MyWorkOrdersToday = lazy(() => import('./pages/maintenance/MyWorkOrdersToday'));
 const MaintenancePlans = lazy(() => import('./pages/maintenance/MaintenancePlans'));
 const MaintenancePlansDue = lazy(() => import('./pages/maintenance/MaintenancePlansDue'));
+const MaintenanceProjectsList = lazy(() => import('./pages/maintenance/MaintenanceProjectsList'));
+const MaintenanceProjectDetail = lazy(() => import('./pages/maintenance/MaintenanceProjectDetail'));
+const MaintenanceProjectForm = lazy(() => import('./pages/maintenance/MaintenanceProjectForm'));
 const InterventionRequests = lazy(() => import('./pages/maintenance/InterventionRequests'));
 const Planning = lazy(() => import('./pages/Planning'));
 const PlanningAssignments = lazy(() => import('./pages/PlanningAssignments'));
@@ -45,11 +50,13 @@ const SitesLines = lazy(() => import('./pages/SitesLines'));
 const SitesMap = lazy(() => import('./pages/SitesMap'));
 const Settings = lazy(() => import('./pages/Settings'));
 const SettingsRoles = lazy(() => import('./pages/SettingsRoles'));
+const FailureCodesList = lazy(() => import('./pages/FailureCodesList'));
 const Contracts = lazy(() => import('./pages/Contracts'));
 const Tools = lazy(() => import('./pages/Tools'));
 const ToolsAssignments = lazy(() => import('./pages/tools/ToolsAssignments'));
 const ToolsCalibrations = lazy(() => import('./pages/tools/ToolsCalibrations'));
 const Checklists = lazy(() => import('./pages/Checklists'));
+const ProceduresList = lazy(() => import('./pages/ProceduresList'));
 const Creation = lazy(() => import('./pages/Creation'));
 const TechnicianList = lazy(() => import('./pages/technicians/TechnicianList'));
 const TechnicianDetail = lazy(() => import('./pages/technicians/TechnicianDetail'));
@@ -94,6 +101,7 @@ export default function App() {
         <Route path="equipment" element={<EquipmentList />} />
         <Route path="equipment/map" element={<EquipmentMap />} />
         <Route path="equipment/categories" element={<EquipmentCategories />} />
+        <Route path="equipment/models" element={<EquipmentModelsList />} />
         <Route path="equipment/technical" element={<EquipmentTechnicalList />} />
         <Route path="equipment/:id" element={<EquipmentDetail />} />
         <Route path="equipment/:id/technical" element={<EquipmentTechnical />} />
@@ -101,6 +109,7 @@ export default function App() {
         <Route path="equipment/:id/documents" element={<EquipmentDocuments />} />
         <Route path="equipment/:id/warranties" element={<EquipmentWarranties />} />
         <Route path="work-orders" element={<WorkOrderList />} />
+        <Route path="my-work-orders" element={<MyWorkOrdersToday />} />
         <Route path="work-orders/new" element={<WorkOrderForm />} />
         <Route path="work-orders/:id" element={<WorkOrderDetail />} />
         <Route path="intervention-requests" element={<InterventionRequests />} />
@@ -109,6 +118,10 @@ export default function App() {
         <Route path="planning/resources" element={<PlanningResources />} />
         <Route path="maintenance-plans" element={<MaintenancePlans />} />
         <Route path="maintenance-plans/due" element={<MaintenancePlansDue />} />
+        <Route path="maintenance-projects" element={<MaintenanceProjectsList />} />
+        <Route path="maintenance-projects/new" element={<MaintenanceProjectForm />} />
+        <Route path="maintenance-projects/:id/edit" element={<MaintenanceProjectForm />} />
+        <Route path="maintenance-projects/:id" element={<MaintenanceProjectDetail />} />
         <Route path="stock" element={<StockList />} />
         <Route path="stock/movements" element={<StockMovements />} />
         <Route path="stock/inventories" element={<StockInventories />} />
@@ -129,8 +142,10 @@ export default function App() {
         <Route path="tools/assignments" element={<ToolsAssignments />} />
         <Route path="tools/calibrations" element={<ToolsCalibrations />} />
         <Route path="checklists" element={<Checklists />} />
+        <Route path="procedures" element={<ProceduresList />} />
         <Route path="settings" element={<Settings />} />
         <Route path="settings/roles" element={<SettingsRoles />} />
+        <Route path="failure-codes" element={<FailureCodesList />} />
         <Route path="users" element={<Users />} />
         <Route path="technicians" element={<TechnicianList />} />
         <Route path="technicians/team" element={<TeamPage />} />

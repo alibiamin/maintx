@@ -26,7 +26,7 @@ import {
   LinearProgress,
   Alert
 } from '@mui/material';
-import { ArrowBack, Star, Edit, Add } from '@mui/icons-material';
+import { ArrowBack, Star, Edit, Add, Delete } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useSnackbar } from '../../context/SnackbarContext';
@@ -63,6 +63,11 @@ export default function TechnicianDetail() {
   const [personalDepartment, setPersonalDepartment] = useState('');
   const [personalHireDate, setPersonalHireDate] = useState('');
   const [personalContractType, setPersonalContractType] = useState('');
+  const [trainings, setTrainings] = useState([]);
+  const [trainingDialogOpen, setTrainingDialogOpen] = useState(false);
+  const [trainingForm, setTrainingForm] = useState({ name: '', description: '', completed_date: '', valid_until: '', issuer: '' });
+  const [editingTrainingId, setEditingTrainingId] = useState(null);
+  const [savingTraining, setSavingTraining] = useState(false);
   const { user } = useAuth();
   const snackbar = useSnackbar();
   const currency = useCurrency();
@@ -75,6 +80,7 @@ export default function TechnicianDetail() {
       api.get('/technicians').catch(() => [])
     ]).then(([r, comps, listRes]) => {
       setTech(r.data);
+      setTrainings(r.data.trainings || []);
       setCompetencies(comps.data || comps);
       setSelectedComps((r.data.competencies || []).map(c => ({ competence_id: c.competence_id, level: c.level })));
       setHourlyRateEdit(r.data.hourly_rate != null ? String(r.data.hourly_rate) : '');
@@ -137,9 +143,78 @@ export default function TechnicianDetail() {
   const loadTech = () => {
     api.get(`/technicians/${id}`).then(r => {
       setTech(r.data);
+      setTrainings(r.data.trainings || []);
       setHourlyRateEdit(r.data.hourly_rate != null ? String(r.data.hourly_rate) : '');
       setManagerId(r.data.manager_id != null ? String(r.data.manager_id) : '');
     }).catch(() => {});
+  };
+
+  const trainingStatus = (validUntil) => {
+    if (!validUntil) return { label: 'Sans date', color: 'default' };
+    const d = new Date(validUntil);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    d.setHours(0, 0, 0, 0);
+    const days30 = new Date(today);
+    days30.setDate(days30.getDate() + 30);
+    if (d < today) return { label: 'Expirée', color: 'error' };
+    if (d <= days30) return { label: 'Expire bientôt', color: 'warning' };
+    return { label: 'Valide', color: 'success' };
+  };
+
+  const openTrainingDialog = (t = null) => {
+    if (t) {
+      setTrainingForm({
+        name: t.name || '',
+        description: t.description || '',
+        completed_date: t.completed_date || '',
+        valid_until: t.valid_until || '',
+        issuer: t.issuer || ''
+      });
+      setEditingTrainingId(t.id);
+    } else {
+      setTrainingForm({ name: '', description: '', completed_date: '', valid_until: '', issuer: '' });
+      setEditingTrainingId(null);
+    }
+    setTrainingDialogOpen(true);
+  };
+
+  const handleSaveTraining = () => {
+    if (!trainingForm.name.trim()) return;
+    setSavingTraining(true);
+    const payload = {
+      name: trainingForm.name.trim(),
+      description: trainingForm.description || undefined,
+      completed_date: trainingForm.completed_date || undefined,
+      valid_until: trainingForm.valid_until || undefined,
+      issuer: trainingForm.issuer || undefined
+    };
+    const promise = editingTrainingId
+      ? api.put(`/technicians/${id}/trainings/${editingTrainingId}`, payload)
+      : api.post(`/technicians/${id}/trainings`, payload);
+    promise
+      .then((r) => {
+        setTrainingDialogOpen(false);
+        setEditingTrainingId(null);
+        setTrainingForm({ name: '', description: '', completed_date: '', valid_until: '', issuer: '' });
+        setTrainings(prev => {
+          if (editingTrainingId) return prev.map(x => x.id === editingTrainingId ? r.data : x);
+          return [r.data, ...prev];
+        });
+        snackbar.showSuccess(editingTrainingId ? 'Formation mise à jour' : 'Formation ajoutée');
+      })
+      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'))
+      .finally(() => setSavingTraining(false));
+  };
+
+  const handleDeleteTraining = (tid) => {
+    if (!window.confirm('Supprimer cette formation ?')) return;
+    api.delete(`/technicians/${id}/trainings/${tid}`)
+      .then(() => {
+        setTrainings(prev => prev.filter(x => x.id !== tid));
+        snackbar.showSuccess('Formation supprimée');
+      })
+      .catch(() => snackbar.showError('Erreur'));
   };
 
   const handleSaveManager = () => {
@@ -382,6 +457,58 @@ export default function TechnicianDetail() {
           <Card>
             <CardContent>
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <Typography variant="h6" fontWeight={700}>Formations / habilitations</Typography>
+                {canEdit && (
+                  <Button size="small" variant="outlined" startIcon={<Add />} onClick={() => openTrainingDialog()}>Ajouter une formation</Button>
+                )}
+              </Box>
+              {trainings.length === 0 ? (
+                <Typography color="text.secondary">Aucune formation ou habilitation enregistrée</Typography>
+              ) : (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Formation / habilitation</TableCell>
+                      <TableCell>Date obtention</TableCell>
+                      <TableCell>Valide jusqu&apos;au</TableCell>
+                      <TableCell>Organisme</TableCell>
+                      <TableCell>Statut</TableCell>
+                      {canEdit && <TableCell align="right">Actions</TableCell>}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {trainings.map((t) => {
+                      const status = trainingStatus(t.valid_until);
+                      return (
+                        <TableRow key={t.id}>
+                          <TableCell>
+                            <Typography fontWeight={500}>{t.name}</Typography>
+                            {t.description && <Typography variant="body2" color="text.secondary">{t.description}</Typography>}
+                          </TableCell>
+                          <TableCell>{t.completed_date ? new Date(t.completed_date).toLocaleDateString('fr-FR') : '—'}</TableCell>
+                          <TableCell>{t.valid_until ? new Date(t.valid_until).toLocaleDateString('fr-FR') : '—'}</TableCell>
+                          <TableCell>{t.issuer || '—'}</TableCell>
+                          <TableCell><Chip size="small" label={status.label} color={status.color} /></TableCell>
+                          {canEdit && (
+                            <TableCell align="right">
+                              <Button size="small" startIcon={<Edit />} onClick={() => openTrainingDialog(t)}>Modifier</Button>
+                              <Button size="small" color="error" startIcon={<Delete />} onClick={() => handleDeleteTraining(t.id)}>Supprimer</Button>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                 <Typography variant="h6" fontWeight={700}>Évaluations</Typography>
                 {canEdit && (
                   <Button size="small" variant="outlined" startIcon={<Add />} onClick={() => setEvalOpen(true)}>Ajouter une évaluation</Button>
@@ -417,6 +544,21 @@ export default function TechnicianDetail() {
           </Card>
         </Grid>
       </Grid>
+
+      <Dialog open={trainingDialogOpen} onClose={() => setTrainingDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingTrainingId ? 'Modifier la formation' : 'Nouvelle formation / habilitation'}</DialogTitle>
+        <DialogContent>
+          <TextField fullWidth label="Nom de la formation / habilitation" required value={trainingForm.name} onChange={(e) => setTrainingForm(f => ({ ...f, name: e.target.value }))} sx={{ mt: 1 }} />
+          <TextField fullWidth label="Description" multiline rows={2} value={trainingForm.description} onChange={(e) => setTrainingForm(f => ({ ...f, description: e.target.value }))} sx={{ mt: 2 }} />
+          <TextField fullWidth type="date" InputLabelProps={{ shrink: true }} label="Date d'obtention" value={trainingForm.completed_date} onChange={(e) => setTrainingForm(f => ({ ...f, completed_date: e.target.value }))} sx={{ mt: 2 }} />
+          <TextField fullWidth type="date" InputLabelProps={{ shrink: true }} label="Valide jusqu'au" value={trainingForm.valid_until} onChange={(e) => setTrainingForm(f => ({ ...f, valid_until: e.target.value }))} sx={{ mt: 2 }} helperText="Date de fin de validité (optionnel)" />
+          <TextField fullWidth label="Organisme / Émetteur" value={trainingForm.issuer} onChange={(e) => setTrainingForm(f => ({ ...f, issuer: e.target.value }))} sx={{ mt: 2 }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTrainingDialogOpen(false)}>Annuler</Button>
+          <Button variant="contained" onClick={handleSaveTraining} disabled={savingTraining || !trainingForm.name.trim()}>Enregistrer</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={evalOpen} onClose={() => setEvalOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Nouvelle évaluation</DialogTitle>

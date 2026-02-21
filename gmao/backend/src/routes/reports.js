@@ -27,19 +27,22 @@ router.use(authenticate);
 
 /**
  * GET /api/reports/maintenance-costs
- * Analyse des coûts de maintenance (filtres optionnels: siteId, equipmentId)
+ * Analyse des coûts de maintenance (main-d'œuvre + pièces) par équipement.
+ * Filtres optionnels: siteId, equipmentId
  */
 router.get('/maintenance-costs', (req, res) => {
   const { startDate, endDate, siteId, equipmentId } = req.query;
   const start = startDate || '2020-01-01';
   const end = endDate || '2100-12-31';
   let sql = `
-    SELECT e.code, e.name, e.id as equipment_id, COUNT(wo.id) as interventions,
-           SUM(COALESCE(i.quantity_used * sp.unit_price, 0)) as parts_cost
+    SELECT e.code, e.name, e.id as equipment_id, COUNT(DISTINCT wo.id) as interventions,
+           SUM(COALESCE(i.quantity_used * sp.unit_price, 0)) as parts_cost,
+           SUM(COALESCE(i.hours_spent * u_tech.hourly_rate, 0)) as labor_cost
     FROM work_orders wo
     JOIN equipment e ON wo.equipment_id = e.id
     LEFT JOIN interventions i ON i.work_order_id = wo.id
     LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id
+    LEFT JOIN users u_tech ON i.technician_id = u_tech.id
     WHERE wo.status = 'completed' AND wo.actual_end IS NOT NULL AND date(wo.actual_end) BETWEEN ? AND ?
   `;
   const params = [start, end];
@@ -51,9 +54,97 @@ router.get('/maintenance-costs', (req, res) => {
     sql += ' AND e.id = ?';
     params.push(equipmentId);
   }
-  sql += ' GROUP BY wo.equipment_id ORDER BY parts_cost DESC';
+  sql += ' GROUP BY e.id ORDER BY (COALESCE(parts_cost,0) + COALESCE(labor_cost,0)) DESC';
   const byEquipment = db.prepare(sql).all(...params);
   res.json(byEquipment);
+});
+
+/**
+ * GET /api/reports/mttr
+ * MTTR (Mean Time To Repair) en heures - temps moyen de réparation par équipement ou global.
+ */
+router.get('/mttr', (req, res) => {
+  const { startDate, endDate, siteId, equipmentId } = req.query;
+  const start = startDate || '2020-01-01';
+  const end = endDate || '2100-12-31';
+  let where = `wo.status = 'completed' AND wo.actual_start IS NOT NULL AND wo.actual_end IS NOT NULL AND date(wo.actual_end) BETWEEN ? AND ?`;
+  const params = [start, end];
+  if (siteId) {
+    where += ' AND e.ligne_id IN (SELECT id FROM lignes WHERE site_id = ?)';
+    params.push(siteId);
+  }
+  if (equipmentId) {
+    where += ' AND wo.equipment_id = ?';
+    params.push(equipmentId);
+  }
+  const byEquipment = db.prepare(`
+    SELECT e.id as equipment_id, e.code, e.name,
+           COUNT(wo.id) as repair_count,
+           AVG((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24) as mttr_hours
+    FROM work_orders wo
+    JOIN equipment e ON wo.equipment_id = e.id
+    WHERE ${where}
+    GROUP BY wo.equipment_id
+    ORDER BY mttr_hours DESC
+  `).all(...params);
+  const global = db.prepare(`
+    SELECT COUNT(*) as repair_count,
+           AVG((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24) as mttr_hours
+    FROM work_orders wo
+    JOIN equipment e ON wo.equipment_id = e.id
+    WHERE ${where}
+  `).get(...params);
+  res.json({ global: global || { repair_count: 0, mttr_hours: null }, byEquipment });
+});
+
+/**
+ * GET /api/reports/cost-per-operating-hour
+ * Coût de maintenance par heure de fonctionnement (utilise les compteurs équipement si présents).
+ */
+router.get('/cost-per-operating-hour', (req, res) => {
+  const { startDate, endDate, siteId, equipmentId } = req.query;
+  const start = startDate || '2020-01-01';
+  const end = endDate || '2100-12-31';
+  let costWhere = `wo.status = 'completed' AND wo.actual_end IS NOT NULL AND date(wo.actual_end) BETWEEN ? AND ?`;
+  const costParams = [start, end];
+  if (siteId) {
+    costWhere += ' AND e.ligne_id IN (SELECT id FROM lignes WHERE site_id = ?)';
+    costParams.push(siteId);
+  }
+  if (equipmentId) {
+    costWhere += ' AND e.id = ?';
+    costParams.push(equipmentId);
+  }
+  const costs = db.prepare(`
+    SELECT e.id as equipment_id, e.code, e.name,
+           SUM(COALESCE(i.quantity_used * sp.unit_price, 0)) + SUM(COALESCE(i.hours_spent * u_tech.hourly_rate, 0)) as total_cost
+    FROM work_orders wo
+    JOIN equipment e ON wo.equipment_id = e.id
+    LEFT JOIN interventions i ON i.work_order_id = wo.id
+    LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id
+    LEFT JOIN users u_tech ON i.technician_id = u_tech.id
+    WHERE ${costWhere}
+    GROUP BY e.id
+  `).all(...costParams);
+  const counters = db.prepare(`
+    SELECT equipment_id, counter_type, value FROM equipment_counters WHERE counter_type = 'hours'
+  `).all();
+  const counterByEq = new Map(counters.map(c => [c.equipment_id, c.value]));
+  const result = costs.map(row => {
+    const totalCost = row.total_cost || 0;
+    const operatingHours = counterByEq.get(row.equipment_id) || null;
+    const costPerHour = (operatingHours != null && Number(operatingHours) > 0)
+      ? totalCost / Number(operatingHours) : null;
+    return {
+      equipment_id: row.equipment_id,
+      code: row.code,
+      name: row.name,
+      total_cost: totalCost,
+      operating_hours: operatingHours,
+      cost_per_operating_hour: costPerHour
+    };
+  });
+  res.json(result);
 });
 
 /**

@@ -84,6 +84,7 @@ function getMenuStructure() {
         { labelKey: 'item.equipment_list', path: '/equipment' },
         { labelKey: 'item.equipment_map', path: '/equipment/map' },
         { labelKey: 'item.equipment_categories', path: '/equipment/categories' },
+        { labelKey: 'item.equipment_models', path: '/equipment/models' },
         { labelKey: 'item.equipment_technical', path: '/equipment/technical' }
       ]},
       { titleKey: 'section.equipment_1', items: [
@@ -95,6 +96,7 @@ function getMenuStructure() {
     { id: 'maintenance', labelKey: 'menu.maintenance', icon: <AssignmentIcon />, path: '/work-orders', sections: [
       { titleKey: 'section.maintenance_0', items: [
         { labelKey: 'item.wo_list', path: '/work-orders' },
+        { labelKey: 'item.my_wo_today', path: '/my-work-orders' },
         { labelKey: 'item.wo_declare', path: '/creation' },
         { labelKey: 'item.intervention_requests', path: '/intervention-requests' },
         { labelKey: 'item.wo_in_progress', path: '/work-orders?status=in_progress' },
@@ -102,7 +104,9 @@ function getMenuStructure() {
       ]},
       { titleKey: 'section.maintenance_1', items: [
         { labelKey: 'item.plans', path: '/maintenance-plans' },
+        { labelKey: 'item.projects', path: '/maintenance-projects' },
         { labelKey: 'item.checklists', path: '/checklists' },
+        { labelKey: 'item.procedures', path: '/procedures' },
         { labelKey: 'item.due', path: '/maintenance-plans/due' }
       ]},
       { titleKey: 'section.maintenance_2', items: [
@@ -165,6 +169,7 @@ function getMenuStructure() {
       { titleKey: 'section.settings_0', items: [
         { labelKey: 'item.settings_config', path: '/settings' },
         { labelKey: 'item.settings_alerts', path: '/settings?tab=alertes' },
+        { labelKey: 'item.failure_codes', path: '/failure-codes' },
         { labelKey: 'item.settings_users', path: '/users' },
         { labelKey: 'item.settings_roles', path: '/settings/roles' }
       ]}

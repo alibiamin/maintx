@@ -7,13 +7,14 @@ const { body, param, validationResult } = require('express-validator');
 const db = require('../database/db');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
+const auditService = require('../services/auditService');
 
 const router = express.Router();
 router.use(authenticate);
 
-function formatWO(row) {
+function formatWO(row, costs = null) {
   if (!row) return null;
-  return {
+  const out = {
     id: row.id,
     number: row.number,
     title: row.title,
@@ -33,6 +34,7 @@ function formatWO(row) {
     actualEnd: row.actual_end,
     maintenancePlanId: row.maintenance_plan_id,
     maintenancePlanName: row.maintenance_plan_name,
+    projectId: row.project_id,
     failureDate: row.failure_date,
     createdBy: row.created_by,
     createdAt: row.created_at,
@@ -41,6 +43,36 @@ function formatWO(row) {
     completedAt: row.completed_at,
     signatureName: row.signature_name
   };
+  if (costs) {
+    out.laborCost = costs.laborCost;
+    out.partsCost = costs.partsCost;
+    out.totalCost = costs.totalCost;
+  }
+  return out;
+}
+
+function getWorkOrderCosts(woId) {
+  const parts = db.prepare(`
+    SELECT COALESCE(SUM(i.quantity_used * sp.unit_price), 0) as parts_cost
+    FROM interventions i
+    LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id
+    WHERE i.work_order_id = ?
+  `).get(woId);
+  const labor = db.prepare(`
+    SELECT COALESCE(SUM(i.hours_spent * u.hourly_rate), 0) as labor_cost
+    FROM interventions i
+    LEFT JOIN users u ON i.technician_id = u.id
+    WHERE i.work_order_id = ?
+  `).get(woId);
+  const wo = db.prepare('SELECT actual_start, actual_end, assigned_to FROM work_orders WHERE id = ?').get(woId);
+  let laborCost = (labor && labor.labor_cost) ? labor.labor_cost : 0;
+  if (wo && wo.actual_start && wo.actual_end && laborCost === 0 && wo.assigned_to) {
+    const rate = db.prepare('SELECT hourly_rate FROM users WHERE id = ?').get(wo.assigned_to);
+    const hours = (new Date(wo.actual_end) - new Date(wo.actual_start)) / (1000 * 60 * 60);
+    laborCost = hours * (rate?.hourly_rate || 0);
+  }
+  const partsCost = (parts && parts.parts_cost) ? parts.parts_cost : 0;
+  return { laborCost, partsCost, totalCost: laborCost + partsCost };
 }
 
 /**
@@ -59,7 +91,7 @@ function generateOTNumber() {
  * If page/limit provided: Response { data: [...], total: N }. Otherwise: array (backward compatible).
  */
 router.get('/', (req, res) => {
-  const { status, assignedTo, equipmentId, priority, page, limit } = req.query;
+  const { status, assignedTo, equipmentId, priority, projectId, page, limit } = req.query;
   const usePagination = page !== undefined && page !== '';
   const limitNum = usePagination ? Math.min(parseInt(limit, 10) || 20, 100) : 1e6;
   const offset = usePagination ? ((parseInt(page, 10) || 1) - 1) * limitNum : 0;
@@ -69,6 +101,7 @@ router.get('/', (req, res) => {
   if (assignedTo) { where += ' AND wo.assigned_to = ?'; params.push(assignedTo); }
   if (equipmentId) { where += ' AND wo.equipment_id = ?'; params.push(equipmentId); }
   if (priority) { where += ' AND wo.priority = ?'; params.push(priority); }
+  if (projectId) { where += ' AND wo.project_id = ?'; params.push(projectId); }
   let total = 0;
   if (usePagination) {
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM work_orders wo ${where}`).get(...params);
@@ -129,6 +162,95 @@ router.get('/calendar', (req, res) => {
 });
 
 /**
+ * GET /api/work-orders/:id/reservations — Réservations de pièces pour cet OT
+ */
+router.get('/:id/reservations', param('id').isInt(), (req, res) => {
+  const woId = req.params.id;
+  const wo = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(woId);
+  if (!wo) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
+  let rows = [];
+  try {
+    rows = db.prepare(`
+      SELECT r.id, r.work_order_id, r.spare_part_id, r.quantity, r.notes, r.created_at,
+             sp.code as part_code, sp.name as part_name, sp.unit_price,
+             COALESCE(sb.quantity, 0) as stock_quantity
+      FROM work_order_reservations r
+      JOIN spare_parts sp ON r.spare_part_id = sp.id
+      LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
+      WHERE r.work_order_id = ?
+      ORDER BY sp.code
+    `).all(woId);
+  } catch (e) {
+    if (!e.message || !e.message.includes('no such table')) throw e;
+  }
+  res.json(rows.map(r => ({
+    id: r.id,
+    workOrderId: r.work_order_id,
+    sparePartId: r.spare_part_id,
+    quantity: r.quantity,
+    notes: r.notes,
+    createdAt: r.created_at,
+    partCode: r.part_code,
+    partName: r.part_name,
+    unitPrice: r.unit_price,
+    stockQuantity: r.stock_quantity
+  })));
+});
+
+/**
+ * POST /api/work-orders/:id/reservations — Réserver des pièces pour l'OT
+ */
+router.post('/:id/reservations', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), [
+  body('sparePartId').isInt(),
+  body('quantity').isInt({ min: 1 }),
+  body('notes').optional().trim()
+], (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const woId = req.params.id;
+  const { sparePartId, quantity, notes } = req.body;
+  const wo = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(woId);
+  if (!wo) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
+  const part = db.prepare('SELECT id, code, name FROM spare_parts WHERE id = ?').get(sparePartId);
+  if (!part) return res.status(404).json({ error: 'Pièce non trouvée' });
+  try {
+    db.prepare(`
+      INSERT INTO work_order_reservations (work_order_id, spare_part_id, quantity, notes)
+      VALUES (?, ?, ?, ?)
+    `).run(woId, sparePartId, quantity, notes || null);
+  } catch (e) {
+    if (e.message && e.message.includes('UNIQUE')) {
+      return res.status(409).json({ error: 'Cette pièce est déjà réservée pour cet OT. Modifiez la quantité ou supprimez la réservation.' });
+    }
+    if (!e.message || !e.message.includes('no such table')) throw e;
+    return res.status(501).json({ error: 'Table work_order_reservations absente. Exécutez les migrations.' });
+  }
+  const row = db.prepare(`
+    SELECT r.*, sp.code as part_code, sp.name as part_name
+    FROM work_order_reservations r JOIN spare_parts sp ON r.spare_part_id = sp.id
+    WHERE r.work_order_id = ? AND r.spare_part_id = ?
+  `).get(woId, sparePartId);
+  res.status(201).json({
+    id: row.id,
+    workOrderId: row.work_order_id,
+    sparePartId: row.spare_part_id,
+    quantity: row.quantity,
+    notes: row.notes,
+    partCode: row.part_code,
+    partName: row.part_name
+  });
+});
+
+/**
+ * DELETE /api/work-orders/:id/reservations/:reservationId
+ */
+router.delete('/:id/reservations/:reservationId', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), param('reservationId').isInt(), (req, res) => {
+  const result = db.prepare('DELETE FROM work_order_reservations WHERE id = ? AND work_order_id = ?').run(req.params.reservationId, req.params.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Réservation non trouvée' });
+  res.status(204).send();
+});
+
+/**
  * GET /api/work-orders/:id
  */
 router.get('/:id', param('id').isInt(), (req, res) => {
@@ -146,7 +268,8 @@ router.get('/:id', param('id').isInt(), (req, res) => {
     WHERE wo.id = ?
   `).get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
-  res.json(formatWO(row));
+  const costs = getWorkOrderCosts(req.params.id);
+  res.json(formatWO(row, costs));
 });
 
 /**
@@ -170,12 +293,13 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROL
   const prio = priority || 'medium';
   const slaDeadline = new Date();
   slaDeadline.setHours(slaDeadline.getHours() + (SLA_HOURS[prio] || 24));
+  const projectId = req.body.projectId || null;
   try {
     const result = db.prepare(`
-      INSERT INTO work_orders (number, title, description, equipment_id, type_id, priority, assigned_to, planned_start, planned_end, maintenance_plan_id, failure_date, created_by, sla_deadline)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO work_orders (number, title, description, equipment_id, type_id, priority, assigned_to, planned_start, planned_end, maintenance_plan_id, failure_date, created_by, sla_deadline, project_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(number, title, description || null, equipmentId || null, typeId || 2, priority || 'medium',
-      assignedTo || null, plannedStart || null, plannedEnd || null, maintenancePlanId || null, failureDate, req.user.id, slaDeadline.toISOString());
+      assignedTo || null, plannedStart || null, plannedEnd || null, maintenancePlanId || null, failureDate, req.user.id, slaDeadline.toISOString(), projectId);
     const woId = result.lastInsertRowid;
     const row = db.prepare(`
       SELECT wo.*, e.name as equipment_name, e.code as equipment_code, t.name as type_name,
@@ -219,6 +343,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROL
       priority: row.priority
     }).catch(() => {});
 
+    auditService.log('work_order', woId, 'created', { userId: req.user?.id, userEmail: req.user?.email, summary: row.number });
     res.status(201).json(formatWO(row));
   } catch (e) {
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Numéro OT déjà existant' });
@@ -243,8 +368,8 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), 
   const id = req.params.id;
   const existing = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
-  const fields = ['title', 'description', 'equipment_id', 'type_id', 'priority', 'status', 'assigned_to', 'planned_start', 'planned_end', 'actual_start', 'actual_end', 'completed_by', 'completed_at', 'signature_name'];
-  const mapping = { equipmentId: 'equipment_id', typeId: 'type_id', assignedTo: 'assigned_to', plannedStart: 'planned_start', plannedEnd: 'planned_end', actualStart: 'actual_start', actualEnd: 'actual_end', completedBy: 'completed_by', completedAt: 'completed_at', signatureName: 'signature_name' };
+  const fields = ['title', 'description', 'equipment_id', 'type_id', 'priority', 'status', 'assigned_to', 'planned_start', 'planned_end', 'actual_start', 'actual_end', 'completed_by', 'completed_at', 'signature_name', 'project_id'];
+  const mapping = { equipmentId: 'equipment_id', typeId: 'type_id', assignedTo: 'assigned_to', plannedStart: 'planned_start', plannedEnd: 'planned_end', actualStart: 'actual_start', actualEnd: 'actual_end', completedBy: 'completed_by', completedAt: 'completed_at', signatureName: 'signature_name', projectId: 'project_id' };
   const updates = [];
   const values = [];
   if (req.body.status === 'completed') {
@@ -300,6 +425,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), 
     }).catch(() => {});
   }
 
+  auditService.log('work_order', id, 'updated', { userId: req.user?.id, userEmail: req.user?.email, summary: row.number });
   res.json(formatWO(row));
 });
 
@@ -308,8 +434,10 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), 
  */
 router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const id = req.params.id;
+  const wo = db.prepare('SELECT number FROM work_orders WHERE id = ?').get(id);
   const result = db.prepare("UPDATE work_orders SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
   if (result.changes === 0) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
+  auditService.log('work_order', id, 'deleted', { userId: req.user?.id, userEmail: req.user?.email, summary: wo?.number });
   res.status(204).send();
 });
 

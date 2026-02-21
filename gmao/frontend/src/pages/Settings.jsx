@@ -50,16 +50,35 @@ export default function Settings() {
   const [notifSaving, setNotifSaving] = useState(false);
   const [currency, setCurrency] = useState('€');
   const [currencySaving, setCurrencySaving] = useState(false);
+  const [auditLog, setAuditLog] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditFilters, setAuditFilters] = useState({ entityType: '', startDate: '', endDate: '' });
   const { user } = useAuth();
   const canEditCodification = ['administrateur', 'responsable_maintenance'].includes(user?.role);
   const isAdmin = user?.role === 'administrateur';
+  const canViewAudit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
   const snackbar = useSnackbar();
   const [searchParams, setSearchParams] = useSearchParams();
   const alertesTabIndex = isAdmin ? 4 : 3;
+  const auditTabIndex = alertesTabIndex + 1;
 
   useEffect(() => {
     if (searchParams.get('tab') === 'alertes') setTab(alertesTabIndex);
-  }, [searchParams.get('tab'), alertesTabIndex]);
+    if (searchParams.get('tab') === 'audit') setTab(auditTabIndex);
+  }, [searchParams.get('tab'), alertesTabIndex, auditTabIndex]);
+
+  useEffect(() => {
+    if (!canViewAudit || tab !== auditTabIndex) return;
+    setAuditLoading(true);
+    const params = { limit: 200 };
+    if (auditFilters.entityType) params.entityType = auditFilters.entityType;
+    if (auditFilters.startDate) params.startDate = auditFilters.startDate;
+    if (auditFilters.endDate) params.endDate = auditFilters.endDate;
+    api.get('/audit', { params })
+      .then((r) => setAuditLog(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setAuditLog([]))
+      .finally(() => setAuditLoading(false));
+  }, [canViewAudit, tab, auditTabIndex, auditFilters.entityType, auditFilters.startDate, auditFilters.endDate]);
 
   const refreshCurrency = useCurrencyRefresh();
   useEffect(() => {
@@ -163,6 +182,7 @@ export default function Settings() {
         <Tab label="Codification" />
         {isAdmin && <Tab label="Sauvegarde" />}
         <Tab label="Alertes email / SMS" />
+        {canViewAudit && <Tab label="Journal d'audit" />}
       </Tabs>
 
       {tab === 0 && (
@@ -378,6 +398,59 @@ export default function Settings() {
                   </Button>
                 </Box>
               </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {canViewAudit && tab === auditTabIndex && (
+        <Card sx={{ borderRadius: 2 }}>
+          <CardContent>
+            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+              Journal d'audit
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Historique des créations, modifications et suppressions sur les équipements et ordres de travail.
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+              <TextField select size="small" label="Type d'entité" value={auditFilters.entityType} onChange={(e) => setAuditFilters((f) => ({ ...f, entityType: e.target.value }))} SelectProps={{ native: true }} sx={{ minWidth: 160 }}>
+                <option value="">Tous</option>
+                <option value="equipment">Équipement</option>
+                <option value="work_order">Ordre de travail</option>
+              </TextField>
+              <TextField type="date" size="small" label="Début" value={auditFilters.startDate} onChange={(e) => setAuditFilters((f) => ({ ...f, startDate: e.target.value }))} InputLabelProps={{ shrink: true }} />
+              <TextField type="date" size="small" label="Fin" value={auditFilters.endDate} onChange={(e) => setAuditFilters((f) => ({ ...f, endDate: e.target.value }))} InputLabelProps={{ shrink: true }} />
+            </Box>
+            {auditLoading ? (
+              <Box display="flex" justifyContent="center" p={2}><CircularProgress /></Box>
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Date</TableCell>
+                    <TableCell>Entité</TableCell>
+                    <TableCell>ID</TableCell>
+                    <TableCell>Action</TableCell>
+                    <TableCell>Utilisateur</TableCell>
+                    <TableCell>Résumé</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {auditLog.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell>{row.createdAt ? new Date(row.createdAt).toLocaleString('fr-FR') : '—'}</TableCell>
+                      <TableCell>{row.entityType === 'work_order' ? 'OT' : row.entityType === 'equipment' ? 'Équipement' : row.entityType}</TableCell>
+                      <TableCell>{row.entityId || '—'}</TableCell>
+                      <TableCell>{row.action === 'created' ? 'Création' : row.action === 'updated' ? 'Modification' : 'Suppression'}</TableCell>
+                      <TableCell>{row.userEmail || `User #${row.userId}` || '—'}</TableCell>
+                      <TableCell>{row.summary || '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+            {!auditLoading && auditLog.length === 0 && (
+              <Typography color="text.secondary">Aucun enregistrement d'audit sur la période.</Typography>
             )}
           </CardContent>
         </Card>

@@ -304,10 +304,18 @@ router.get('/:id', param('id').isInt(), (req, res) => {
   const scoreRow = db.prepare(`
     SELECT AVG(score) as avg_score, COUNT(*) as evaluation_count FROM technician_evaluations WHERE technician_id = ?
   `).get(id);
+  let trainings = [];
+  try {
+    trainings = db.prepare(`
+      SELECT id, name, description, completed_date, valid_until, issuer, created_at
+      FROM technician_trainings WHERE technician_id = ? ORDER BY (valid_until IS NULL), valid_until DESC, (completed_date IS NULL), completed_date DESC
+    `).all(id);
+  } catch (_) { /* table may not exist yet */ }
   res.json({
     ...user,
     competencies: comps,
     evaluations: evals,
+    trainings,
     avg_score: scoreRow?.avg_score ? Math.round(scoreRow.avg_score * 10) / 10 : null,
     evaluation_count: scoreRow?.evaluation_count ?? 0
   });
@@ -442,6 +450,106 @@ router.post('/:id/evaluations', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
     FROM technician_evaluations e WHERE e.technician_id = ? ORDER BY e.created_at DESC LIMIT 1
   `).get(technicianId);
   res.status(201).json(row);
+});
+
+// ————— Formations / habilitations (avec date de validité) —————
+router.get('/:id/trainings', param('id').isInt(), (req, res) => {
+  const id = parseInt(req.params.id);
+  const user = db.prepare(`
+    SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id
+    WHERE u.id = ? AND r.name IN ('technicien', 'responsable_maintenance')
+  `).get(id);
+  if (!user) return res.status(404).json({ error: 'Technicien introuvable' });
+  try {
+    const rows = db.prepare(`
+      SELECT id, name, description, completed_date, valid_until, issuer, created_at
+      FROM technician_trainings WHERE technician_id = ? ORDER BY (valid_until IS NULL), valid_until DESC, (completed_date IS NULL), completed_date DESC
+    `).all(id);
+    res.json(rows);
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) return res.json([]);
+    throw e;
+  }
+});
+
+router.post('/:id/trainings', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+  param('id').isInt(),
+  body('name').notEmpty().trim(),
+  body('description').optional().trim(),
+  body('completed_date').optional().isDate(),
+  body('valid_until').optional().isDate(),
+  body('issuer').optional().trim()
+], (req, res) => {
+  const err = validationResult(req);
+  if (!err.isEmpty()) return res.status(400).json({ errors: err.array() });
+  const technicianId = parseInt(req.params.id);
+  const { name, description, completed_date, valid_until, issuer } = req.body;
+  const tech = db.prepare(`
+    SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id
+    WHERE u.id = ? AND r.name IN ('technicien', 'responsable_maintenance')
+  `).get(technicianId);
+  if (!tech) return res.status(404).json({ error: 'Technicien introuvable' });
+  try {
+    db.prepare(`
+      INSERT INTO technician_trainings (technician_id, name, description, completed_date, valid_until, issuer)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(technicianId, name.trim(), description || null, completed_date || null, valid_until || null, issuer || null);
+    const row = db.prepare(`
+      SELECT id, name, description, completed_date, valid_until, issuer, created_at
+      FROM technician_trainings WHERE technician_id = ? ORDER BY id DESC LIMIT 1
+    `).get(technicianId);
+    res.status(201).json(row);
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) return res.status(501).json({ error: 'Table technician_trainings absente. Exécutez les migrations.' });
+    throw e;
+  }
+});
+
+router.put('/:id/trainings/:tid', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+  param('id').isInt(),
+  param('tid').isInt(),
+  body('name').optional().notEmpty().trim(),
+  body('description').optional().trim(),
+  body('completed_date').optional().isDate(),
+  body('valid_until').optional().isDate(),
+  body('issuer').optional().trim()
+], (req, res) => {
+  const err = validationResult(req);
+  if (!err.isEmpty()) return res.status(400).json({ errors: err.array() });
+  const technicianId = parseInt(req.params.id);
+  const tid = parseInt(req.params.tid);
+  const tech = db.prepare('SELECT id FROM users WHERE id = ?').get(technicianId);
+  if (!tech) return res.status(404).json({ error: 'Technicien introuvable' });
+  const existing = db.prepare('SELECT id FROM technician_trainings WHERE id = ? AND technician_id = ?').get(tid, technicianId);
+  if (!existing) return res.status(404).json({ error: 'Formation introuvable' });
+  const { name, description, completed_date, valid_until, issuer } = req.body;
+  const updates = [];
+  const values = [];
+  if (name !== undefined) { updates.push('name = ?'); values.push(name.trim()); }
+  if (description !== undefined) { updates.push('description = ?'); values.push(description || null); }
+  if (completed_date !== undefined) { updates.push('completed_date = ?'); values.push(completed_date || null); }
+  if (valid_until !== undefined) { updates.push('valid_until = ?'); values.push(valid_until || null); }
+  if (issuer !== undefined) { updates.push('issuer = ?'); values.push(issuer || null); }
+  if (updates.length === 0) {
+    const row = db.prepare('SELECT id, name, description, completed_date, valid_until, issuer, created_at FROM technician_trainings WHERE id = ?').get(tid);
+    return res.json(row);
+  }
+  values.push(tid);
+  db.prepare(`UPDATE technician_trainings SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(...values);
+  const row = db.prepare('SELECT id, name, description, completed_date, valid_until, issuer, created_at FROM technician_trainings WHERE id = ?').get(tid);
+  res.json(row);
+});
+
+router.delete('/:id/trainings/:tid', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+  param('id').isInt(),
+  param('tid').isInt()
+], (req, res) => {
+  const technicianId = parseInt(req.params.id);
+  const tid = parseInt(req.params.tid);
+  const existing = db.prepare('SELECT id FROM technician_trainings WHERE id = ? AND technician_id = ?').get(tid, technicianId);
+  if (!existing) return res.status(404).json({ error: 'Formation introuvable' });
+  db.prepare('DELETE FROM technician_trainings WHERE id = ?').run(tid);
+  res.status(204).send();
 });
 
 module.exports = router;

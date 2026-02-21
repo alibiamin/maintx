@@ -25,9 +25,14 @@ import {
   ListItemSecondaryAction,
   LinearProgress,
   TextField,
-  IconButton
+  IconButton,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow
 } from '@mui/material';
-import { ArrowBack, PlayArrow, Stop, PersonSearch, Star, Schedule, Checklist, Inventory, Description, Download, Delete, Upload, Print } from '@mui/icons-material';
+import { ArrowBack, PlayArrow, Stop, PersonSearch, Star, Schedule, Checklist, Inventory, Description, Download, Delete, Upload, Print, Add } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useSnackbar } from '../../context/SnackbarContext';
@@ -52,6 +57,10 @@ export default function WorkOrderDetail() {
   const [signatureName, setSignatureName] = useState('');
   const [woDocuments, setWoDocuments] = useState([]);
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [reservations, setReservations] = useState([]);
+  const [spareParts, setSpareParts] = useState([]);
+  const [reservationForm, setReservationForm] = useState({ sparePartId: '', quantity: 1 });
+  const [reservationSubmitting, setReservationSubmitting] = useState(false);
   const { user } = useAuth();
   const snackbar = useSnackbar();
   const canEdit = ['administrateur', 'responsable_maintenance', 'technicien'].includes(user?.role);
@@ -62,14 +71,24 @@ export default function WorkOrderDetail() {
     api.get(`/work-orders/${id}`).then(r => setOrder(r.data)).catch(() => navigate('/work-orders'));
   };
 
+  const loadReservations = () => {
+    if (!id || id === 'new') return;
+    api.get(`/work-orders/${id}/reservations`).then(r => setReservations(Array.isArray(r.data) ? r.data : [])).catch(() => setReservations([]));
+  };
+
   useEffect(() => {
     if (id === 'new') return;
     Promise.all([
       api.get(`/work-orders/${id}`),
-      api.get('/users/assignable').then(r => r.data).catch(() => [])
-    ]).then(([wo, u]) => {
+      api.get('/users/assignable').then(r => r.data).catch(() => []),
+      api.get(`/work-orders/${id}/reservations`).catch(() => ({ data: [] })),
+      api.get('/stock/parts').catch(() => ({ data: [] }))
+    ]).then(([wo, u, resRes, partsRes]) => {
       setOrder(wo.data);
       setUsers(u);
+      setReservations(Array.isArray(resRes?.data) ? resRes.data : []);
+      const parts = partsRes?.data?.data ?? partsRes?.data ?? [];
+      setSpareParts(Array.isArray(parts) ? parts : []);
     }).catch(() => navigate('/work-orders')).finally(() => setLoading(false));
   }, [id, navigate]);
 
@@ -342,9 +361,93 @@ export default function WorkOrderDetail() {
                 </Grid>
               </>
             )}
+            {(order.laborCost != null || order.partsCost != null || order.totalCost != null) && (
+              <>
+                <Grid item xs={12} md={4}>
+                  <Typography variant="subtitle2" color="text.secondary">Coût main-d'œuvre</Typography>
+                  <Typography>{order.laborCost != null ? `${Number(order.laborCost).toFixed(2)} €` : '—'}</Typography>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Typography variant="subtitle2" color="text.secondary">Coût pièces</Typography>
+                  <Typography>{order.partsCost != null ? `${Number(order.partsCost).toFixed(2)} €` : '—'}</Typography>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Typography variant="subtitle2" color="text.secondary">Coût total</Typography>
+                  <Typography fontWeight={600}>{order.totalCost != null ? `${Number(order.totalCost).toFixed(2)} €` : '—'}</Typography>
+                </Grid>
+              </>
+            )}
           </Grid>
         </CardContent>
       </Card>
+
+      {canEdit && (
+        <Card sx={{ mt: 2 }}>
+          <CardContent>
+            <Typography variant="subtitle1" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <Inventory /> Réservation de pièces (préparation chantier)
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+              <FormControl size="small" sx={{ minWidth: 220 }}>
+                <InputLabel>Pièce</InputLabel>
+                <Select
+                  value={reservationForm.sparePartId}
+                  label="Pièce"
+                  onChange={(e) => setReservationForm((f) => ({ ...f, sparePartId: e.target.value }))}
+                >
+                  <MenuItem value="">Sélectionner</MenuItem>
+                  {spareParts.map((p) => (
+                    <MenuItem key={p.id} value={p.id}>{p.code} – {p.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField type="number" size="small" label="Quantité" value={reservationForm.quantity} onChange={(e) => setReservationForm((f) => ({ ...f, quantity: e.target.value }))} inputProps={{ min: 1 }} sx={{ width: 100 }} />
+              <Button variant="outlined" size="small" startIcon={<Add />} disabled={reservationSubmitting || !reservationForm.sparePartId} onClick={() => {
+                if (!reservationForm.sparePartId) return;
+                setReservationSubmitting(true);
+                api.post(`/work-orders/${order.id}/reservations`, { sparePartId: Number(reservationForm.sparePartId), quantity: Number(reservationForm.quantity) || 1 })
+                  .then(() => { snackbar.showSuccess('Réservation ajoutée'); setReservationForm({ sparePartId: '', quantity: 1 }); loadReservations(); })
+                  .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'))
+                  .finally(() => setReservationSubmitting(false));
+              }}>
+                Réserver
+              </Button>
+            </Box>
+            {reservations.length === 0 ? (
+              <Typography color="text.secondary" variant="body2">Aucune réservation. Réservez des pièces pour préparer l'intervention.</Typography>
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Code</TableCell>
+                    <TableCell>Désignation</TableCell>
+                    <TableCell align="right">Quantité</TableCell>
+                    <TableCell align="right">Stock dispo</TableCell>
+                    <TableCell align="right">Action</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {reservations.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell>{r.partCode}</TableCell>
+                      <TableCell>{r.partName}</TableCell>
+                      <TableCell align="right">{r.quantity}</TableCell>
+                      <TableCell align="right">{r.stockQuantity ?? '—'}</TableCell>
+                      <TableCell align="right">
+                        <IconButton size="small" color="error" onClick={() => {
+                          api.delete(`/work-orders/${order.id}/reservations/${r.id}`)
+                            .then(() => { snackbar.showSuccess('Réservation supprimée'); loadReservations(); })
+                            .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'));
+                        }}><Delete /></IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {order.maintenancePlanId && planChecklists.length > 0 && (
         <Card sx={{ mt: 2 }}>
@@ -376,7 +479,7 @@ export default function WorkOrderDetail() {
             {canEdit && (
               <Button size="small" variant="outlined" component="label" startIcon={<Upload />} disabled={uploadingDoc}>
                 {uploadingDoc ? 'Envoi...' : 'Ajouter un fichier'}
-                <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.txt" onChange={handleUploadDoc} />
+                <input type="file" hidden accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.txt,image/*" capture="environment" onChange={handleUploadDoc} />
               </Button>
             )}
           </Box>

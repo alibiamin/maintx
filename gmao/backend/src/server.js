@@ -31,6 +31,10 @@ const competenciesRoutes = require('./routes/competencies');
 const notificationsRoutes = require('./routes/notifications');
 const searchRoutes = require('./routes/search');
 const interventionRequestsRoutes = require('./routes/interventionRequests');
+const auditRoutes = require('./routes/audit');
+const maintenanceProjectsRoutes = require('./routes/maintenanceProjects');
+const equipmentModelsRoutes = require('./routes/equipmentModels');
+const proceduresRoutes = require('./routes/procedures');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -75,6 +79,10 @@ app.use('/api/competencies', competenciesRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/intervention-requests', interventionRequestsRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/maintenance-projects', maintenanceProjectsRoutes);
+app.use('/api/equipment-models', equipmentModelsRoutes);
+app.use('/api/procedures', proceduresRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
