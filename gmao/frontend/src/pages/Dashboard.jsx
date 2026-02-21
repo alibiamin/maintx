@@ -103,12 +103,13 @@ function formatWeekLabel(weekStr) {
   return weekStr.length > 8 ? weekStr.slice(-5) : weekStr;
 }
 
-const DEFAULT_DASHBOARD_LAYOUT = ['alerts', 'kpis', 'summary', 'charts', 'recent', 'topFailures'];
+const DEFAULT_DASHBOARD_LAYOUT = ['alerts', 'kpis', 'summary', 'charts', 'technicianPerformance', 'recent', 'topFailures'];
 const WIDGET_LABELS = {
   alerts: 'Alertes (stock, SLA, plans)',
   kpis: 'Indicateurs clés (dispo, coût, MTTR, préventif)',
   summary: 'Résumé période et accès rapide',
   charts: 'Graphiques (statuts, priorités, évolution)',
+  technicianPerformance: 'Performance des techniciens',
   recent: 'Activité récente (OT)',
   topFailures: 'Équipements les plus en panne'
 };
@@ -119,6 +120,7 @@ export default function Dashboard() {
   const [recent, setRecent] = useState([]);
   const [alerts, setAlerts] = useState({ stock: [], sla: [], overduePlans: [] });
   const [topFailures, setTopFailures] = useState([]);
+  const [technicianPerformance, setTechnicianPerformance] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState(30);
@@ -145,13 +147,15 @@ export default function Dashboard() {
       api.get('/dashboard/recent'),
       api.get('/dashboard/alerts').catch(() => ({ data: { stock: [], sla: [], overduePlans: [] } })),
       api.get('/dashboard/top-failures', { params: { limit: 5 } }).catch(() => ({ data: [] })),
+      api.get('/dashboard/technician-performance', { params: { period, limit: 8 } }).catch(() => ({ data: [] })),
       api.get('/dashboard/summary', { params: { period } }).catch(() => ({ data: null }))
-    ]).then(([k, c, r, a, t, s]) => {
+    ]).then(([k, c, r, a, t, perf, s]) => {
       setKpis(k.data);
       setCharts(c.data);
       setRecent(r.data);
       setAlerts(a.data);
       setTopFailures(t.data || []);
+      setTechnicianPerformance(perf.data || []);
       setSummary(s.data);
     }).catch(console.error).finally(() => setLoading(false));
   }, [period]);
@@ -698,6 +702,52 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </Grid>
+        {visibleOrder.includes('technicianPerformance') && (
+        <Grid item xs={12} md={6}>
+          <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
+            <CardContent>
+              <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
+                <Box>
+                  <Typography variant="h6" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <People sx={{ color: 'info.main', fontSize: 26 }} />
+                    Performance des techniciens
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">OT complétés et heures sur les {period} derniers jours</Typography>
+                </Box>
+                <Button size="small" endIcon={<ArrowForward />} onClick={() => navigate('/reports?tab=technician')} sx={{ textTransform: 'none', fontWeight: 600 }}>
+                  Rapport
+                </Button>
+              </Box>
+              {technicianPerformance.length === 0 ? (
+                <Box sx={{ py: 6, textAlign: 'center' }}>
+                  <People sx={{ fontSize: 48, color: 'text.disabled', mb: 1, opacity: 0.5 }} />
+                  <Typography color="text.secondary">Aucune intervention enregistrée sur la période</Typography>
+                </Box>
+              ) : (
+                <Box sx={{ height: 280 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      layout="vertical"
+                      data={technicianPerformance.map(t => ({ name: (t.technician_name || 'Technicien').slice(0, 18), ot: t.completed_wo_count, heures: parseFloat(t.hours_spent || 0) }))}
+                      margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
+                    >
+                      <XAxis type="number" tick={tickStyle} tickLine={false} allowDecimals={false} />
+                      <YAxis type="category" dataKey="name" width={100} tick={{ ...tickStyle, fontSize: 11 }} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: 12, border: `1px solid ${tooltipBorder}`, backgroundColor: tooltipBg }}
+                        formatter={(value, name) => [name === 'ot' ? value : `${Number(value).toFixed(1)} h`, name === 'ot' ? 'OT complétés' : 'Heures']}
+                        labelFormatter={() => ''}
+                      />
+                      <Bar dataKey="ot" name="ot" fill={CHART_COLORS[0]} radius={[0, 6, 6, 0]} maxBarSize={20} />
+                      <Bar dataKey="heures" name="heures" fill={CHART_COLORS[3]} radius={[0, 6, 6, 0]} maxBarSize={20} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+        )}
         {visibleOrder.includes('topFailures') && (
         <Grid item xs={12} md={6}>
           <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>

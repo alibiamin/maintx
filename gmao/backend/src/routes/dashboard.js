@@ -320,6 +320,42 @@ router.get('/summary', (req, res) => {
 });
 
 /**
+ * GET /api/dashboard/technician-performance
+ * Performance des techniciens sur la période : OT complétés (avec intervention), heures passées
+ */
+router.get('/technician-performance', (req, res) => {
+  const period = parseInt(req.query.period, 10) || 30;
+  const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
+  const since = `date('now', '-${period} days')`;
+
+  const rows = db.prepare(`
+    SELECT u.id,
+           COALESCE(TRIM(u.first_name || ' ' || u.last_name), u.email, 'Technicien') as technician_name,
+           COUNT(DISTINCT wo.id) as completed_wo_count,
+           COALESCE(SUM(i.hours_spent), 0) as hours_spent
+    FROM users u
+    INNER JOIN interventions i ON i.technician_id = u.id
+    INNER JOIN work_orders wo ON i.work_order_id = wo.id
+      AND wo.status = 'completed'
+      AND wo.actual_end IS NOT NULL
+      AND date(wo.actual_end) >= ${since}
+    GROUP BY u.id
+    HAVING COUNT(DISTINCT wo.id) > 0
+    ORDER BY completed_wo_count DESC, hours_spent DESC
+    LIMIT ?
+  `).all(limit);
+
+  const out = rows.map(r => ({
+    id: r.id,
+    technician_name: r.technician_name,
+    completed_wo_count: r.completed_wo_count,
+    hours_spent: parseFloat(Number(r.hours_spent).toFixed(2))
+  }));
+
+  res.json(out);
+});
+
+/**
  * GET /api/dashboard/recent
  * Activité récente
  */
