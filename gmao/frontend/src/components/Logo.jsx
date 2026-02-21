@@ -31,7 +31,7 @@ const SIZES = {
   small: { icon: 32, main: '1rem', sub: '0.65rem', gap: 0.75 },
   medium: { icon: 44, main: '1.25rem', sub: '0.75rem', gap: 1 },
   large: { icon: 52, main: '1.5rem', sub: '0.85rem', gap: 1.25 },
-  xlarge: { icon: 96, main: '2.75rem', sub: '1.35rem', gap: 2 }
+  xlarge: { icon: 112, main: '3.5rem', sub: '1.75rem', gap: 2.5 }
 };
 
 function LogoIcon({ size, colors, sx = {} }) {
