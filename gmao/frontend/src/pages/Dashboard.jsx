@@ -160,7 +160,13 @@ export default function Dashboard() {
     }).catch(console.error).finally(() => setLoading(false));
   }, [period]);
 
-  const visibleOrder = (profile?.dashboardLayout?.length ? profile.dashboardLayout : DEFAULT_DASHBOARD_LAYOUT).filter(id => WIDGET_LABELS[id]);
+  // Fusionner le layout sauvegardé avec les widgets par défaut : les nouveaux widgets (ex. après déploiement) s'affichent même si le profil avait un ancien layout
+  const savedLayout = profile?.dashboardLayout?.length ? profile.dashboardLayout : DEFAULT_DASHBOARD_LAYOUT;
+  const mergedLayout = [...savedLayout];
+  DEFAULT_DASHBOARD_LAYOUT.forEach((id) => {
+    if (WIDGET_LABELS[id] && !mergedLayout.includes(id)) mergedLayout.push(id);
+  });
+  const visibleOrder = mergedLayout.filter((id) => WIDGET_LABELS[id]);
 
   const openCustomize = () => {
     setCustomLayout(profile?.dashboardLayout?.length ? [...profile.dashboardLayout] : [...DEFAULT_DASHBOARD_LAYOUT]);
