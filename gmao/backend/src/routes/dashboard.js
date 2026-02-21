@@ -321,14 +321,15 @@ router.get('/summary', (req, res) => {
 
 /**
  * GET /api/dashboard/technician-performance
- * Performance des techniciens sur la période : OT complétés (avec intervention), heures passées
+ * Performance des techniciens sur la période : OT complétés (interventions + assignation), heures passées
  */
 router.get('/technician-performance', (req, res) => {
   const period = parseInt(req.query.period, 10) || 30;
   const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
   const since = `date('now', '-${period} days')`;
 
-  const rows = db.prepare(`
+  // 1) Techniciens ayant des interventions sur des OT complétés dans la période
+  const fromInterventions = db.prepare(`
     SELECT u.id,
            COALESCE(TRIM(u.first_name || ' ' || u.last_name), u.email, 'Technicien') as technician_name,
            COUNT(DISTINCT wo.id) as completed_wo_count,
@@ -341,16 +342,47 @@ router.get('/technician-performance', (req, res) => {
       AND date(wo.actual_end) >= ${since}
     GROUP BY u.id
     HAVING COUNT(DISTINCT wo.id) > 0
-    ORDER BY completed_wo_count DESC, hours_spent DESC
-    LIMIT ?
-  `).all(limit);
+  `).all();
 
-  const out = rows.map(r => ({
-    id: r.id,
-    technician_name: r.technician_name,
-    completed_wo_count: r.completed_wo_count,
-    hours_spent: parseFloat(Number(r.hours_spent).toFixed(2))
-  }));
+  // 2) Techniciens assignés (assigned_to) sur des OT complétés dans la période, sans intervention enregistrée
+  const fromAssigned = db.prepare(`
+    SELECT u.id,
+           COALESCE(TRIM(u.first_name || ' ' || u.last_name), u.email, 'Technicien') as technician_name,
+           COUNT(DISTINCT wo.id) as completed_wo_count,
+           COALESCE(SUM((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24), 0) as hours_spent
+    FROM work_orders wo
+    INNER JOIN users u ON u.id = wo.assigned_to
+    WHERE wo.status = 'completed'
+      AND wo.actual_end IS NOT NULL
+      AND wo.actual_start IS NOT NULL
+      AND date(wo.actual_end) >= ${since}
+      AND wo.assigned_to IS NOT NULL
+    GROUP BY wo.assigned_to
+  `).all();
+
+  const byId = new Map();
+  fromInterventions.forEach((r) => {
+    byId.set(r.id, {
+      id: r.id,
+      technician_name: r.technician_name,
+      completed_wo_count: r.completed_wo_count,
+      hours_spent: parseFloat(Number(r.hours_spent).toFixed(2))
+    });
+  });
+  fromAssigned.forEach((r) => {
+    if (!byId.has(r.id)) {
+      byId.set(r.id, {
+        id: r.id,
+        technician_name: r.technician_name,
+        completed_wo_count: r.completed_wo_count,
+        hours_spent: parseFloat(Number(r.hours_spent).toFixed(2))
+      });
+    }
+  });
+
+  const out = [...byId.values()]
+    .sort((a, b) => b.completed_wo_count - a.completed_wo_count || b.hours_spent - a.hours_spent)
+    .slice(0, limit);
 
   res.json(out);
 });
