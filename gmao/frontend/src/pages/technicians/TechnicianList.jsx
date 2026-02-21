@@ -28,7 +28,11 @@ function TechnicianList() {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', hourlyRate: '' });
+  const [form, setForm] = useState({
+    email: '', password: '', firstName: '', lastName: '', hourlyRate: '',
+    phone: '', address: '', city: '', postalCode: '', employeeNumber: '',
+    jobTitle: '', department: '', hireDate: '', contractType: ''
+  });
   const [saving, setSaving] = useState(false);
   const { user } = useAuth();
   const snackbar = useSnackbar();
@@ -42,7 +46,11 @@ function TechnicianList() {
   useEffect(() => { load(); }, []);
 
   const handleOpenDialog = () => {
-    setForm({ email: '', password: '', firstName: '', lastName: '', hourlyRate: '' });
+    setForm({
+      email: '', password: '', firstName: '', lastName: '', hourlyRate: '',
+      phone: '', address: '', city: '', postalCode: '', employeeNumber: '',
+      jobTitle: '', department: '', hireDate: '', contractType: ''
+    });
     setDialogOpen(true);
   };
 
@@ -60,7 +68,16 @@ function TechnicianList() {
       password: form.password,
       firstName: form.firstName.trim(),
       lastName: form.lastName.trim(),
-      hourlyRate: form.hourlyRate.trim() ? parseFloat(form.hourlyRate.replace(',', '.')) : undefined
+      hourlyRate: form.hourlyRate.trim() ? parseFloat(form.hourlyRate.replace(',', '.')) : undefined,
+      phone: form.phone.trim() || undefined,
+      address: form.address.trim() || undefined,
+      city: form.city.trim() || undefined,
+      postalCode: form.postalCode.trim() || undefined,
+      employeeNumber: form.employeeNumber.trim() || undefined,
+      jobTitle: form.jobTitle.trim() || undefined,
+      department: form.department.trim() || undefined,
+      hireDate: form.hireDate || undefined,
+      contractType: form.contractType.trim() || undefined
     })
       .then((r) => {
         setDialogOpen(false);
@@ -91,11 +108,27 @@ function TechnicianList() {
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth component="form" onSubmit={handleSubmit}>
         <DialogTitle>Nouveau technicien</DialogTitle>
         <DialogContent>
-          <TextField fullWidth label="Email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} margin="normal" autoComplete="email" />
-          <TextField fullWidth label="Mot de passe" type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} margin="normal" helperText="Minimum 8 caractères" autoComplete="new-password" />
-          <TextField fullWidth label="Prénom" required value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} margin="normal" />
-          <TextField fullWidth label="Nom" required value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} margin="normal" />
-          <TextField fullWidth label={`Taux horaire (${currency}/h)`} type="number" placeholder="Optionnel (sinon taux par défaut)" value={form.hourlyRate} onChange={(e) => setForm({ ...form, hourlyRate: e.target.value })} margin="normal" inputProps={{ min: 0, step: 0.01 }} />
+          <Typography variant="subtitle2" color="primary" sx={{ mt: 1, mb: 0.5 }}>Compte</Typography>
+          <TextField fullWidth label="Email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} margin="dense" autoComplete="email" />
+          <TextField fullWidth label="Mot de passe" type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} margin="dense" helperText="Minimum 8 caractères" autoComplete="new-password" />
+          <TextField fullWidth label="Prénom" required value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} margin="dense" />
+          <TextField fullWidth label="Nom" required value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} margin="dense" />
+          <TextField fullWidth label={`Taux horaire (${currency}/h)`} type="number" placeholder="Optionnel" value={form.hourlyRate} onChange={(e) => setForm({ ...form, hourlyRate: e.target.value })} margin="dense" inputProps={{ min: 0, step: 0.01 }} />
+          <Typography variant="subtitle2" color="primary" sx={{ mt: 2, mb: 0.5 }}>Infos personnelles</Typography>
+          <TextField fullWidth label="Téléphone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} margin="dense" />
+          <TextField fullWidth label="Adresse" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} margin="dense" />
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField fullWidth label="Ville" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} margin="dense" />
+            <TextField label="Code postal" value={form.postalCode} onChange={(e) => setForm({ ...form, postalCode: e.target.value })} margin="dense" sx={{ width: 120 }} />
+          </Box>
+          <TextField fullWidth label="Matricule" value={form.employeeNumber} onChange={(e) => setForm({ ...form, employeeNumber: e.target.value })} margin="dense" placeholder="Optionnel" />
+          <Typography variant="subtitle2" color="primary" sx={{ mt: 2, mb: 0.5 }}>Infos techniques</Typography>
+          <TextField fullWidth label="Fonction / Poste" value={form.jobTitle} onChange={(e) => setForm({ ...form, jobTitle: e.target.value })} margin="dense" />
+          <TextField fullWidth label="Service / Département" value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} margin="dense" />
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField fullWidth label="Date d'entrée" type="date" value={form.hireDate} onChange={(e) => setForm({ ...form, hireDate: e.target.value })} margin="dense" InputLabelProps={{ shrink: true }} />
+            <TextField fullWidth label="Type de contrat" value={form.contractType} onChange={(e) => setForm({ ...form, contractType: e.target.value })} margin="dense" placeholder="CDI, CDD…" />
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseDialog}>Annuler</Button>
@@ -134,6 +167,21 @@ function TechnicianList() {
                   <Typography variant="body2" color="text.secondary">
                     Taux : {t.hourly_rate != null ? `${Number(t.hourly_rate).toFixed(2)} ${currency}/h` : 'défaut'}
                   </Typography>
+                  {(t.phone || t.job_title || t.department || t.city) && (
+                    <Box sx={{ mt: 1, pt: 1, borderTop: 1, borderColor: 'divider' }}>
+                      {t.phone && <Typography variant="caption" display="block" color="text.secondary">Tél. {t.phone}</Typography>}
+                      {(t.job_title || t.department) && (
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          {[t.job_title, t.department].filter(Boolean).join(' · ')}
+                        </Typography>
+                      )}
+                      {(t.city || t.address) && (
+                        <Typography variant="caption" display="block" color="text.secondary" noWrap title={[t.address, t.city, t.postal_code].filter(Boolean).join(' ')}>
+                          {t.city || t.address}
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                     {t.competencies?.slice(0, 4).map((c) => (
                       <Chip key={c.competence_id} label={`${c.name} ${c.level}`} size="small" variant="outlined" sx={{ fontSize: '0.75rem' }} />

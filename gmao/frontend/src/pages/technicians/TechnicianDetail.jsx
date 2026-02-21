@@ -52,6 +52,17 @@ export default function TechnicianDetail() {
   const [techniciansList, setTechniciansList] = useState([]);
   const [managerId, setManagerId] = useState('');
   const [savingManager, setSavingManager] = useState(false);
+  const [editPersonalInfo, setEditPersonalInfo] = useState(false);
+  const [savingPersonal, setSavingPersonal] = useState(false);
+  const [personalPhone, setPersonalPhone] = useState('');
+  const [personalAddress, setPersonalAddress] = useState('');
+  const [personalCity, setPersonalCity] = useState('');
+  const [personalPostalCode, setPersonalPostalCode] = useState('');
+  const [personalEmployeeNumber, setPersonalEmployeeNumber] = useState('');
+  const [personalJobTitle, setPersonalJobTitle] = useState('');
+  const [personalDepartment, setPersonalDepartment] = useState('');
+  const [personalHireDate, setPersonalHireDate] = useState('');
+  const [personalContractType, setPersonalContractType] = useState('');
   const { user } = useAuth();
   const snackbar = useSnackbar();
   const currency = useCurrency();
@@ -69,6 +80,15 @@ export default function TechnicianDetail() {
       setHourlyRateEdit(r.data.hourly_rate != null ? String(r.data.hourly_rate) : '');
       setManagerId(r.data.manager_id != null ? String(r.data.manager_id) : '');
       setTechniciansList(listRes.data || []);
+      setPersonalPhone(r.data.phone ?? '');
+      setPersonalAddress(r.data.address ?? '');
+      setPersonalCity(r.data.city ?? '');
+      setPersonalPostalCode(r.data.postal_code ?? '');
+      setPersonalEmployeeNumber(r.data.employee_number ?? '');
+      setPersonalJobTitle(r.data.job_title ?? '');
+      setPersonalDepartment(r.data.department ?? '');
+      setPersonalHireDate(r.data.hire_date ?? '');
+      setPersonalContractType(r.data.contract_type ?? '');
     }).catch(() => navigate('/technicians')).finally(() => setLoading(false));
   }, [id, navigate]);
 
@@ -146,6 +166,41 @@ export default function TechnicianDetail() {
       .finally(() => setSavingRate(false));
   };
 
+  const openEditPersonal = () => {
+    setPersonalPhone(tech.phone ?? '');
+    setPersonalAddress(tech.address ?? '');
+    setPersonalCity(tech.city ?? '');
+    setPersonalPostalCode(tech.postal_code ?? '');
+    setPersonalEmployeeNumber(tech.employee_number ?? '');
+    setPersonalJobTitle(tech.job_title ?? '');
+    setPersonalDepartment(tech.department ?? '');
+    setPersonalHireDate(tech.hire_date ?? '');
+    setPersonalContractType(tech.contract_type ?? '');
+    setEditPersonalInfo(true);
+  };
+
+  const handleSavePersonal = () => {
+    setSavingPersonal(true);
+    api.put(`/technicians/${id}`, {
+      phone: personalPhone || undefined, address: personalAddress || undefined, city: personalCity || undefined,
+      postalCode: personalPostalCode || undefined, employeeNumber: personalEmployeeNumber || undefined,
+      jobTitle: personalJobTitle || undefined, department: personalDepartment || undefined,
+      hireDate: personalHireDate || undefined, contractType: personalContractType || undefined
+    })
+      .then((r) => {
+        setTech(prev => ({
+          ...prev,
+          phone: r.data.phone, address: r.data.address, city: r.data.city, postal_code: r.data.postal_code,
+          employee_number: r.data.employee_number, job_title: r.data.job_title, department: r.data.department,
+          hire_date: r.data.hire_date, contract_type: r.data.contract_type
+        }));
+        setEditPersonalInfo(false);
+        snackbar.showSuccess('Infos enregistrées');
+      })
+      .catch(() => snackbar.showError('Erreur'))
+      .finally(() => setSavingPersonal(false));
+  };
+
   if (loading || !tech) return <Box p={4}><CircularProgress /></Box>;
 
   return (
@@ -183,6 +238,44 @@ export default function TechnicianDetail() {
                   </Box>
                 ) : (
                   <Typography fontWeight={500}>{tech.hourly_rate != null ? `${Number(tech.hourly_rate).toFixed(2)} ${currency}/h` : 'Non renseigné'}</Typography>
+                )}
+              </Box>
+              <Box sx={{ mt: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 0.5 }}>
+                  <Typography variant="subtitle2" color="text.secondary">Infos personnelles & techniques</Typography>
+                  {canEdit && !editPersonalInfo && (
+                    <Button size="small" startIcon={<Edit />} onClick={openEditPersonal}>Modifier</Button>
+                  )}
+                </Box>
+                {canEdit && editPersonalInfo ? (
+                  <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <TextField size="small" fullWidth label="Téléphone" value={personalPhone} onChange={(e) => setPersonalPhone(e.target.value)} />
+                    <TextField size="small" fullWidth label="Adresse" value={personalAddress} onChange={(e) => setPersonalAddress(e.target.value)} />
+                    <TextField size="small" fullWidth label="Ville" value={personalCity} onChange={(e) => setPersonalCity(e.target.value)} />
+                    <TextField size="small" fullWidth label="Code postal" value={personalPostalCode} onChange={(e) => setPersonalPostalCode(e.target.value)} />
+                    <TextField size="small" fullWidth label="Matricule" value={personalEmployeeNumber} onChange={(e) => setPersonalEmployeeNumber(e.target.value)} />
+                    <TextField size="small" fullWidth label="Fonction / Poste" value={personalJobTitle} onChange={(e) => setPersonalJobTitle(e.target.value)} />
+                    <TextField size="small" fullWidth label="Service / Département" value={personalDepartment} onChange={(e) => setPersonalDepartment(e.target.value)} />
+                    <TextField size="small" fullWidth type="date" InputLabelProps={{ shrink: true }} label="Date d'entrée" value={personalHireDate} onChange={(e) => setPersonalHireDate(e.target.value)} />
+                    <TextField size="small" fullWidth label="Type de contrat" value={personalContractType} onChange={(e) => setPersonalContractType(e.target.value)} placeholder="CDI, CDD, etc." />
+                    <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                      <Button size="small" variant="contained" disabled={savingPersonal} onClick={handleSavePersonal}>{savingPersonal ? '...' : 'Enregistrer'}</Button>
+                      <Button size="small" onClick={() => setEditPersonalInfo(false)}>Annuler</Button>
+                    </Box>
+                  </Box>
+                ) : (
+                  <>
+                    {tech.phone && <Typography variant="body2">Tél. {tech.phone}</Typography>}
+                    {(tech.address || tech.city) && <Typography variant="body2">{[tech.address, tech.city, tech.postal_code].filter(Boolean).join(' ')}</Typography>}
+                    {tech.employee_number && <Typography variant="body2">Matricule : {tech.employee_number}</Typography>}
+                    {tech.job_title && <Typography variant="body2">Poste : {tech.job_title}</Typography>}
+                    {tech.department && <Typography variant="body2">Service : {tech.department}</Typography>}
+                    {tech.hire_date && <Typography variant="body2">Entrée : {tech.hire_date}</Typography>}
+                    {tech.contract_type && <Typography variant="body2">Contrat : {tech.contract_type}</Typography>}
+                    {!tech.phone && !tech.address && !tech.employee_number && !tech.job_title && !tech.department && !tech.hire_date && !tech.contract_type && (
+                      <Typography variant="body2" color="text.secondary">Non renseigné</Typography>
+                    )}
+                  </>
                 )}
               </Box>
               <Box sx={{ mt: 2 }}>

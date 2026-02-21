@@ -87,7 +87,7 @@ const getDefaultForm = (type) => {
     plan_maintenance: { equipmentId: '', name: '', description: '', frequencyDays: '30' },
     checklist: { name: '', description: '', maintenance_plan_id: '', is_template: false, items: [{ item_text: '', item_type: 'check' }] },
     ordre_travail: { title: '', description: '', equipmentId: '', typeId: '', priority: 'medium' },
-    utilisateur: { email: '', password: '', firstName: '', lastName: '', roleId: '' },
+    utilisateur: { email: '', password: '', firstName: '', lastName: '', roleId: '', phone: '', address: '', city: '', postalCode: '', employeeNumber: '', jobTitle: '', department: '', hireDate: '', contractType: '' },
     code_defaut: { code: '', name: '', description: '', category: '' }
   };
   return { ...(defaults[type] || {}) };
@@ -324,7 +324,10 @@ export default function Creation() {
       }
       if (creationType === 'utilisateur') {
         return api.post('/users', {
-          email: form.email, password: form.password, firstName: form.firstName, lastName: form.lastName, roleId: parseInt(form.roleId)
+          email: form.email, password: form.password, firstName: form.firstName, lastName: form.lastName, roleId: parseInt(form.roleId),
+          phone: form.phone || undefined, address: form.address || undefined, city: form.city || undefined, postalCode: form.postalCode || undefined,
+          employeeNumber: form.employeeNumber || undefined, jobTitle: form.jobTitle || undefined, department: form.department || undefined,
+          hireDate: form.hireDate || undefined, contractType: form.contractType || undefined
         }).then(() => { setSuccess('Utilisateur créé.'); setForm(getDefaultForm('utilisateur')); });
       }
       if (creationType === 'code_defaut') {
@@ -556,11 +559,23 @@ export default function Creation() {
             {/* ——— Paramètres ——— */}
             {creationType === 'utilisateur' && (
               <Grid container spacing={2}>
+                <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary">Compte</Typography></Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth required type="email" label="Email" value={form.email ?? ''} onChange={(e) => handleChange('email', e.target.value)} /></Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth required type="password" label="Mot de passe" value={form.password ?? ''} onChange={(e) => handleChange('password', e.target.value)} /></Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth required label="Prénom" value={form.firstName ?? ''} onChange={(e) => handleChange('firstName', e.target.value)} /></Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth required label="Nom" value={form.lastName ?? ''} onChange={(e) => handleChange('lastName', e.target.value)} /></Grid>
                 <Grid item xs={12}><FormControl fullWidth required><InputLabel>Rôle</InputLabel><Select value={form.roleId ?? ''} label="Rôle" onChange={(e) => handleChange('roleId', e.target.value)}>{roles.map(r => <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1 }}>Infos personnelles</Typography></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Téléphone" value={form.phone ?? ''} onChange={(e) => handleChange('phone', e.target.value)} /></Grid>
+                <Grid item xs={12}><TextField fullWidth label="Adresse" value={form.address ?? ''} onChange={(e) => handleChange('address', e.target.value)} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Ville" value={form.city ?? ''} onChange={(e) => handleChange('city', e.target.value)} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Code postal" value={form.postalCode ?? ''} onChange={(e) => handleChange('postalCode', e.target.value)} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Matricule" value={form.employeeNumber ?? ''} onChange={(e) => handleChange('employeeNumber', e.target.value)} /></Grid>
+                <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary" sx={{ mt: 1 }}>Infos techniques</Typography></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Fonction / Poste" value={form.jobTitle ?? ''} onChange={(e) => handleChange('jobTitle', e.target.value)} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Service / Département" value={form.department ?? ''} onChange={(e) => handleChange('department', e.target.value)} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth type="date" InputLabelProps={{ shrink: true }} label="Date d'entrée" value={form.hireDate ?? ''} onChange={(e) => handleChange('hireDate', e.target.value)} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Type de contrat" value={form.contractType ?? ''} onChange={(e) => handleChange('contractType', e.target.value)} placeholder="CDI, CDD, etc." /></Grid>
               </Grid>
             )}
             {creationType === 'code_defaut' && (

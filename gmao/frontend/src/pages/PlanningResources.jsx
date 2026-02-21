@@ -65,12 +65,10 @@ export default function PlanningResources() {
               <List dense>
                 {(resources?.technicians?.list || []).slice(0, 5).map((tech) => (
                   <ListItem key={tech.id}>
-                    <ListItemText
-                      primary={tech.name}
-                      secondary={
-                        <Chip label={tech.status} size="small" color={tech.status === 'available' ? 'success' : 'default'} />
-                      }
-                    />
+                    <Box sx={{ width: '100%' }}>
+                      <ListItemText primary={tech.name} />
+                      <Chip label={tech.status} size="small" color={tech.status === 'available' ? 'success' : 'default'} sx={{ mt: 0.5 }} />
+                    </Box>
                   </ListItem>
                 ))}
               </List>

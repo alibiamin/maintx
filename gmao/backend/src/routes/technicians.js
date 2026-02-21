@@ -19,21 +19,30 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 ], (req, res) => {
   const err = validationResult(req);
   if (!err.isEmpty()) return res.status(400).json({ errors: err.array() });
-  const { email, password, firstName, lastName, hourlyRate } = req.body;
+  const {
+    email, password, firstName, lastName, hourlyRate,
+    phone, address, city, postalCode, employeeNumber, jobTitle, department, hireDate, contractType
+  } = req.body;
   const roleRow = db.prepare("SELECT id FROM roles WHERE name = 'technicien'").get();
   if (!roleRow) return res.status(500).json({ error: 'Rôle technicien introuvable' });
   const hash = bcrypt.hashSync(password, 10);
   const rate = hourlyRate != null && hourlyRate !== '' ? parseFloat(String(hourlyRate).replace(',', '.')) : null;
   try {
     const result = db.prepare(`
-      INSERT INTO users (email, password_hash, first_name, last_name, role_id, hourly_rate)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(email, hash, firstName.trim(), lastName.trim(), roleRow.id, rate);
+      INSERT INTO users (email, password_hash, first_name, last_name, role_id, hourly_rate,
+        phone, address, city, postal_code, employee_number, job_title, department, hire_date, contract_type)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      email, hash, firstName.trim(), lastName.trim(), roleRow.id, rate,
+      phone || null, address || null, city || null, postalCode || null, employeeNumber || null,
+      jobTitle || null, department || null, hireDate || null, contractType || null
+    );
     const row = db.prepare(`
-      SELECT u.id, u.email, u.first_name, u.last_name, u.role_id, u.hourly_rate, r.name as role_name
+      SELECT u.id, u.email, u.first_name, u.last_name, u.role_id, u.hourly_rate, u.phone, u.address, u.city, u.postal_code,
+        u.employee_number, u.job_title, u.department, u.hire_date, u.contract_type, r.name as role_name
       FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?
     `).get(result.lastInsertRowid);
-    res.status(201).json({ ...row, hourly_rate: row.hourly_rate });
+    res.status(201).json(row);
   } catch (e) {
     if (e.message && e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email déjà utilisé' });
     throw e;
@@ -157,7 +166,9 @@ router.put('/type-competencies/save', authorize(ROLES.ADMIN, ROLES.RESPONSABLE),
 // Liste des techniciens (et responsables) avec compétences, note moyenne et taux horaire
 router.get('/', (req, res) => {
   const users = db.prepare(`
-    SELECT u.id, u.first_name, u.last_name, u.email, u.hourly_rate, u.manager_id, r.name as role_name
+    SELECT u.id, u.first_name, u.last_name, u.email, u.hourly_rate, u.manager_id,
+      u.phone, u.address, u.city, u.postal_code, u.employee_number, u.job_title, u.department, u.hire_date, u.contract_type,
+      r.name as role_name
     FROM users u
     JOIN roles r ON u.role_id = r.id
     WHERE u.is_active = 1 AND r.name IN ('technicien', 'responsable_maintenance')
@@ -194,6 +205,15 @@ router.get('/', (req, res) => {
     hourly_rate: u.hourly_rate != null ? parseFloat(u.hourly_rate) : null,
     manager_id: u.manager_id || null,
     role_name: u.role_name,
+    phone: u.phone || null,
+    address: u.address || null,
+    city: u.city || null,
+    postal_code: u.postal_code || null,
+    employee_number: u.employee_number || null,
+    job_title: u.job_title || null,
+    department: u.department || null,
+    hire_date: u.hire_date || null,
+    contract_type: u.contract_type || null,
     competencies: byUser[u.id] || [],
     avg_score: scoreByUser[u.id]?.avg_score ?? null,
     evaluation_count: scoreByUser[u.id]?.evaluation_count ?? 0
@@ -236,7 +256,9 @@ router.get('/team-hierarchy', (req, res) => {
 router.get('/:id', param('id').isInt(), (req, res) => {
   const id = parseInt(req.params.id);
   const user = db.prepare(`
-    SELECT u.id, u.first_name, u.last_name, u.email, u.is_active, u.hourly_rate, u.manager_id, r.name as role_name
+    SELECT u.id, u.first_name, u.last_name, u.email, u.is_active, u.hourly_rate, u.manager_id,
+      u.phone, u.address, u.city, u.postal_code, u.employee_number, u.job_title, u.department, u.hire_date, u.contract_type,
+      r.name as role_name
     FROM users u
     JOIN roles r ON u.role_id = r.id
     WHERE u.id = ? AND r.name IN ('technicien', 'responsable_maintenance')
@@ -282,7 +304,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
     WHERE u.id = ? AND r.name IN ('technicien', 'responsable_maintenance')
   `).get(id);
   if (!existing) return res.status(404).json({ error: 'Technicien introuvable' });
-  const { hourlyRate, firstName, lastName, managerId } = req.body;
+  const { hourlyRate, firstName, lastName, managerId, phone, address, city, postalCode, employeeNumber, jobTitle, department, hireDate, contractType } = req.body;
   const updates = [];
   const values = [];
   if (hourlyRate !== undefined) {
@@ -304,22 +326,31 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
     updates.push('last_name = ?');
     values.push(String(lastName).trim());
   }
+  if (phone !== undefined) { updates.push('phone = ?'); values.push(phone === '' ? null : phone); }
+  if (address !== undefined) { updates.push('address = ?'); values.push(address === '' ? null : address); }
+  if (city !== undefined) { updates.push('city = ?'); values.push(city === '' ? null : city); }
+  if (postalCode !== undefined) { updates.push('postal_code = ?'); values.push(postalCode === '' ? null : postalCode); }
+  if (employeeNumber !== undefined) { updates.push('employee_number = ?'); values.push(employeeNumber === '' ? null : employeeNumber); }
+  if (jobTitle !== undefined) { updates.push('job_title = ?'); values.push(jobTitle === '' ? null : jobTitle); }
+  if (department !== undefined) { updates.push('department = ?'); values.push(department === '' ? null : department); }
+  if (hireDate !== undefined) { updates.push('hire_date = ?'); values.push(hireDate === '' ? null : hireDate); }
+  if (contractType !== undefined) { updates.push('contract_type = ?'); values.push(contractType === '' ? null : contractType); }
+  const selectUser = () => db.prepare(`
+    SELECT u.id, u.first_name, u.last_name, u.email, u.hourly_rate, u.manager_id,
+      u.phone, u.address, u.city, u.postal_code, u.employee_number, u.job_title, u.department, u.hire_date, u.contract_type,
+      r.name as role_name
+    FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?
+  `).get(id);
   if (updates.length === 0) {
-    const user = db.prepare(`
-      SELECT u.id, u.first_name, u.last_name, u.email, u.hourly_rate, u.manager_id, r.name as role_name
-      FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?
-    `).get(id);
-    if (user?.hourly_rate != null) user.hourly_rate = parseFloat(user.hourly_rate);
-    return res.json(user);
+    const u = selectUser();
+    if (u?.hourly_rate != null) u.hourly_rate = parseFloat(u.hourly_rate);
+    return res.json(u);
   }
   values.push(id);
   db.prepare(`UPDATE users SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(...values);
-  const user = db.prepare(`
-    SELECT u.id, u.first_name, u.last_name, u.email, u.hourly_rate, u.manager_id, r.name as role_name
-    FROM users u JOIN roles r ON u.role_id = r.id WHERE u.id = ?
-  `).get(id);
-  if (user?.hourly_rate != null) user.hourly_rate = parseFloat(user.hourly_rate);
-  res.json(user);
+  const u = selectUser();
+  if (u?.hourly_rate != null) u.hourly_rate = parseFloat(u.hourly_rate);
+  res.json(u);
 });
 
 // Mise à jour des compétences d'un technicien
