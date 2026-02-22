@@ -327,13 +327,17 @@ export default function WorkOrderDetail() {
             </Grid>
             <Grid item xs={12} md={4}>
               <Typography variant="subtitle2" color="text.secondary">Projet</Typography>
-              {order.projectId ? (
-                <Button size="small" component={Link} to={`/maintenance-projects/${order.projectId}`} sx={{ p: 0, textTransform: 'none', justifyContent: 'flex-start' }}>
-                  {order.projectName || `Projet #${order.projectId}`}
-                </Button>
-              ) : (
-                <Typography>—</Typography>
-              )}
+              {(() => {
+                const pid = order.projectId;
+                const validId = pid != null && pid !== '' && pid !== 'undefined' && !Number.isNaN(Number(pid)) ? Number(pid) : null;
+                return validId != null ? (
+                  <Button size="small" component={Link} to={`/maintenance-projects/${validId}`} sx={{ p: 0, textTransform: 'none', justifyContent: 'flex-start' }}>
+                    {order.projectName || `Projet #${validId}`}
+                  </Button>
+                ) : (
+                  <Typography>—</Typography>
+                );
+              })()}
             </Grid>
             <Grid item xs={12} md={4}>
               <Typography variant="subtitle2" color="text.secondary">Technicien assigné</Typography>

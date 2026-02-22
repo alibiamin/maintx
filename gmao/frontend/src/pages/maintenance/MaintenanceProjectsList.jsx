@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Box, Card, Table, TableBody, TableCell, TableHead, TableRow,
-  Chip, Button, CircularProgress, Typography
+  Chip, Button, CircularProgress, Typography, Tooltip
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { Add } from '@mui/icons-material';
@@ -36,11 +36,19 @@ export default function MaintenanceProjectsList() {
           <h2 style={{ margin: 0 }}>Projets de maintenance</h2>
           <p style={{ margin: '4px 0 0', color: '#64748b' }}>Regroupement d'OT, budget et suivi</p>
         </Box>
-        {canCreate && (
-          <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/maintenance-projects/new')}>
-            Nouveau projet
-          </Button>
-        )}
+        <Tooltip title={!canCreate ? 'Droits insuffisants (Administrateur ou Responsable)' : ''}>
+          <span>
+            <Button
+              type="button"
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => { if (canCreate) navigate('/maintenance-projects/new'); }}
+              disabled={!canCreate}
+            >
+              Nouveau projet
+            </Button>
+          </span>
+        </Tooltip>
       </Box>
 
       <Card>

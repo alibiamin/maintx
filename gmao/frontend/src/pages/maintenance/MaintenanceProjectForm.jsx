@@ -80,10 +80,19 @@ export default function MaintenanceProjectForm() {
     setSaving(true);
     if (isNew) {
       api.post('/maintenance-projects', payload)
-        .then((r) => { snackbar.showSuccess('Projet créé'); navigate(`/maintenance-projects/${r.data.id}`); })
+        .then((r) => {
+          const id = r.data?.id ?? r.data?.projectId ?? r.data?.data?.id;
+          const numId = id != null && id !== '' && !Number.isNaN(Number(id)) ? Number(id) : null;
+          snackbar.showSuccess('Projet créé');
+          navigate(numId != null ? `/maintenance-projects/${numId}` : '/maintenance-projects');
+        })
         .catch((e) => {
+          const status = e.response?.status;
           const data = e.response?.data;
-          const msg = data?.error || (Array.isArray(data?.errors) && data.errors[0]?.msg) || 'Erreur création';
+          let msg = data?.error || (Array.isArray(data?.errors) && data.errors[0]?.msg) || '';
+          if (status === 403) msg = msg || 'Droits insuffisants pour créer un projet.';
+          if (status === 501) msg = msg || 'Table absente : exécutez les migrations.';
+          if (!msg) msg = e.message || 'Erreur lors de la création.';
           snackbar.showError(msg);
         })
         .finally(() => setSaving(false));
@@ -133,7 +142,15 @@ export default function MaintenanceProjectForm() {
               </Select>
             </FormControl>
             <Box sx={{ mt: 2 }}>
-              <Button type="submit" variant="contained" startIcon={<Save />} disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
+              <Button
+                type="button"
+                variant="contained"
+                startIcon={<Save />}
+                disabled={saving}
+                onClick={(e) => { e.preventDefault(); handleSubmit(e); }}
+              >
+                {saving ? 'Enregistrement…' : 'Enregistrer'}
+              </Button>
             </Box>
           </form>
         </CardContent>
