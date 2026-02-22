@@ -64,7 +64,6 @@ import { useAuth } from '../context/AuthContext';
 import { ActionBar } from '../context/ActionPanelContext';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import api from '../services/api';
-import { LogoCompact } from './Logo';
 import { LANGUAGES } from '../constants/languages';
 
 const APP_BASE = '/app';
@@ -500,7 +499,7 @@ export default function Layout() {
         }}
       >
         <Toolbar sx={{ gap: 2, minHeight: '56px !important', px: 2 }}>
-          {/* Logo — cliquable vers tableau de bord */}
+          {/* Marque MAINTX — cliquable vers tableau de bord */}
           <Box
             component={RouterLink}
             to="/app"
@@ -513,7 +512,28 @@ export default function Layout() {
               '&:hover': { opacity: 0.85 }
             }}
           >
-            <LogoCompact variant="dark" size={36} />
+            <Typography
+              component="span"
+              sx={{
+                fontWeight: 700,
+                fontSize: '1.25rem',
+                letterSpacing: '0.02em',
+                color: 'text.primary'
+              }}
+            >
+              MAIN
+            </Typography>
+            <Typography
+              component="span"
+              sx={{
+                fontWeight: 700,
+                fontSize: '1.25rem',
+                letterSpacing: '0.02em',
+                color: 'primary.main'
+              }}
+            >
+              TX
+            </Typography>
           </Box>
 
           {/* Recherche globale */}
@@ -599,40 +619,82 @@ export default function Layout() {
             </Popper>
           </Box>
 
-          {/* Infos utilisateur et icônes */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <IconButton
-              size="small"
+          {/* Partie droite du header : langue, notifications, aide, favoris, nom utilisateur, avatar */}
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              ml: 'auto',
+              flexShrink: 0
+            }}
+          >
+            <Typography
+              component="button"
+              type="button"
               onClick={(e) => setLangAnchorEl(e.currentTarget)}
               aria-label={t('common.language')}
-              sx={{ fontSize: '1.25rem' }}
+              sx={{
+                fontSize: '0.875rem',
+                fontWeight: 500,
+                color: 'text.secondary',
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                px: 0,
+                py: 0.5,
+                '&:hover': { color: 'text.primary' }
+              }}
             >
-              {LANGUAGES.find((l) => l.code === i18n.language)?.flag || '🌐'}
-            </IconButton>
+              {LANGUAGES.find((l) => l.code === i18n.language)?.code?.toUpperCase() || 'FR'}
+            </Typography>
             <IconButton
               size="small"
               onClick={openAlertsMenu}
               aria-label={t('common.notifications')}
+              sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'action.hover', color: 'text.primary' } }}
             >
               <Badge badgeContent={unreadCount} color="error">
                 <NotificationsIcon fontSize="small" />
               </Badge>
             </IconButton>
-            <IconButton size="small">
+            <IconButton
+              size="small"
+              aria-label={t('common.help', 'Aide')}
+              sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'action.hover', color: 'text.primary' } }}
+            >
               <Help fontSize="small" />
             </IconButton>
-            <IconButton size="small">
+            <IconButton
+              size="small"
+              aria-label={t('common.favorites', 'Favoris')}
+              sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'action.hover', color: 'text.primary' } }}
+            >
               <Star fontSize="small" />
             </IconButton>
-            <Chip
-              label={user?.role || 'Utilisateur'}
-              size="small"
-              sx={{ bgcolor: 'action.selected', color: 'text.primary', height: 28, fontWeight: 500 }}
-            />
-            <IconButton
+            <Box
+              component="button"
+              type="button"
               onClick={(e) => setAnchorEl(e.currentTarget)}
-              size="small"
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                border: 'none',
+                borderRadius: 1,
+                py: 0.75,
+                px: 1.25,
+                bgcolor: 'action.hover',
+                color: 'text.primary',
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontSize: '0.875rem',
+                '&:hover': { bgcolor: 'action.selected' }
+              }}
             >
+              <Typography component="span" variant="body2" sx={{ fontWeight: 500 }}>
+                {(user?.username || [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.role || 'Utilisateur').toLowerCase()}
+              </Typography>
               <Avatar
                 sx={{
                   width: 32,
@@ -641,9 +703,9 @@ export default function Layout() {
                   fontSize: '0.875rem'
                 }}
               >
-                {(user?.firstName?.[0] || '') + (user?.lastName?.[0] || '')}
+                {(user?.firstName?.[0] || '') + (user?.lastName?.[0] || user?.username?.[0] || '')}
               </Avatar>
-            </IconButton>
+            </Box>
           </Box>
         </Toolbar>
       </AppBar>

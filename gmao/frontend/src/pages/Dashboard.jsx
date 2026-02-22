@@ -141,27 +141,56 @@ export default function Dashboard() {
     }).catch(console.error).finally(() => setLoading(false));
   }, [period]);
 
-  // Fusionner le layout sauvegardé avec les widgets par défaut : les nouveaux widgets (ex. après déploiement) s'affichent même si le profil avait un ancien layout
-  const savedLayout = profile?.dashboardLayout?.length ? profile.dashboardLayout : DEFAULT_DASHBOARD_LAYOUT;
-  const mergedLayout = [...savedLayout];
-  DEFAULT_DASHBOARD_LAYOUT.forEach((id) => {
-    if (WIDGET_LABELS[id] && !mergedLayout.includes(id)) mergedLayout.push(id);
-  });
-  const visibleOrder = mergedLayout.filter((id) => WIDGET_LABELS[id]);
+  // Layout affiché : uniquement le layout sauvegardé (pas de ré-ajout des widgets par défaut), pour que les widgets décochés restent masqués
+  const savedLayout = (profile?.dashboardLayout != null && Array.isArray(profile.dashboardLayout))
+    ? profile.dashboardLayout
+    : DEFAULT_DASHBOARD_LAYOUT;
+  const visibleOrder = savedLayout.filter((id) => WIDGET_LABELS[id]);
 
   const openCustomize = () => {
-    setCustomLayout(profile?.dashboardLayout?.length ? [...profile.dashboardLayout] : [...DEFAULT_DASHBOARD_LAYOUT]);
-    setCustomizeOpen(true);
+    if (profile == null) {
+      api.get('/auth/me')
+        .then(r => {
+          const data = r.data;
+          setProfile(data);
+          const layout = (data?.dashboardLayout != null && Array.isArray(data.dashboardLayout))
+            ? [...data.dashboardLayout]
+            : [...DEFAULT_DASHBOARD_LAYOUT];
+          setCustomLayout(layout);
+          setCustomizeOpen(true);
+        })
+        .catch(() => {
+          setCustomLayout([...DEFAULT_DASHBOARD_LAYOUT]);
+          setCustomizeOpen(true);
+        });
+    } else {
+      const layout = (profile.dashboardLayout != null && Array.isArray(profile.dashboardLayout))
+        ? [...profile.dashboardLayout]
+        : [...DEFAULT_DASHBOARD_LAYOUT];
+      setCustomLayout(layout);
+      setCustomizeOpen(true);
+    }
   };
+
   const saveDashboardLayout = () => {
     api.put('/auth/me', {
       pinnedMenuItems: profile?.pinnedMenuItems ?? [],
       dashboardLayout: customLayout
-    }).then(r => {
-      setProfile(prev => ({ ...prev, ...r.data }));
-      setCustomizeOpen(false);
-    }).catch(console.error);
+    })
+      .then(r => {
+        const updated = r.data;
+        setProfile(prev => ({
+          ...(prev || {}),
+          ...updated,
+          dashboardLayout: updated?.dashboardLayout ?? customLayout
+        }));
+        setCustomizeOpen(false);
+      })
+      .catch(err => {
+        console.error(err);
+      });
   };
+
   const resetDashboardLayout = () => setCustomLayout([...DEFAULT_DASHBOARD_LAYOUT]);
 
   const statusColors = { pending: 'warning', in_progress: 'info', completed: 'success', cancelled: 'default', deferred: 'default' };
