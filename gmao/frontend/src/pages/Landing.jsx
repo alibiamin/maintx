@@ -32,16 +32,9 @@ import {
   ArrowForward,
   KeyboardDoubleArrowDown,
   CheckCircle,
-  Speed,
-  TrendingUp,
-  Engineering,
   Support,
-  LocalShipping,
   Biotech,
-  Analytics,
-  CloudDone,
   EmojiEvents,
-  TrendingDown,
   Timeline,
   PrecisionManufacturing
 } from '@mui/icons-material';
@@ -59,7 +52,6 @@ const features = [
     description: 'Parc machine, hiérarchie sites / lignes, fiches techniques, historique et documents.',
     longDescription: 'Centralisez l\'ensemble de votre parc avec une arborescence intuitive. Suivez le cycle de vie complet de vos équipements avec fiches techniques, historique des interventions et documents associés.',
     image: 'https://images.unsplash.com/photo-1565793298595-6a879b1d9492?w=600&q=80&auto=format&fit=crop',
-    stats: '+40% de visibilité',
     benefits: ['Arborescence flexible', 'Historique complet', 'Documents centralisés']
   },
   {
@@ -68,7 +60,6 @@ const features = [
     description: 'Déclaration, planification, affectation et suivi des interventions.',
     longDescription: 'Créez et suivez vos OT de la déclaration à la clôture avec un workflow optimisé. Planification intelligente, affectation aux techniciens et suivi en temps réel.',
     image: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=600&q=80&auto=format&fit=crop',
-    stats: '-35% de délais',
     benefits: ['Workflow personnalisable', 'Affectation automatique', 'Notifications temps réel']
   },
   {
@@ -77,7 +68,6 @@ const features = [
     description: 'Nomenclatures, mouvements, alertes de seuil et réapprovisionnements.',
     longDescription: 'Pilotez vos pièces détachées avec précision : nomenclatures techniques, gestion des mouvements, alertes automatiques de seuil et génération de bons de réapprovisionnement.',
     image: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=600&q=80&auto=format&fit=crop',
-    stats: '-50% de ruptures',
     benefits: ['Alertes seuils', 'Nomenclatures techniques', 'Réappro automatique']
   },
   {
@@ -86,7 +76,6 @@ const features = [
     description: 'Plans de maintenance, échéances, checklists et procédures.',
     longDescription: 'Automatisez votre maintenance préventive avec des plans personnalisés, des échéances automatiques et des checklists d\'intervention standardisées.',
     image: 'https://images.unsplash.com/photo-1581093458791-9f4146a73817?w=600&q=80&auto=format&fit=crop',
-    stats: '+60% de durée de vie',
     benefits: ['Plans automatisés', 'Checklists standard', 'Rappels intelligents']
   },
   {
@@ -95,7 +84,6 @@ const features = [
     description: 'KPIs, coûts, MTTR, disponibilité et exports Excel / PDF.',
     longDescription: 'Pilotez la performance avec des tableaux de bord interactifs et des rapports personnalisables. Analysez les coûts, suivez le MTTR/MTBF et exportez vos données.',
     image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&q=80&auto=format&fit=crop',
-    stats: 'KPIs en temps réel',
     benefits: ['Tableaux de bord', 'Exports multi-formats', 'Analyses prédictives']
   },
   {
@@ -104,15 +92,8 @@ const features = [
     description: 'Rôles, droits d\'accès, audit et alertes configurables.',
     longDescription: 'Sécurisez vos données avec une gestion fine des droits d\'accès, un journal d\'audit complet et des alertes configurables pour une conformité totale.',
     image: 'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=600&q=80&auto=format&fit=crop',
-    stats: 'Audit complet',
     benefits: ['Rôles personnalisés', 'Traçabilité totale', 'Alertes configurables']
   }
-];
-
-const stats = [
-  { icon: Speed, value: '+45%', label: 'Productivité', color: '#4CAF50' },
-  { icon: TrendingDown, value: '-30%', label: 'Coûts maintenance', color: '#2196F3' },
-  { icon: Timeline, value: '99.9%', label: 'Disponibilité', color: '#9C27B0' }
 ];
 
 const faqItems = [
@@ -328,20 +309,6 @@ export default function Landing() {
                     Découvrir les fonctionnalités
                   </Button>
                 </Stack>
-
-                {/* Stats */}
-                <Stack direction="row" spacing={4} className="hero-cta">
-                  {stats.map((stat, index) => (
-                    <Box key={index} sx={{ textAlign: 'center' }}>
-                      <Typography variant="h4" sx={{ fontWeight: 800, color: stat.color }}>
-                        {stat.value}
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500 }}>
-                        {stat.label}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Stack>
               </Box>
             </Grid>
           </Grid>
@@ -504,22 +471,6 @@ export default function Landing() {
                         transition: 'transform 0.6s ease'
                       }}
                     />
-                    <Box
-                      sx={{
-                        position: 'absolute',
-                        top: 16,
-                        right: 16,
-                        bgcolor: alpha(primary, 0.9),
-                        color: 'white',
-                        px: 1.5,
-                        py: 0.5,
-                        borderRadius: 2,
-                        fontSize: '0.875rem',
-                        fontWeight: 600
-                      }}
-                    >
-                      {feature.stats}
-                    </Box>
                   </Box>
 
                   <CardContent sx={{ p: 3 }}>
