@@ -26,7 +26,7 @@ export default function MaintenanceProjectDetail() {
   const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
 
   const load = () => {
-    if (!id || id === 'new') return;
+    if (!id || id === 'new' || id === 'undefined') return;
     setLoading(true);
     api.get(`/maintenance-projects/${id}`)
       .then((r) => setProject(r.data))
@@ -34,7 +34,13 @@ export default function MaintenanceProjectDetail() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => {
+    if (id === 'undefined' || id === 'new') {
+      navigate('/maintenance-projects', { replace: true });
+      return;
+    }
+    load();
+  }, [id, navigate]);
 
   const openLinkDialog = () => {
     setLinkWoId('');

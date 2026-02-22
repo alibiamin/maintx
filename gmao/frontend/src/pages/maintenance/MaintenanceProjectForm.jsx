@@ -40,6 +40,11 @@ export default function MaintenanceProjectForm() {
 
   useEffect(() => {
     if (isNew) { setLoading(false); return; }
+    if (!id || id === 'undefined') {
+      setLoading(false);
+      navigate('/maintenance-projects', { replace: true });
+      return;
+    }
     api.get(`/maintenance-projects/${id}`)
       .then((r) => {
         const p = r.data;
@@ -59,26 +64,37 @@ export default function MaintenanceProjectForm() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const nameStr = (form.name && String(form.name).trim()) || '';
+    if (!nameStr) { snackbar.showError('Le nom est requis'); return; }
+    const budgetNum = form.budgetAmount === '' || form.budgetAmount == null ? 0 : (parseFloat(form.budgetAmount) || 0);
+    const siteIdVal = form.siteId === '' || form.siteId == null ? null : (parseInt(form.siteId, 10));
     const payload = {
-      name: form.name.trim(),
-      description: form.description.trim() || undefined,
-      budgetAmount: form.budgetAmount === '' ? 0 : parseFloat(form.budgetAmount),
-      siteId: form.siteId || null,
+      name: nameStr,
+      description: (form.description && String(form.description).trim()) || undefined,
+      budgetAmount: budgetNum,
+      siteId: (siteIdVal != null && !Number.isNaN(siteIdVal)) ? siteIdVal : null,
       startDate: form.startDate || null,
       endDate: form.endDate || null,
-      status: form.status
+      status: form.status || 'active'
     };
-    if (!payload.name) { snackbar.showError('Le nom est requis'); return; }
     setSaving(true);
     if (isNew) {
       api.post('/maintenance-projects', payload)
         .then((r) => { snackbar.showSuccess('Projet créé'); navigate(`/maintenance-projects/${r.data.id}`); })
-        .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur création'))
+        .catch((e) => {
+          const data = e.response?.data;
+          const msg = data?.error || (Array.isArray(data?.errors) && data.errors[0]?.msg) || 'Erreur création';
+          snackbar.showError(msg);
+        })
         .finally(() => setSaving(false));
     } else {
       api.put(`/maintenance-projects/${id}`, payload)
         .then(() => { snackbar.showSuccess('Projet enregistré'); navigate(`/maintenance-projects/${id}`); })
-        .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur enregistrement'))
+        .catch((e) => {
+          const data = e.response?.data;
+          const msg = data?.error || (Array.isArray(data?.errors) && data.errors[0]?.msg) || 'Erreur enregistrement';
+          snackbar.showError(msg);
+        })
         .finally(() => setSaving(false));
     }
   };
@@ -101,10 +117,10 @@ export default function MaintenanceProjectForm() {
             <TextField fullWidth label="Budget (€)" type="number" inputProps={{ min: 0, step: 0.01 }} value={form.budgetAmount} onChange={(e) => setForm((f) => ({ ...f, budgetAmount: e.target.value }))} margin="normal" />
             <FormControl fullWidth margin="normal">
               <InputLabel>Site</InputLabel>
-              <Select value={form.siteId} label="Site" onChange={(e) => setForm((f) => ({ ...f, siteId: e.target.value }))}>
+              <Select value={form.siteId === undefined ? '' : String(form.siteId)} label="Site" onChange={(e) => setForm((f) => ({ ...f, siteId: e.target.value }))}>
                 <MenuItem value="">Aucun</MenuItem>
                 {sites.map((s) => (
-                  <MenuItem key={s.id} value={s.id}>{s.name || s.code}</MenuItem>
+                  <MenuItem key={s.id} value={String(s.id)}>{s.name || s.code}</MenuItem>
                 ))}
               </Select>
             </FormControl>

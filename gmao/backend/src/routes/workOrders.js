@@ -251,6 +251,40 @@ router.delete('/:id/reservations/:reservationId', authorize(ROLES.ADMIN, ROLES.R
 });
 
 /**
+ * GET /api/work-orders/:id/checklist-executions — Exécutions de checklists liées à cet OT
+ */
+router.get('/:id/checklist-executions', param('id').isInt(), (req, res) => {
+  const woId = req.params.id;
+  const wo = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(woId);
+  if (!wo) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
+  let rows = [];
+  try {
+    rows = db.prepare(`
+      SELECT ce.id, ce.checklist_id, ce.work_order_id, ce.executed_by, ce.executed_at, ce.notes,
+             c.name as checklist_name,
+             u.first_name || ' ' || u.last_name as executed_by_name
+      FROM checklist_executions ce
+      LEFT JOIN maintenance_checklists c ON ce.checklist_id = c.id
+      LEFT JOIN users u ON ce.executed_by = u.id
+      WHERE ce.work_order_id = ?
+      ORDER BY ce.executed_at DESC
+    `).all(woId);
+  } catch (e) {
+    if (!e.message || !e.message.includes('no such table')) throw e;
+  }
+  res.json(rows.map(r => ({
+    id: r.id,
+    checklistId: r.checklist_id,
+    checklistName: r.checklist_name,
+    workOrderId: r.work_order_id,
+    executedBy: r.executed_by,
+    executedByName: r.executed_by_name,
+    executedAt: r.executed_at,
+    notes: r.notes
+  })));
+});
+
+/**
  * GET /api/work-orders/:id
  */
 router.get('/:id', param('id').isInt(), (req, res) => {
@@ -258,18 +292,22 @@ router.get('/:id', param('id').isInt(), (req, res) => {
     SELECT wo.*, e.name as equipment_name, e.code as equipment_code, t.name as type_name,
            u.first_name || ' ' || u.last_name as assigned_name,
            cb.first_name || ' ' || cb.last_name as created_by_name,
-           mp.name as maintenance_plan_name
+           mp.name as maintenance_plan_name,
+           pr.name as project_name
     FROM work_orders wo
     LEFT JOIN equipment e ON wo.equipment_id = e.id
     LEFT JOIN work_order_types t ON wo.type_id = t.id
     LEFT JOIN users u ON wo.assigned_to = u.id
     LEFT JOIN users cb ON wo.created_by = cb.id
     LEFT JOIN maintenance_plans mp ON wo.maintenance_plan_id = mp.id
+    LEFT JOIN maintenance_projects pr ON wo.project_id = pr.id
     WHERE wo.id = ?
   `).get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
   const costs = getWorkOrderCosts(req.params.id);
-  res.json(formatWO(row, costs));
+  const out = formatWO(row, costs);
+  if (row.project_name !== undefined) out.projectName = row.project_name;
+  res.json(out);
 });
 
 /**

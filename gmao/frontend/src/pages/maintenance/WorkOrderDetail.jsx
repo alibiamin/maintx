@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate, Navigate } from 'react-router-dom';
+import { useParams, useNavigate, Navigate, Link } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -52,6 +52,7 @@ export default function WorkOrderDetail() {
   const [suggestedList, setSuggestedList] = useState([]);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [planChecklists, setPlanChecklists] = useState([]);
+  const [woChecklistExecutions, setWoChecklistExecutions] = useState([]);
   const [stockMovements, setStockMovements] = useState([]);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [signatureName, setSignatureName] = useState('');
@@ -98,6 +99,13 @@ export default function WorkOrderDetail() {
       .then(r => setPlanChecklists(r.data || []))
       .catch(() => setPlanChecklists([]));
   }, [order?.maintenancePlanId]);
+
+  useEffect(() => {
+    if (!order?.id) return;
+    api.get(`/work-orders/${order.id}/checklist-executions`)
+      .then(r => setWoChecklistExecutions(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setWoChecklistExecutions([]));
+  }, [order?.id]);
 
   // Dédupliquer par id pour éviter affichages en double (API ou intercepteur peuvent renvoyer des doublons)
   const dedupeById = (arr) => {
@@ -318,6 +326,16 @@ export default function WorkOrderDetail() {
               <Typography>{order.equipmentName || '-'}</Typography>
             </Grid>
             <Grid item xs={12} md={4}>
+              <Typography variant="subtitle2" color="text.secondary">Projet</Typography>
+              {order.projectId ? (
+                <Button size="small" component={Link} to={`/maintenance-projects/${order.projectId}`} sx={{ p: 0, textTransform: 'none', justifyContent: 'flex-start' }}>
+                  {order.projectName || `Projet #${order.projectId}`}
+                </Button>
+              ) : (
+                <Typography>—</Typography>
+              )}
+            </Grid>
+            <Grid item xs={12} md={4}>
               <Typography variant="subtitle2" color="text.secondary">Technicien assigné</Typography>
               {canEdit && users.length ? (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -449,23 +467,60 @@ export default function WorkOrderDetail() {
         </Card>
       )}
 
-      {order.maintenancePlanId && planChecklists.length > 0 && (
-        <Card sx={{ mt: 2 }}>
-          <CardContent>
-            <Typography variant="subtitle1" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-              <Checklist /> Checklists du plan
+      {/* Exécutions de checklists enregistrées pour cet OT */}
+      <Card sx={{ mt: 2 }}>
+        <CardContent>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <Checklist /> Exécutions de checklists
+          </Typography>
+          {woChecklistExecutions.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Aucune exécution de checklist enregistrée pour cet OT. Exécutez une checklist (ci‑dessous si le plan en a, ou depuis le menu Checklists) en la liant à cet OT.
             </Typography>
+          ) : (
             <List dense disablePadding>
-              {planChecklists.map((c) => (
-                <ListItem key={c.id} disablePadding secondaryAction={
-                  <Button size="small" variant="outlined" onClick={() => navigate('/checklists', { state: { executeChecklistId: c.id, workOrderId: order.id } })}>
-                    Exécuter
-                  </Button>
-                }>
-                  <ListItemText primary={c.name} secondary={c.description} />
+              {woChecklistExecutions.map((exec) => (
+                <ListItem key={exec.id} disablePadding sx={{ py: 0.5 }}>
+                  <ListItemText
+                    primary={exec.checklistName || `Checklist #${exec.checklistId}`}
+                    secondary={
+                      <>
+                        {exec.executedAt && new Date(exec.executedAt).toLocaleString('fr-FR')}
+                        {exec.executedByName && ` — ${exec.executedByName}`}
+                        {exec.notes && ` · ${exec.notes}`}
+                      </>
+                    }
+                  />
                 </ListItem>
               ))}
             </List>
+          )}
+        </CardContent>
+      </Card>
+
+      {order.maintenancePlanId && (
+        <Card sx={{ mt: 2 }}>
+          <CardContent>
+            <Typography variant="subtitle1" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <Checklist /> Checklists du plan (à exécuter)
+            </Typography>
+            {planChecklists.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                Aucune checklist associée à ce plan. Créez-en une (menu Création ou Checklists) en la rattachant au plan « {order.maintenancePlanName || `#${order.maintenancePlanId}`} ».
+              </Typography>
+            ) : (
+              <List dense disablePadding>
+                {planChecklists.map((c) => (
+                  <ListItem key={c.id} disablePadding secondaryAction={
+                    <Button size="small" variant="outlined" onClick={() => navigate('/checklists', { state: { executeChecklistId: c.id, workOrderId: order.id } })}>
+                      Exécuter
+                    </Button>
+                  }>
+                    <ListItemText primary={c.name} secondary={c.description} />
+                  </ListItem>
+                ))}
+              </List>
+            )}
           </CardContent>
         </Card>
       )}

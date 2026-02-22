@@ -24,6 +24,7 @@ export default function WorkOrderForm() {
   const [equipment, setEquipment] = useState([]);
   const [types, setTypes] = useState([]);
   const [maintenancePlans, setMaintenancePlans] = useState([]);
+  const [maintenanceProjects, setMaintenanceProjects] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -36,7 +37,8 @@ export default function WorkOrderForm() {
     assignedTo: '',
     plannedStart: '',
     plannedEnd: '',
-    maintenancePlanId: ''
+    maintenancePlanId: '',
+    projectId: ''
   });
 
   useEffect(() => {
@@ -44,11 +46,13 @@ export default function WorkOrderForm() {
       api.get('/equipment'),
       api.get('/work-orders/types'),
       api.get('/maintenance-plans'),
+      api.get('/maintenance-projects').catch(() => ({ data: [] })),
       api.get('/users/assignable').catch(() => ({ data: [] }))
-    ]).then(([eq, ty, plans, us]) => {
+    ]).then(([eq, ty, plans, projects, us]) => {
       setEquipment(eq.data || []);
       setTypes(ty.data || []);
       setMaintenancePlans(plans.data || []);
+      setMaintenanceProjects(Array.isArray(projects?.data) ? projects.data : []);
       setUsers(us.data || []);
     }).catch(console.error);
   }, []);
@@ -78,9 +82,11 @@ export default function WorkOrderForm() {
       typeId: form.typeId ? parseInt(form.typeId) : 2,
       priority: form.priority,
       assignedTo: form.assignedTo ? parseInt(form.assignedTo) : undefined,
+      projectId: form.projectId ? parseInt(form.projectId) : undefined,
       plannedStart: form.plannedStart || undefined,
       plannedEnd: form.plannedEnd || undefined,
-      maintenancePlanId: form.maintenancePlanId ? parseInt(form.maintenancePlanId, 10) : undefined
+      maintenancePlanId: form.maintenancePlanId ? parseInt(form.maintenancePlanId, 10) : undefined,
+      projectId: form.projectId ? parseInt(form.projectId, 10) : undefined
     };
     api.post('/work-orders', payload)
       .then(r => navigate(`/work-orders/${r.data.id}`))
@@ -126,6 +132,17 @@ export default function WorkOrderForm() {
                   <Select value={form.maintenancePlanId || ''} label="Plan de maintenance" onChange={(e) => handleChange('maintenancePlanId', e.target.value)}>
                     <MenuItem value="">—</MenuItem>
                     {maintenancePlans.map(p => <MenuItem key={p.id} value={p.id}>{p.name} ({p.equipment_code})</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Projet de maintenance</InputLabel>
+                  <Select value={form.projectId || ''} label="Projet de maintenance" onChange={(e) => handleChange('projectId', e.target.value)}>
+                    <MenuItem value="">—</MenuItem>
+                    {maintenanceProjects.filter(p => p.status === 'active' || p.status === 'draft').map(p => (
+                      <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
               </Grid>

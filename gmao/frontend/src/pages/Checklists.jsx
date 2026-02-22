@@ -78,7 +78,7 @@ export default function Checklists() {
     setForm({
       name: checklist.name || '',
       description: checklist.description || '',
-      maintenance_plan_id: checklist.maintenance_plan_id ?? '',
+      maintenance_plan_id: checklist.maintenance_plan_id != null ? String(checklist.maintenance_plan_id) : '',
       is_template: !!checklist.is_template,
       items
     });
@@ -124,6 +124,7 @@ export default function Checklists() {
         await api.put(`/checklists/${editingId}`, {
           name: form.name,
           description: form.description,
+          maintenance_plan_id: form.maintenance_plan_id ? parseInt(form.maintenance_plan_id) : null,
           items
         });
       } else {
@@ -163,10 +164,11 @@ export default function Checklists() {
     setExecuteNotes('');
     setExecuteWoId(preFillWorkOrderId != null ? String(preFillWorkOrderId) : '');
     setExecuteDialog(checklist);
-    api.get('/work-orders')
+    api.get('/work-orders', { params: { limit: 500 } })
       .then((r) => {
-        const list = Array.isArray(r.data) ? r.data : [];
-        setWorkOrders(list.filter((wo) => wo.status === 'pending' || wo.status === 'in_progress'));
+        const list = r.data?.data ?? r.data ?? [];
+        const arr = Array.isArray(list) ? list : [];
+        setWorkOrders(arr.filter((wo) => wo.status === 'pending' || wo.status === 'in_progress'));
       })
       .catch(() => setWorkOrders([]));
   };
@@ -313,35 +315,33 @@ export default function Checklists() {
                 rows={2}
                 fullWidth
               />
+              <FormControl fullWidth>
+                <InputLabel>Plan de maintenance</InputLabel>
+                <Select
+                  value={form.maintenance_plan_id ?? ''}
+                  label="Plan de maintenance"
+                  onChange={(e) => setForm({ ...form, maintenance_plan_id: e.target.value })}
+                >
+                  <MenuItem value="">Aucun</MenuItem>
+                  {plans.map((p) => (
+                    <MenuItem key={p.id} value={String(p.id)}>
+                      {p.name} ({p.equipment_name || p.equipment_code})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               {!editingId && (
-                <>
-                  <FormControl fullWidth>
-                    <InputLabel>Plan de maintenance</InputLabel>
-                    <Select
-                      value={form.maintenance_plan_id}
-                      label="Plan de maintenance"
-                      onChange={(e) => setForm({ ...form, maintenance_plan_id: e.target.value })}
-                    >
-                      <MenuItem value="">Aucun</MenuItem>
-                      {plans.map((p) => (
-                        <MenuItem key={p.id} value={p.id}>
-                          {p.name} ({p.equipment_name || p.equipment_code})
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  <FormControl fullWidth>
-                    <InputLabel>Modèle</InputLabel>
-                    <Select
-                      value={form.is_template ? '1' : '0'}
-                      label="Modèle"
-                      onChange={(e) => setForm({ ...form, is_template: e.target.value === '1' })}
-                    >
-                      <MenuItem value="0">Non</MenuItem>
-                      <MenuItem value="1">Oui</MenuItem>
-                    </Select>
-                  </FormControl>
-                </>
+                <FormControl fullWidth>
+                  <InputLabel>Modèle</InputLabel>
+                  <Select
+                    value={form.is_template ? '1' : '0'}
+                    label="Modèle"
+                    onChange={(e) => setForm({ ...form, is_template: e.target.value === '1' })}
+                  >
+                    <MenuItem value="0">Non</MenuItem>
+                    <MenuItem value="1">Oui</MenuItem>
+                  </Select>
+                </FormControl>
               )}
               <Typography variant="subtitle2">Items</Typography>
               {form.items.map((item, index) => (
@@ -410,7 +410,7 @@ export default function Checklists() {
             >
               <MenuItem value="">Aucun</MenuItem>
               {workOrders.map((wo) => (
-                <MenuItem key={wo.id} value={wo.id}>{wo.number} — {wo.title}</MenuItem>
+                <MenuItem key={wo.id} value={String(wo.id)}>{wo.number} — {wo.title}</MenuItem>
               ))}
             </Select>
           </FormControl>

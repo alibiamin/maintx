@@ -122,13 +122,20 @@ router.post('/', (req, res) => {
 // PUT /api/checklists/:id
 router.put('/:id', (req, res) => {
   try {
-    const { name, description, items } = req.body;
+    const { name, description, maintenance_plan_id, items } = req.body;
 
+    const updates = ['name = ?', 'description = ?', 'updated_at = CURRENT_TIMESTAMP'];
+    const values = [name, description || null];
+    if (maintenance_plan_id !== undefined) {
+      updates.push('maintenance_plan_id = ?');
+      values.push(maintenance_plan_id ? maintenance_plan_id : null);
+    }
+    values.push(req.params.id);
     db.prepare(`
       UPDATE maintenance_checklists
-      SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+      SET ${updates.join(', ')}
       WHERE id = ?
-    `).run(name, description || null, req.params.id);
+    `).run(...values);
 
     // Mettre à jour les items
     if (items && Array.isArray(items)) {
