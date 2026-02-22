@@ -97,7 +97,7 @@ export default function InterventionRequests() {
       .then((r) => {
         setSuccess(t('interventionRequests.validated', { number: r.data?.workOrder?.number }));
         fetchRequests();
-        if (r.data?.workOrder?.id) navigate(`/work-orders/${r.data.workOrder.id}`);
+        if (r.data?.workOrder?.id) navigate(`/app/work-orders/${r.data.workOrder.id}`);
       })
       .catch((err) => setError(err.response?.data?.error || err.message || 'Erreur'))
       .finally(() => setSubmitting(false));
@@ -184,7 +184,7 @@ export default function InterventionRequests() {
                   {statusFilter !== 'pending' && (
                     <TableCell>
                       {req.status === 'validated' && req.workOrderNumber ? (
-                        <Button size="small" startIcon={<Visibility />} onClick={() => navigate(`/work-orders/${req.workOrderId}`)}>
+                        <Button size="small" startIcon={<Visibility />} onClick={() => navigate(`/app/work-orders/${req.workOrderId}`)}>
                           {req.workOrderNumber}
                         </Button>
                       ) : req.status === 'rejected' && req.rejectionReason ? (

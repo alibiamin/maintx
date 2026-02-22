@@ -88,6 +88,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     setError('');
     setLoading(true);
     const startedAt = Date.now();
@@ -100,7 +101,11 @@ export default function LoginPage() {
       }
       navigate('/app');
     } catch (err) {
-      setError(err.response?.data?.error || t('login.error'));
+      const status = err.response?.status;
+      const message = err.response?.data?.error || (status === 429
+        ? 'Trop de tentatives de connexion. Veuillez patienter 15 minutes avant de réessayer.'
+        : t('login.error'));
+      setError(message);
     } finally {
       setLoading(false);
     }

@@ -88,7 +88,7 @@ export default function WorkOrderForm() {
       maintenancePlanId: form.maintenancePlanId ? parseInt(form.maintenancePlanId, 10) : undefined
     };
     api.post('/work-orders', payload)
-      .then(r => navigate(`/work-orders/${r.data.id}`))
+      .then(r => navigate(`/app/work-orders/${r.data.id}`))
       .catch(err => setError(err.response?.data?.error || 'Erreur'))
       .finally(() => setLoading(false));
   };

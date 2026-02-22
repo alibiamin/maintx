@@ -85,7 +85,7 @@ export default function MyWorkOrdersToday() {
           {list.map((wo) => (
             <Card key={wo.id} sx={{ mb: 1.5 }}>
               <ListItem disablePadding>
-                <ListItemButton onClick={() => navigate(`/work-orders/${wo.id}`)}>
+                <ListItemButton onClick={() => navigate(`/app/work-orders/${wo.id}`)}>
                   <ListItemText
                     primary={
                       <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
@@ -108,14 +108,14 @@ export default function MyWorkOrdersToday() {
                 </ListItemButton>
               </ListItem>
               <Box sx={{ px: 2, pb: 1.5, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                <Button size="small" variant="outlined" startIcon={<Schedule />} onClick={() => navigate(`/work-orders/${wo.id}`)}>Voir détail</Button>
+                <Button size="small" variant="outlined" startIcon={<Schedule />} onClick={() => navigate(`/app/work-orders/${wo.id}`)}>Voir détail</Button>
                 {wo.status === 'pending' && (
                   <Button size="small" variant="contained" startIcon={<PlayArrow />} onClick={(e) => { e.stopPropagation(); handleStart(wo.id); }} disabled={actionId === wo.id}>
                     Démarrer
                   </Button>
                 )}
                 {wo.status === 'in_progress' && (
-                  <Button size="small" variant="contained" startIcon={<CheckCircle />} onClick={() => navigate(`/work-orders/${wo.id}`)}>Clôturer (avec signature)</Button>
+                  <Button size="small" variant="contained" startIcon={<CheckCircle />} onClick={() => navigate(`/app/work-orders/${wo.id}`)}>Clôturer (avec signature)</Button>
                 )}
               </Box>
             </Card>

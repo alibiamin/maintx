@@ -238,7 +238,7 @@ export default function Creation() {
           equipmentType: equipmentTypeMap[creationType]
         };
         return api.post('/equipment', payload)
-          .then(r => { setSuccess(r.data?.code ? `Élément créé avec le code ${r.data.code}.` : 'Élément créé.'); setForm(getDefaultForm(creationType)); if (r.data?.id) navigate(`/equipment/${r.data.id}`); });
+          .then(r => { setSuccess(r.data?.code ? `Élément créé avec le code ${r.data.code}.` : 'Élément créé.'); setForm(getDefaultForm(creationType)); if (r.data?.id) navigate(`/app/equipment/${r.data.id}`); });
       }
       if (creationType === 'piece') {
         return api.post('/stock/parts', {
@@ -290,7 +290,7 @@ export default function Creation() {
       }
       if (creationType === 'commande_fournisseur') {
         return api.post('/suppliers/orders', { supplierId: parseInt(form.supplierId) })
-          .then(r => { setSuccess('Commande créée.'); setForm(getDefaultForm('commande_fournisseur')); if (r.data?.id) navigate(`/suppliers/orders`); });
+          .then(r => { setSuccess('Commande créée.'); setForm(getDefaultForm('commande_fournisseur')); if (r.data?.id) navigate(`/app/suppliers/orders`); });
       }
       if (creationType === 'contrat') {
         return api.post('/contracts', {
@@ -324,7 +324,7 @@ export default function Creation() {
         }).then(r => {
           setSuccess('Déclaration enregistrée. L\'équipe maintenance a été notifiée.');
           setForm(getDefaultForm('ordre_travail'));
-          if (r.data?.id) navigate(`/work-orders/${r.data.id}`);
+          if (r.data?.id) navigate(`/app/work-orders/${r.data.id}`);
         });
       }
       if (creationType === 'utilisateur') {

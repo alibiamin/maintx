@@ -101,7 +101,7 @@ export default function EquipmentTechnicalList() {
                     <TableCell>{eq.model || '-'}</TableCell>
                     <TableCell>{eq.serialNumber || '-'}</TableCell>
                     <TableCell align="right">
-                      <IconButton size="small" onClick={() => navigate(`/equipment/${eq.id}/technical`)}>
+                      <IconButton size="small" onClick={() => navigate(`/app/equipment/${eq.id}/technical`)}>
                         <Visibility />
                       </IconButton>
                     </TableCell>

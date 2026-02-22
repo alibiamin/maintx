@@ -192,9 +192,9 @@ export default function EquipmentList() {
                   hover
                   selected={selectedId === eq.id}
                   onClick={() => {
-                    if (view === 'history') navigate(`/equipment/${eq.id}/history`);
-                    else if (view === 'documents') navigate(`/equipment/${eq.id}/documents`);
-                    else if (view === 'warranties') navigate(`/equipment/${eq.id}/warranties`);
+                    if (view === 'history') navigate(`/app/equipment/${eq.id}/history`);
+                    else if (view === 'documents') navigate(`/app/equipment/${eq.id}/documents`);
+                    else if (view === 'warranties') navigate(`/app/equipment/${eq.id}/warranties`);
                     else setSelectedId(selectedId === eq.id ? null : eq.id);
                   }}
                   sx={{ cursor: 'pointer' }}

@@ -221,7 +221,7 @@ export default function EquipmentMap() {
         statusColor={cfg.color}
         alertCount={(eq.alertPending || 0) + (eq.alertInProgress || 0)}
         isCritical={(eq.alertCritical || 0) > 0}
-        onClick={(e) => { e?.stopPropagation?.(); navigate(`/equipment/${eq.id}`); }}
+        onClick={(e) => { e?.stopPropagation?.(); navigate(`/app/equipment/${eq.id}`); }}
         childNodes={children.length > 0 ? children.map(child => <EquipmentTreeBranch key={child.id} eq={child} depth={depth + 1} />) : null}
       />
     );

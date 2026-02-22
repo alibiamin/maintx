@@ -13,7 +13,7 @@ const router = express.Router();
 const JWT_EXPIRES = process.env.JWT_EXPIRES_IN || '24h';
 
 const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
-const LOGIN_RATE_MAX = 10;
+const LOGIN_RATE_MAX = parseInt(process.env.LOGIN_RATE_MAX, 10) || 10;
 const loginAttempts = new Map();
 
 function getClientIp(req) {

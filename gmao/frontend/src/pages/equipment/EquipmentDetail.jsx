@@ -228,7 +228,7 @@ export default function EquipmentDetail() {
       .then((r) => {
         snackbar.showSuccess('Équipement cloné');
         setCloneDialogOpen(false);
-        navigate(`/equipment/${r.data.id}`);
+        navigate(`/app/equipment/${r.data.id}`);
       })
       .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'))
       .finally(() => setCloneSubmitting(false));
@@ -575,7 +575,7 @@ export default function EquipmentDetail() {
               <TableBody>
                 {history.map((wo) => (
                   <TableRow key={wo.id}>
-                    <TableCell><Button size="small" onClick={() => navigate(`/work-orders/${wo.id}`)}>{wo.number}</Button></TableCell>
+                    <TableCell><Button size="small" onClick={() => navigate(`/app/work-orders/${wo.id}`)}>{wo.number}</Button></TableCell>
                     <TableCell>{wo.title}</TableCell>
                     <TableCell>{wo.type_name}</TableCell>
                     <TableCell><Chip label={wo.status} size="small" /></TableCell>

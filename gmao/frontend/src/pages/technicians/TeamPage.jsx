@@ -106,7 +106,7 @@ export default function TeamPage() {
   };
 
   const handleSelect = (id) => {
-    navigate(`/technicians/${id}`);
+    navigate(`/app/technicians/${id}`);
   };
 
   if (loading) {

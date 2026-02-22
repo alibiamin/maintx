@@ -90,7 +90,7 @@ export default function DashboardActivity() {
                 <React.Fragment key={activity.id}>
                   <ListItem
                     sx={{ cursor: activity.type === 'work_order' && activity.id ? 'pointer' : 'default', '&:hover': activity.type === 'work_order' && activity.id ? { bgcolor: 'action.hover' } : {} }}
-                    onClick={() => { if (activity.type === 'work_order' && activity.id) navigate(`/work-orders/${activity.id}`); }}
+                    onClick={() => { if (activity.type === 'work_order' && activity.id) navigate(`/app/work-orders/${activity.id}`); }}
                   >
                     <ListItemAvatar>
                       <Chip icon={getIcon(activity.type)} color={getColor(activity.type)} size="small" />

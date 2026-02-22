@@ -340,7 +340,7 @@ export default function Dashboard() {
                     <Typography variant="caption" color="text.secondary">{alerts.sla.length} OT en retard</Typography>
                     <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                       {alerts.sla.slice(0, 3).map(wo => (
-                        <Chip key={wo.id} label={wo.number} size="small" onClick={(e) => { e.stopPropagation(); navigate(`/work-orders/${wo.id}`); }} sx={{ cursor: 'pointer', height: 24 }} />
+                        <Chip key={wo.id} label={wo.number} size="small" onClick={(e) => { e.stopPropagation(); navigate(`/app/work-orders/${wo.id}`); }} sx={{ cursor: 'pointer', height: 24 }} />
                       ))}
                     </Box>
                   </CardContent>
@@ -876,7 +876,7 @@ export default function Dashboard() {
                             boxShadow: '0 2px 8px rgba(0,0,0,0.06)'
                           }
                         }}
-                        onClick={() => navigate(`/equipment/${e.id}`)}
+                        onClick={() => navigate(`/app/equipment/${e.id}`)}
                       >
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
                           <Box sx={{ width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, ...rankStyle }}>
@@ -936,7 +936,7 @@ export default function Dashboard() {
                         transition: 'background 0.2s',
                         '&:hover': { bgcolor: alpha(muiTheme.palette.primary.main, 0.06) }
                       }}
-                      onClick={() => navigate(`/work-orders/${wo.id}`)}
+                      onClick={() => navigate(`/app/work-orders/${wo.id}`)}
                     >
                       <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: statusColors[wo.status] ? `${statusColors[wo.status]}.main` : 'grey.500' }} />
                       <Typography variant="body2" fontWeight={600} sx={{ minWidth: 90 }}>{wo.number}</Typography>

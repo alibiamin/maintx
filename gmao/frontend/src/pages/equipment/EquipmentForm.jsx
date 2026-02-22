@@ -73,7 +73,7 @@ export default function EquipmentForm() {
       status: form.status
     };
     api.post('/equipment', payload)
-      .then(r => navigate(`/equipment/${r.data.id}`))
+      .then(r => navigate(`/app/equipment/${r.data.id}`))
       .catch(err => setError(err.response?.data?.error || 'Erreur lors de la création'))
       .finally(() => setLoading(false));
   };

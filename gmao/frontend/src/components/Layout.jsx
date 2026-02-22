@@ -764,7 +764,7 @@ export default function Layout() {
               onClick={() => {
                 if (!alert.fromDashboard && !alert.is_read) markAlertRead(alert.id);
                 setAlertAnchorEl(null);
-                if (alert.entity_type === 'work_order' && alert.entity_id) navigate(`/work-orders/${alert.entity_id}`);
+                if (alert.entity_type === 'work_order' && alert.entity_id) navigate(`/app/work-orders/${alert.entity_id}`);
                 if (alert.entity_type === 'stock_alert') navigate('/app/stock/alerts');
                 if (alert.entity_type === 'maintenance_plan' && alert.entity_id) navigate('/app/maintenance-plans/due');
               }}

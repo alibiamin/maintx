@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -9,7 +10,6 @@ import {
   TableCell,
   TableHead,
   TableRow,
-  Button,
   Chip,
   CircularProgress
 } from '@mui/material';
@@ -21,6 +21,7 @@ export default function SettingsRoles() {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
   const { setContext } = useActionPanel();
+  const location = useLocation();
 
   useEffect(() => {
     loadRoles();
@@ -30,6 +31,13 @@ export default function SettingsRoles() {
     setContext({ type: 'list', entityType: 'roles' });
     return () => setContext(null);
   }, [setContext]);
+
+  useEffect(() => {
+    const fromState = location.state?.selectedRoleId;
+    if (fromState != null && roles.some((r) => r.id === fromState)) {
+      setSelectedId(fromState);
+    }
+  }, [location.state?.selectedRoleId, roles]);
 
   useEffect(() => {
     if (!selectedId) return;

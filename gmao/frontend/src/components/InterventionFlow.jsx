@@ -128,7 +128,7 @@ export default function InterventionFlow({ workOrders = [] }) {
                         borderColor: 'divider',
                         '&:hover': { borderColor: 'primary.main' }
                       }}
-                      onClick={() => navigate(`/work-orders/${wo.id}`)}
+                      onClick={() => navigate(`/app/work-orders/${wo.id}`)}
                     >
                       <CardContent sx={{ py: 1.5, px: 1.5, '&:last-child': { pb: 1.5 } }}>
                         <Typography variant="subtitle2" fontWeight={600} noWrap>

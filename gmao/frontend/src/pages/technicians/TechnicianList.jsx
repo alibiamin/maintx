@@ -104,7 +104,7 @@ function TechnicianList() {
         setPage(0);
         load();
         snackbar.showSuccess('Technicien créé.');
-        if (r.data?.id) navigate(`/technicians/${r.data.id}`);
+        if (r.data?.id) navigate(`/app/technicians/${r.data.id}`);
       })
       .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur lors de la création'))
       .finally(() => setSaving(false));
@@ -171,7 +171,7 @@ function TechnicianList() {
                   transition: 'box-shadow 0.2s',
                   '&:hover': { boxShadow: 4 }
                 }}
-                onClick={() => navigate(`/technicians/${t.id}`)}
+                onClick={() => navigate(`/app/technicians/${t.id}`)}
               >
                 <CardContent>
                   <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>

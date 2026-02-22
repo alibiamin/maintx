@@ -71,7 +71,7 @@ export default function EquipmentModelsList() {
       .then((r) => {
         snackbar.showSuccess('Équipement créé');
         setCreateFromModelOpen(false);
-        navigate(`/equipment/${r.data.id}`);
+        navigate(`/app/equipment/${r.data.id}`);
       })
       .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'))
       .finally(() => setSaving(false));

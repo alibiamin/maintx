@@ -252,7 +252,7 @@ export default function WorkOrderDetail() {
       .finally(() => setActionLoading(false));
   };
 
-  if (id === 'new') return <Navigate to="/creation" replace />;
+  if (id === 'new') return <Navigate to="/app/creation" replace />;
   if (loading || !order) return <Box p={4}><CircularProgress /></Box>;
 
   const statusOptions = [
@@ -368,7 +368,7 @@ export default function WorkOrderDetail() {
               <Grid item xs={12} md={4}>
                 <Typography variant="subtitle2" color="text.secondary">Plan de maintenance</Typography>
                 <Typography component="span">
-                  <Button size="small" startIcon={<Schedule />} onClick={() => navigate('/maintenance-plans')}>
+                  <Button size="small" startIcon={<Schedule />} onClick={() => navigate('/app/maintenance-plans')}>
                     {order.maintenancePlanName || `Plan #${order.maintenancePlanId}`}
                   </Button>
                 </Typography>

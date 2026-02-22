@@ -1,13 +1,25 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Box, IconButton, Tooltip, Typography, useTheme, alpha } from '@mui/material';
+import {
+  Box,
+  IconButton,
+  Tooltip,
+  Typography,
+  useTheme,
+  alpha,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+  Paper,
+} from '@mui/material';
 import { Close, PushPin, PushPinOutlined, Add, Edit, Delete, Print, Download, Visibility, FileCopy, Settings } from '@mui/icons-material';
 
 const STORAGE_KEY = 'gmao-action-bar-pinned';
-const BAR_WIDTH = 64;
-const COLLAPSED_WIDTH = 40;
-const ICON_SIZE = 36;
-const GAP = 6;
+const PANEL_WIDTH = 280;
+const COLLAPSED_WIDTH = 48;
+const HEADER_HEIGHT = 72;
 
 const ENTITY_LABELS = {
   equipment: 'Équipement',
@@ -24,6 +36,35 @@ const ENTITY_LABELS = {
   warranties: 'Garantie'
 };
 
+const APP_BASE = '/app';
+
+/** Chemins réels par type d'entité (certains sont sous settings/, pas à la racine /app). */
+function getPathsForEntity(entityType, ent) {
+  if (ent?.id == null) return { detailPath: null, editPath: null, detailNavigate: null };
+  switch (entityType) {
+    case 'roles':
+      return {
+        detailPath: `${APP_BASE}/settings/roles`,
+        editPath: `${APP_BASE}/settings/roles`,
+        detailNavigate: (nav) => nav(`${APP_BASE}/settings/roles`, { state: { selectedRoleId: ent.id } }),
+      };
+    case 'warranties':
+      return { detailPath: null, editPath: null, detailNavigate: null };
+    case 'maintenance-projects':
+      return {
+        detailPath: `${APP_BASE}/maintenance-projects/${ent.id}`,
+        editPath: `${APP_BASE}/maintenance-projects/${ent.id}/edit`,
+        detailNavigate: (nav) => nav(`${APP_BASE}/maintenance-projects/${ent.id}`),
+      };
+    default:
+      return {
+        detailPath: `${APP_BASE}/${entityType}/${ent.id}`,
+        editPath: `${APP_BASE}/${entityType}/${ent.id}`,
+        detailNavigate: (nav) => nav(`${APP_BASE}/${entityType}/${ent.id}`),
+      };
+  }
+}
+
 /** Construit titre + actions à partir du contexte page (liste / détail / entité sélectionnée). */
 function buildFromPageContext(pageContext, navigate) {
   if (!pageContext || !pageContext.entityType) {
@@ -32,12 +73,17 @@ function buildFromPageContext(pageContext, navigate) {
   const { type, entityType, entity, selectedEntity } = pageContext;
   const ent = entity || selectedEntity;
   const label = ENTITY_LABELS[entityType] || entityType;
+  const hasEditRoute = entityType === 'maintenance-projects';
+  const { detailPath, editPath, detailNavigate } = getPathsForEntity(entityType, ent);
 
-  // Style comme la maquette: button filled (carré noir), button outlined (carré bordure), standalone (icône seule)
-  if (type === 'detail' && ent) {
+  const goDetail = detailNavigate ? () => detailNavigate(navigate) : (detailPath ? () => navigate(detailPath) : null);
+  const hasDistinctEdit = editPath && editPath !== detailPath;
+  const goEdit = hasDistinctEdit ? () => navigate(editPath) : (detailNavigate ? () => detailNavigate(navigate) : (editPath ? () => navigate(editPath) : goDetail));
+
+  if (type === 'detail' && ent && (detailPath || detailNavigate)) {
     const actions = [
-      { id: 'view', label: 'Voir les détails', icon: <Visibility />, display: 'button', variant: 'contained', onClick: () => navigate(`/${entityType}/${ent.id}`) },
-      { id: 'edit', label: 'Modifier', icon: <Edit />, display: 'button', variant: 'outlined', onClick: () => navigate(`/${entityType}/${ent.id}/edit`) },
+      { id: 'view', label: 'Voir les détails', icon: <Visibility />, display: 'button', variant: 'contained', onClick: goDetail },
+      { id: 'edit', label: 'Modifier', icon: <Edit />, display: 'button', variant: 'outlined', onClick: goEdit },
       { id: 'duplicate', label: 'Dupliquer', icon: <FileCopy />, display: 'button', variant: 'outlined', onClick: () => {} },
       { divider: true },
       { id: 'print', label: 'Imprimer', icon: <Print />, display: 'standalone', onClick: () => window.print() },
@@ -48,10 +94,10 @@ function buildFromPageContext(pageContext, navigate) {
     return { title: ent.name || ent.code || label, actions, entity: ent };
   }
 
-  if (type === 'list' && ent) {
+  if (type === 'list' && ent && (detailPath || detailNavigate)) {
     const actions = [
-      { id: 'view', label: 'Voir les détails', icon: <Visibility />, display: 'button', variant: 'contained', onClick: () => navigate(`/${entityType}/${ent.id}`) },
-      { id: 'edit', label: 'Modifier', icon: <Edit />, display: 'button', variant: 'outlined', onClick: () => navigate(`/${entityType}/${ent.id}/edit`) },
+      { id: 'view', label: 'Voir les détails', icon: <Visibility />, display: 'button', variant: 'contained', onClick: goDetail },
+      { id: 'edit', label: 'Modifier', icon: <Edit />, display: 'button', variant: 'outlined', onClick: goEdit },
       { divider: true },
       { id: 'print', label: 'Imprimer', icon: <Print />, display: 'standalone', onClick: () => window.print() },
       { id: 'export', label: 'Exporter', icon: <Download />, display: 'standalone', onClick: () => {} },
@@ -62,7 +108,7 @@ function buildFromPageContext(pageContext, navigate) {
   }
 
   const actions = [
-    { id: 'add', label: `Créer un ${label}`, icon: <Add />, display: 'button', variant: 'contained', onClick: () => navigate('/creation') },
+    { id: 'add', label: `Créer un ${label}`, icon: <Add />, display: 'button', variant: 'contained', onClick: () => navigate(`${APP_BASE}/creation`) },
     { id: 'import', label: 'Importer', icon: <Download />, display: 'button', variant: 'outlined', onClick: () => {} },
     { divider: true },
     { id: 'print', label: 'Imprimer la liste', icon: <Print />, display: 'standalone', onClick: () => window.print() },
@@ -74,10 +120,12 @@ function buildFromPageContext(pageContext, navigate) {
 
 /** Contexte par défaut selon le pathname. Ne retourne jamais null pour que la barre affiche toujours des actions. */
 export function getDefaultPageContext(pathname) {
-  const segs = pathname.split('/').filter(Boolean);
+  let segs = pathname.split('/').filter(Boolean);
+  if (segs[0] === 'app') segs = segs.slice(1);
   if (segs.length === 0) return { type: 'list', entityType: 'equipment' };
+  if (segs[0] === 'settings' && segs[1] === 'roles') return { type: 'list', entityType: 'roles' };
   const entityType = segs[0];
-  if (segs.length >= 2 && !['map', 'categories', 'technical', 'new'].includes(segs[1])) {
+  if (segs.length >= 2 && !['map', 'categories', 'technical', 'new', 'roles', 'lines', 'assignments', 'resources', 'movements', 'inventories', 'alerts', 'entries', 'exits', 'transfers', 'reorders', 'orders', 'exports', 'calibrations', 'due', 'activity', 'kpis'].includes(segs[1])) {
     return { type: 'detail', entityType, id: segs[1] };
   }
   return { type: 'list', entityType };
@@ -104,31 +152,31 @@ export const ActionPanelProvider = ({ children }) => {
   const [pageContext, setPageContextState] = useState(null);
   const [override, setOverride] = useState(null);
 
-  const setPinned = (value) => {
+  const setPinned = useCallback((value) => {
     setPinnedState(value);
     try {
       localStorage.setItem(STORAGE_KEY, value ? 'true' : 'false');
     } catch (_) {}
-  };
+  }, []);
 
-  const setContext = (ctx) => {
+  const setContext = useCallback((ctx) => {
     setPageContextState(ctx || null);
     setOverride(null);
-  };
+  }, []);
 
-  const openPanel = (config) => {
+  const openPanel = useCallback((config) => {
     setOverride({
       title: config.title || 'Actions',
       actions: config.actions || [],
       entity: config.entity ?? null
     });
-  };
+  }, []);
 
-  const closePanel = () => {
+  const closePanel = useCallback(() => {
     setOverride(null);
-  };
+  }, []);
 
-  const value = {
+  const value = useMemo(() => ({
     setContext,
     setPinned,
     pinned,
@@ -136,7 +184,7 @@ export const ActionPanelProvider = ({ children }) => {
     openPanel,
     closePanel,
     override
-  };
+  }), [setContext, setPinned, openPanel, closePanel, pinned, pageContext, override]);
 
   return (
     <ActionPanelContext.Provider value={value}>
@@ -145,7 +193,7 @@ export const ActionPanelProvider = ({ children }) => {
   );
 };
 
-/** Barre d'actions à droite — design épuré et professionnel. */
+/** Barre d'actions à droite — panneau large, lisible et professionnel. */
 export function ActionBar() {
   const theme = useTheme();
   const { pinned, setPinned, pageContext, setContext, override, closePanel } = useActionPanel();
@@ -164,7 +212,7 @@ export function ActionBar() {
   const hasSelection = pageContext && (pageContext.entity || pageContext.selectedEntity);
   const hasOverride = Boolean(override);
 
-  const clearSelection = () => {
+  const clearSelection = useCallback(() => {
     if (hasOverride) {
       closePanel();
       return;
@@ -172,19 +220,21 @@ export function ActionBar() {
     if (pageContext && (pageContext.selectedEntity || pageContext.entity)) {
       setContext({ type: 'list', entityType: pageContext.entityType });
     }
-  };
+  }, [hasOverride, closePanel, pageContext, setContext]);
 
   const isDark = theme.palette.mode === 'dark';
   const barBg = isDark ? alpha(theme.palette.background.paper, 0.98) : theme.palette.background.paper;
   const borderColor = theme.palette.divider;
-  const hoverBg = alpha(theme.palette.primary.main, isDark ? 0.2 : 0.08);
-  const iconSecondary = theme.palette.text.secondary;
-  const dividerBg = theme.palette.divider;
+  const hoverPrimary = alpha(theme.palette.primary.main, isDark ? 0.2 : 0.08);
+  const textSecondary = theme.palette.text.secondary;
 
-  // État replié : une seule icône épingle
+  // ——— État replié : bandeau étroit avec bouton pour ouvrir ———
   if (!pinned) {
     return (
-      <Box
+      <Paper
+        elevation={0}
+        component="aside"
+        aria-label="Panneau d'actions (réduit)"
         sx={{
           width: COLLAPSED_WIDTH,
           minWidth: COLLAPSED_WIDTH,
@@ -192,190 +242,136 @@ export function ActionBar() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          py: 2,
           borderLeft: 1,
           borderColor,
           bgcolor: barBg,
+          transition: theme.transitions.create(['width', 'min-width'], { duration: theme.transitions.duration.standard }),
         }}
       >
-        <Tooltip title="Afficher le panneau d'actions" placement="left">
+        <Tooltip title="Ouvrir le panneau d'actions" placement="left">
           <IconButton
-            size="small"
+            size="medium"
             onClick={() => setPinned(true)}
+            aria-label="Ouvrir le panneau d'actions"
             sx={{
-              width: ICON_SIZE,
-              height: ICON_SIZE,
-              color: iconSecondary,
-              '&:hover': { color: theme.palette.primary.main, bgcolor: hoverBg },
+              color: textSecondary,
+              '&:hover': { color: theme.palette.primary.main, bgcolor: hoverPrimary },
             }}
           >
-            <PushPinOutlined sx={{ fontSize: 20 }} />
+            <PushPinOutlined />
           </IconButton>
         </Tooltip>
-      </Box>
+      </Paper>
     );
   }
 
-  // Barre déployée : en-tête + actions
+  // ——— Panneau déployé : en-tête + liste d'actions avec libellés ———
   return (
-    <Box
-      role="toolbar"
-      aria-label={title ? `Actions - ${title}` : 'Panneau d\'actions'}
+    <Paper
+      elevation={0}
+      component="aside"
+      role="region"
+      aria-label={title ? `Actions — ${title}` : 'Panneau d\'actions'}
       sx={{
-        width: BAR_WIDTH,
-        minWidth: BAR_WIDTH,
+        width: PANEL_WIDTH,
+        minWidth: PANEL_WIDTH,
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
         borderLeft: 1,
         borderColor,
         bgcolor: barBg,
-        overflowY: 'auto',
         minHeight: 0,
+        transition: theme.transitions.create(['width', 'min-width'], { duration: theme.transitions.duration.standard }),
       }}
     >
-      {/* En-tête : titre + contrôles */}
+      {/* En-tête fixe */}
       <Box
         sx={{
           flexShrink: 0,
-          px: 1,
+          minHeight: HEADER_HEIGHT,
+          px: 2,
           py: 1.5,
           borderBottom: 1,
-          borderColor: dividerBg,
+          borderColor: theme.palette.divider,
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
-          gap: 1,
+          justifyContent: 'center',
         }}
       >
-        <Typography
-          variant="caption"
-          sx={{
-            fontWeight: 600,
-            color: iconSecondary,
-            textAlign: 'center',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            maxWidth: '100%',
-            lineHeight: 1.2,
-          }}
-        >
-          {title || 'Actions'}
-        </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <Tooltip title="Réduire le panneau" placement="left">
-            <IconButton
-              size="small"
-              onClick={() => setPinned(false)}
-              sx={{
-                width: ICON_SIZE,
-                height: ICON_SIZE,
-                color: iconSecondary,
-                '&:hover': { color: theme.palette.primary.main, bgcolor: hoverBg },
-              }}
-            >
-              <PushPin sx={{ fontSize: 18 }} />
-            </IconButton>
-          </Tooltip>
-          {(hasSelection || hasOverride) && (
-            <Tooltip title="Fermer / Annuler" placement="left">
-              <IconButton
-                size="small"
-                onClick={clearSelection}
-                sx={{
-                  width: ICON_SIZE,
-                  height: ICON_SIZE,
-                  color: iconSecondary,
-                  '&:hover': { color: theme.palette.error.main, bgcolor: alpha(theme.palette.error.main, 0.08) },
-                }}
-              >
-                <Close sx={{ fontSize: 18 }} />
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: theme.palette.text.primary, lineHeight: 1.3 }}>
+              {title || 'Actions'}
+            </Typography>
+            {entity && (entity.code || entity.name) && (
+              <Typography variant="caption" sx={{ color: textSecondary, display: 'block', mt: 0.25 }}>
+                {entity.code && entity.name ? `${entity.code} — ${entity.name}` : (entity.code || entity.name)}
+              </Typography>
+            )}
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+            <Tooltip title="Réduire le panneau" placement="left">
+              <IconButton size="small" onClick={() => setPinned(false)} aria-label="Réduire le panneau" sx={{ color: textSecondary, '&:hover': { color: theme.palette.primary.main, bgcolor: hoverPrimary } }}>
+                <PushPin sx={{ fontSize: 18 }} />
               </IconButton>
             </Tooltip>
-          )}
+            {(hasSelection || hasOverride) && (
+              <Tooltip title="Fermer" placement="left">
+                <IconButton size="small" onClick={clearSelection} aria-label="Fermer la sélection" sx={{ color: textSecondary, '&:hover': { color: theme.palette.error.main, bgcolor: alpha(theme.palette.error.main, 0.08) } }}>
+                  <Close sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Box>
         </Box>
       </Box>
 
-      {/* Liste d'actions */}
-      <Box
+      {/* Liste d'actions scrollable */}
+      <List
+        dense
+        disablePadding
         sx={{
-          flexShrink: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          py: 1.5,
-          px: 1,
-          gap: 0.5,
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          py: 1,
+          '& .MuiListItemButton-root': { borderRadius: 1, mx: 1, mb: 0.25 },
         }}
       >
         {actions.map((action, index) => {
           if (action.divider) {
-            return (
-              <Box
-                key={`div-${index}`}
-                sx={{
-                  width: '80%',
-                  height: 1,
-                  bgcolor: dividerBg,
-                  my: 0.5,
-                  opacity: 0.6,
-                }}
-              />
-            );
+            return <Divider key={`div-${index}`} sx={{ my: 1, mx: 2 }} component="li" />;
           }
           const handleClick = () => {
             if (action.onClick) action.onClick(entity);
           };
           const isPrimary = action.variant === 'contained' || action.id === 'add' || action.id === 'view';
           const isDanger = action.id === 'delete' || action.color === 'error';
+          const iconEl = React.isValidElement(action.icon) ? React.cloneElement(action.icon, { fontSize: 'small' }) : action.icon;
           return (
-            <Tooltip key={action.id || index} title={action.label} placement="left" arrow>
-              <IconButton
-                onClick={handleClick}
-                disabled={action.disabled}
-                size="small"
-                sx={{
-                  width: ICON_SIZE,
-                  height: ICON_SIZE,
-                  minWidth: ICON_SIZE,
-                  borderRadius: 1.5,
-                  ...(isPrimary && !isDanger
-                    ? {
-                        bgcolor: alpha(theme.palette.primary.main, isDark ? 0.35 : 0.12),
-                        color: theme.palette.primary.main,
-                        '&:hover': {
-                          bgcolor: alpha(theme.palette.primary.main, isDark ? 0.5 : 0.2),
-                          color: theme.palette.primary.main,
-                        },
-                      }
-                    : isDanger
-                      ? {
-                          color: theme.palette.error.main,
-                          bgcolor: 'transparent',
-                          '&:hover': {
-                            bgcolor: alpha(theme.palette.error.main, 0.08),
-                            color: theme.palette.error.main,
-                          },
-                        }
-                      : {
-                          color: iconSecondary,
-                          bgcolor: 'transparent',
-                          '&:hover': {
-                            bgcolor: hoverBg,
-                            color: theme.palette.primary.main,
-                          },
-                        }),
-                }}
-              >
-                {React.isValidElement(action.icon)
-                  ? React.cloneElement(action.icon, { fontSize: 'small' })
-                  : action.icon}
-              </IconButton>
-            </Tooltip>
+            <ListItemButton
+              key={action.id || index}
+              onClick={handleClick}
+              disabled={action.disabled}
+              aria-label={action.label}
+              sx={{
+                ...(isPrimary && !isDanger && {
+                  color: theme.palette.primary.main,
+                  '&:hover': { bgcolor: hoverPrimary },
+                }),
+                ...(isDanger && {
+                  color: theme.palette.error.main,
+                  '&:hover': { bgcolor: alpha(theme.palette.error.main, 0.08) },
+                }),
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 40, color: 'inherit' }}>{iconEl}</ListItemIcon>
+              <ListItemText primary={action.label} primaryTypographyProps={{ variant: 'body2' }} />
+            </ListItemButton>
           );
         })}
-      </Box>
-    </Box>
+      </List>
+    </Paper>
   );
 }

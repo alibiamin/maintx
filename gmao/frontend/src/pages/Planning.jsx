@@ -126,7 +126,7 @@ export default function Planning() {
   const goToWorkOrder = (id) => {
     if (!id || !id.startsWith('wo-')) return;
     const num = id.replace('wo-', '');
-    navigate(`/work-orders/${num}`);
+    navigate(`/app/work-orders/${num}`);
     closeDetail();
   };
 
