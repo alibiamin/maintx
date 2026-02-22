@@ -85,8 +85,7 @@ export default function WorkOrderForm() {
       projectId: form.projectId ? parseInt(form.projectId) : undefined,
       plannedStart: form.plannedStart || undefined,
       plannedEnd: form.plannedEnd || undefined,
-      maintenancePlanId: form.maintenancePlanId ? parseInt(form.maintenancePlanId, 10) : undefined,
-      projectId: form.projectId ? parseInt(form.projectId, 10) : undefined
+      maintenancePlanId: form.maintenancePlanId ? parseInt(form.maintenancePlanId, 10) : undefined
     };
     api.post('/work-orders', payload)
       .then(r => navigate(`/work-orders/${r.data.id}`))
