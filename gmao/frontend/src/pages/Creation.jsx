@@ -85,7 +85,7 @@ const getDefaultForm = (type) => {
     fournisseur: { code: '', name: '', contactPerson: '', email: '', phone: '', address: '' },
     commande_fournisseur: { supplierId: '' },
     contrat: { contract_number: '', name: '', supplier_id: '', equipment_id: '', contract_type: 'preventive', start_date: '', end_date: '', annual_cost: '' },
-    plan_maintenance: { equipmentId: '', name: '', description: '', frequencyDays: '30' },
+    plan_maintenance: { equipmentId: '', name: '', description: '', frequencyDays: '30', procedureId: '' },
     checklist: { name: '', description: '', maintenance_plan_id: '', is_template: false, items: [{ item_text: '', item_type: 'check' }] },
     ordre_travail: { title: '', description: '', equipmentId: '', typeId: '', priority: 'medium' },
     utilisateur: { email: '', password: '', firstName: '', lastName: '', roleId: '', phone: '', address: '', city: '', postalCode: '', employeeNumber: '', jobTitle: '', department: '', hireDate: '', contractType: '' },
@@ -112,6 +112,7 @@ export default function Creation() {
   const [users, setUsers] = useState([]);
   const [workOrderTypes, setWorkOrderTypes] = useState([]);
   const [maintenancePlans, setMaintenancePlans] = useState([]);
+  const [procedures, setProcedures] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -176,6 +177,7 @@ export default function Creation() {
     api.get('/departements').then(r => setDepartements(r.data || [])).catch(() => setDepartements([]));
     api.get('/users/roles').then(r => setRoles(r.data || [])).catch(() => setRoles([]));
     api.get('/maintenance-plans').then(r => setMaintenancePlans(r.data || [])).catch(() => setMaintenancePlans([]));
+    api.get('/procedures').then(r => setProcedures(r.data || [])).catch(() => setProcedures([]));
     api.get('/work-orders/types').then(r => setWorkOrderTypes(r.data || [])).catch(() => setWorkOrderTypes([]));
   }, []);
 
@@ -301,7 +303,8 @@ export default function Creation() {
       if (creationType === 'plan_maintenance') {
         return api.post('/maintenance-plans', {
           equipmentId: parseInt(form.equipmentId), name: form.name,
-          description: form.description || undefined, frequencyDays: parseInt(form.frequencyDays) || 30
+          description: form.description || undefined, frequencyDays: parseInt(form.frequencyDays) || 30,
+          procedureId: form.procedureId ? parseInt(form.procedureId, 10) : undefined
         }).then(() => { setSuccess('Plan créé.'); setForm(getDefaultForm('plan_maintenance')); });
       }
       if (creationType === 'checklist') {
@@ -537,6 +540,7 @@ export default function Creation() {
                 <Grid item xs={12}><TextField fullWidth required label="Nom du plan" value={form.name ?? ''} onChange={(e) => handleChange('name', e.target.value)} /></Grid>
                 <Grid item xs={12}><TextField fullWidth multiline label="Description" value={form.description ?? ''} onChange={(e) => handleChange('description', e.target.value)} /></Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth type="number" label="Fréquence (jours)" value={form.frequencyDays ?? ''} onChange={(e) => handleChange('frequencyDays', e.target.value)} inputProps={{ min: 1 }} /></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Procédure (optionnel)</InputLabel><Select value={form.procedureId ?? ''} label="Procédure (optionnel)" onChange={(e) => handleChange('procedureId', e.target.value)}><MenuItem value="">—</MenuItem>{(procedures || []).map(p => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}</Select></FormControl></Grid>
               </Grid>
             )}
             {creationType === 'checklist' && (

@@ -32,6 +32,7 @@ import { ArrowBack, Delete, Add, ContentCopy, AttachMoney } from '@mui/icons-mat
 import api from '../../services/api';
 import { useSnackbar } from '../../context/SnackbarContext';
 import { useAuth } from '../../context/AuthContext';
+import { useCurrency } from '../../context/CurrencyContext';
 
 const statusColors = { operational: 'success', maintenance: 'warning', out_of_service: 'error', retired: 'default' };
 const COUNTER_TYPES = [{ value: 'hours', label: 'Heures' }, { value: 'cycles', label: 'Cycles' }, { value: 'km', label: 'km' }];
@@ -75,6 +76,7 @@ export default function EquipmentDetail() {
   const [assetForm, setAssetForm] = useState({ acquisitionValue: '', depreciationYears: '', residualValue: '', depreciationStartDate: '' });
   const [assetSubmitting, setAssetSubmitting] = useState(false);
   const { user } = useAuth();
+  const currency = useCurrency();
   const canEditEquipment = ['administrateur', 'responsable_maintenance'].includes(user?.role);
 
   const numId = id != null && /^\d+$/.test(String(id)) ? String(id) : null;
@@ -323,7 +325,7 @@ export default function EquipmentDetail() {
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6} md={3}>
               <Typography variant="subtitle2" color="text.secondary">Valeur d'acquisition</Typography>
-              <Typography>{equipment.acquisitionValue != null ? `${Number(equipment.acquisitionValue).toLocaleString('fr-FR')} €` : '—'}</Typography>
+              <Typography>{equipment.acquisitionValue != null ? `${Number(equipment.acquisitionValue).toLocaleString('fr-FR')} ${currency}` : '—'}</Typography>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <Typography variant="subtitle2" color="text.secondary">Durée amort. (années)</Typography>
@@ -331,7 +333,7 @@ export default function EquipmentDetail() {
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <Typography variant="subtitle2" color="text.secondary">Valeur résiduelle</Typography>
-              <Typography>{equipment.residualValue != null ? `${Number(equipment.residualValue).toLocaleString('fr-FR')} €` : '—'}</Typography>
+              <Typography>{equipment.residualValue != null ? `${Number(equipment.residualValue).toLocaleString('fr-FR')} ${currency}` : '—'}</Typography>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <Typography variant="subtitle2" color="text.secondary">Début amortissement</Typography>
@@ -340,7 +342,7 @@ export default function EquipmentDetail() {
             {bookValue != null && (
               <Grid item xs={12}>
                 <Typography variant="subtitle2" color="text.secondary">Valeur nette comptable (estimée)</Typography>
-                <Typography fontWeight={600}>{bookValue.toLocaleString('fr-FR')} €</Typography>
+                <Typography fontWeight={600}>{bookValue.toLocaleString('fr-FR')} {currency}</Typography>
               </Grid>
             )}
           </Grid>
@@ -480,7 +482,7 @@ export default function EquipmentDetail() {
                     <TableCell>{row.partCode}</TableCell>
                     <TableCell>{row.partName}</TableCell>
                     <TableCell align="right">{row.quantity}</TableCell>
-                    <TableCell align="right">{row.unitPrice != null ? `${Number(row.unitPrice).toFixed(2)} €` : '—'}</TableCell>
+                    <TableCell align="right">{row.unitPrice != null ? `${Number(row.unitPrice).toFixed(2)} ${currency}` : '—'}</TableCell>
                     <TableCell align="right">{row.stockQuantity ?? '—'}</TableCell>
                     <TableCell align="right">
                       <IconButton size="small" color="error" onClick={() => removeBomLine(row.sparePartId)} title="Retirer"><Delete /></IconButton>
@@ -530,9 +532,9 @@ export default function EquipmentDetail() {
       <Dialog open={assetDialogOpen} onClose={() => setAssetDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Immobilisation / Actif</DialogTitle>
         <DialogContent>
-          <TextField fullWidth type="number" inputProps={{ min: 0, step: 0.01 }} label="Valeur d'acquisition (€)" value={assetForm.acquisitionValue} onChange={(e) => setAssetForm((f) => ({ ...f, acquisitionValue: e.target.value }))} margin="normal" />
+          <TextField fullWidth type="number" inputProps={{ min: 0, step: 0.01 }} label={`Valeur d'acquisition (${currency})`} value={assetForm.acquisitionValue} onChange={(e) => setAssetForm((f) => ({ ...f, acquisitionValue: e.target.value }))} margin="normal" />
           <TextField fullWidth type="number" inputProps={{ min: 0 }} label="Durée d'amortissement (années)" value={assetForm.depreciationYears} onChange={(e) => setAssetForm((f) => ({ ...f, depreciationYears: e.target.value }))} margin="normal" />
-          <TextField fullWidth type="number" inputProps={{ min: 0, step: 0.01 }} label="Valeur résiduelle (€)" value={assetForm.residualValue} onChange={(e) => setAssetForm((f) => ({ ...f, residualValue: e.target.value }))} margin="normal" />
+          <TextField fullWidth type="number" inputProps={{ min: 0, step: 0.01 }} label={`Valeur résiduelle (${currency})`} value={assetForm.residualValue} onChange={(e) => setAssetForm((f) => ({ ...f, residualValue: e.target.value }))} margin="normal" />
           <TextField fullWidth type="date" label="Début amortissement" value={assetForm.depreciationStartDate} onChange={(e) => setAssetForm((f) => ({ ...f, depreciationStartDate: e.target.value }))} InputLabelProps={{ shrink: true }} margin="normal" />
         </DialogContent>
         <DialogActions>

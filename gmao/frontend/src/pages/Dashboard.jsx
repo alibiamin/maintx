@@ -43,30 +43,11 @@ import {
   NotificationsActive,
   DashboardCustomize
 } from '@mui/icons-material';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  AreaChart,
-  Area,
-  Legend,
-  RadialBarChart,
-  RadialBar,
-  LineChart,
-  Line,
-  ComposedChart,
-  CartesianGrid
-} from 'recharts';
+import ReactApexChart from 'react-apexcharts';
 import api from '../services/api';
 import { useTheme } from '@mui/material/styles';
 import { useCurrency } from '../context/CurrencyContext';
-import { CHART_COLORS } from '../shared/chartTheme';
+import { CHART_COLORS, apexChartTheme } from '../shared/chartTheme';
 import { useTranslation } from 'react-i18next';
 
 // Format date relative (il y a X min, hier, date)
@@ -131,9 +112,7 @@ export default function Dashboard() {
   const muiTheme = useTheme();
   const currency = useCurrency();
   const isDark = muiTheme.palette.mode === 'dark';
-  const tickStyle = { fill: isDark ? '#94a3b8' : '#64748b', fontSize: 11 };
-  const tooltipBg = isDark ? 'rgba(30, 41, 59, 0.98)' : 'rgba(255,255,255,0.98)';
-  const tooltipBorder = isDark ? 'rgba(148,163,184,0.2)' : 'rgba(0,0,0,0.08)';
+  const apexTheme = React.useMemo(() => apexChartTheme(isDark), [isDark]);
 
   useEffect(() => {
     api.get('/auth/me').then(r => setProfile(r.data)).catch(() => setProfile(null));
@@ -200,12 +179,6 @@ export default function Dashboard() {
     return row;
   });
   const byTypeData = (charts?.byType || []).map((t, i) => ({ name: (t.name || 'N/A').slice(0, 20), count: t.count, fill: CHART_COLORS[i % CHART_COLORS.length] }));
-
-  // Données pour jauge radiale (Disponibilité / OEE)
-  const radialData = [
-    { name: 'Dispo', value: Math.min(kpis?.availabilityRate ?? 0, 100), fill: CHART_COLORS[0] },
-    { name: 'OEE', value: Math.min(kpis?.oee ?? 0, 100), fill: CHART_COLORS[2] }
-  ];
 
   const totalAlerts = (alerts.stock?.length || 0) + (alerts.sla?.length || 0) + (alerts.overduePlans?.length || 0);
 
@@ -401,14 +374,32 @@ export default function Dashboard() {
       {visibleOrder.includes('kpis') && (
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 2, overflow: 'hidden', height: '100%', border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}` }}>
+          <Card sx={{ borderRadius: 2, overflow: 'hidden', height: '100%', border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, transition: 'transform 0.2s, box-shadow 0.2s', '&:hover': { transform: 'translateY(-2px)', boxShadow: 3 } }}>
             <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Box sx={{ width: 80, height: 80, flexShrink: 0 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadialBarChart innerRadius="70%" outerRadius="100%" data={[{ ...radialData[0], value: Math.min(radialData[0].value, 100) }]} startAngle={180} endAngle={0}>
-                    <RadialBar background dataKey="value" cornerRadius={8} />
-                  </RadialBarChart>
-                </ResponsiveContainer>
+              <Box sx={{ width: 100, height: 100, flexShrink: 0 }}>
+                <ReactApexChart
+                  type="radialBar"
+                  height={100}
+                  series={[Math.min(kpis?.availabilityRate ?? 0, 100)]}
+                  options={{
+                    ...apexTheme,
+                    chart: { ...apexTheme.chart, animations: { enabled: true, speed: 800, dynamicAnimation: { enabled: true } }, sparkline: { enabled: false } },
+                    colors: [CHART_COLORS[0]],
+                    plotOptions: {
+                      radialBar: {
+                        hollow: { size: '58%', margin: 4 },
+                        track: { background: alpha(CHART_COLORS[0], 0.15), strokeWidth: '100%', margin: 0 },
+                        dataLabels: {
+                          name: { show: false },
+                          value: { show: false }
+                        },
+                        startAngle: -135,
+                        endAngle: 135
+                      }
+                    },
+                    stroke: { lineCap: 'round' }
+                  }}
+                />
               </Box>
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 <Typography variant="body2" color="text.secondary" fontWeight={500}>Disponibilité</Typography>
@@ -555,68 +546,75 @@ export default function Dashboard() {
       {visibleOrder.includes('charts') && (
       <Grid container spacing={3}>
         <Grid item xs={12} lg={6}>
-          <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden' }}>
+          <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden', transition: 'box-shadow 0.2s', '&:hover': { boxShadow: 4 } }}>
             <CardContent>
               <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>OT par statut</Typography>
               <Box sx={{ height: 280 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={byStatusData} margin={{ top: 12, right: 12, left: 0, bottom: 8 }}>
-                    <defs>
-                      <linearGradient id="barGradientMain" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={CHART_COLORS[0]} stopOpacity={1} />
-                        <stop offset="100%" stopColor={CHART_COLORS[0]} stopOpacity={0.7} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="label" tick={tickStyle} tickLine={false} />
-                    <YAxis tick={tickStyle} tickLine={false} axisLine={false} />
-                    <Tooltip contentStyle={{ borderRadius: 12, border: `1px solid ${tooltipBorder}`, backgroundColor: tooltipBg, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }} formatter={(v) => [v, 'OT']} />
-                    <Bar dataKey="count" name="OT" fill="url(#barGradientMain)" radius={[8, 8, 0, 0]} maxBarSize={48} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <ReactApexChart
+                  type="bar"
+                  height={280}
+                  series={[{ name: 'OT', data: byStatusData.map((d) => d.count) }]}
+                  options={{
+                    ...apexTheme,
+                    chart: { ...apexTheme.chart, animations: { enabled: true, speed: 600, dynamicAnimation: { enabled: true } }, toolbar: { show: false } },
+                    colors: [CHART_COLORS[0]],
+                    plotOptions: {
+                      bar: {
+                        borderRadius: 8,
+                        columnWidth: '55%',
+                        distributed: false,
+                        dataLabels: { position: 'top' }
+                      }
+                    },
+                    dataLabels: { enabled: true, formatter: (v) => v, style: { fontSize: '11px' } },
+                    xaxis: { categories: byStatusData.map((d) => d.label), ...apexTheme.xaxis, labels: { rotate: -15, style: { fontSize: '11px' } } },
+                    yaxis: { ...apexTheme.yaxis, tickAmount: 5, forceNiceScale: true },
+                    grid: { ...apexTheme.grid, xaxis: { lines: { show: false } }, padding: { top: 12, right: 12, left: 0, bottom: 8 } },
+                    tooltip: { ...apexTheme.tooltip, y: { formatter: (v) => `${v} OT` } }
+                  }}
+                />
               </Box>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} lg={6}>
-          <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden' }}>
+          <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden', transition: 'box-shadow 0.2s', '&:hover': { boxShadow: 4 } }}>
             <CardContent>
               <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Priorités (en attente)</Typography>
               <Box sx={{ height: 280 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <defs>
-                      {byPriorityData.map((_, i) => (
-                        <linearGradient key={i} id={`pieGrad${i}`} x1="0" y1="0" x2="1" y2="1">
-                          <stop offset="0%" stopColor={byPriorityData[i].fill} stopOpacity={1} />
-                          <stop offset="100%" stopColor={byPriorityData[i].fill} stopOpacity={0.75} />
-                        </linearGradient>
-                      ))}
-                    </defs>
-                    <Pie
-                      data={byPriorityData}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={72}
-                      outerRadius={100}
-                      paddingAngle={3}
-                      stroke={isDark ? 'rgba(30,41,59,0.9)' : '#fff'}
-                      strokeWidth={2}
-                    >
-                      {byPriorityData.map((_, i) => (
-                        <Cell key={i} fill={`url(#pieGrad${i})`} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{ borderRadius: 12, border: `1px solid ${tooltipBorder}`, backgroundColor: tooltipBg }} formatter={(v, name) => [v, name]} />
-                  </PieChart>
-                </ResponsiveContainer>
+                <ReactApexChart
+                  type="donut"
+                  height={280}
+                  series={byPriorityData.map((d) => d.value)}
+                  options={{
+                    ...apexTheme,
+                    chart: { ...apexTheme.chart, animations: { enabled: true, speed: 700, dynamicAnimation: { enabled: true } } },
+                    colors: byPriorityData.map((d) => d.fill),
+                    labels: byPriorityData.map((d) => d.name),
+                    legend: { ...apexTheme.legend, position: 'right', fontSize: '12px' },
+                    plotOptions: {
+                      pie: {
+                        donut: {
+                          size: '65%',
+                          labels: {
+                            show: true,
+                            total: { show: true, label: 'Total', formatter: () => byPriorityData.reduce((s, d) => s + d.value, 0).toString() },
+                            value: { fontSize: '18px', fontWeight: 700 }
+                          }
+                        }
+                      }
+                    },
+                    stroke: { show: true, width: 2, colors: [isDark ? 'rgba(30,41,59,0.9)' : '#fff'] },
+                    dataLabels: { enabled: true, formatter: (v, { seriesIndex }) => `${byPriorityData[seriesIndex]?.name ?? ''}: ${v}` },
+                    tooltip: { ...apexTheme.tooltip, y: { formatter: (v) => `${v} OT` } }
+                  }}
+                />
               </Box>
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Évolution des OT — graphique zone empilé, présentation professionnelle */}
+        {/* Évolution des OT — courbes par statut (lignes) */}
         <Grid item xs={12}>
           <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
             <CardContent sx={{ pb: 0 }}>
@@ -627,7 +625,7 @@ export default function Dashboard() {
                     Évolution des OT
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Répartition par statut sur les {period} derniers jours
+                    Nombre d’OT par statut par période (les {period} derniers jours)
                     {areaEvolutionData.length > 0 && (
                       <> · Total : <strong>{areaEvolutionData.reduce((s, r) => s + (r.total || 0), 0)}</strong> OT</>
                     )}
@@ -639,37 +637,42 @@ export default function Dashboard() {
               </Box>
               {weeks.length > 0 ? (
                 <Box sx={{ height: 340 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={areaEvolutionData} margin={{ top: 16, right: 16, left: 8, bottom: 24 }}>
-                      <defs>
-                        {statuses.map((_, i) => (
-                          <linearGradient key={i} id={`areaGradEvol${i}`} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor={CHART_COLORS[i]} stopOpacity={0.6} />
-                            <stop offset="100%" stopColor={CHART_COLORS[i]} stopOpacity={0.08} />
-                          </linearGradient>
-                        ))}
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke={alpha(muiTheme.palette.divider, 0.5)} vertical={false} />
-                      <XAxis
-                        dataKey="week"
-                        tick={{ ...tickStyle, fontSize: 11 }}
-                        tickFormatter={formatWeekLabel}
-                        tickLine={false}
-                        axisLine={{ stroke: alpha(muiTheme.palette.divider, 0.6) }}
-                      />
-                      <YAxis tick={tickStyle} tickLine={false} axisLine={false} width={32} allowDecimals={false} />
-                      <Tooltip
-                        contentStyle={{ borderRadius: 12, border: `1px solid ${tooltipBorder}`, backgroundColor: tooltipBg, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}
-                        formatter={(value, name) => [value, t(`status.${name}`, name)]}
-                        labelFormatter={(label) => `Période ${formatWeekLabel(label)}`}
-                        itemStyle={{ padding: '4px 0' }}
-                      />
-                      <Legend formatter={(v) => t(`status.${v}`, v)} wrapperStyle={{ paddingTop: 8 }} iconType="circle" iconSize={8} />
-                      {statuses.map((status, i) => (
-                        <Area key={status} type="monotone" dataKey={status} stackId="1" stroke={CHART_COLORS[i]} strokeWidth={2.5} fill={`url(#areaGradEvol${i})`} isAnimationActive animationDuration={600} />
-                      ))}
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <ReactApexChart
+                    type="line"
+                    height={340}
+                    series={statuses.map((status) => ({
+                      name: t(`status.${status}`, status),
+                      data: areaEvolutionData.map((r) => r[status] ?? 0)
+                    }))}
+                    options={{
+                      ...apexTheme,
+                      chart: {
+                        ...apexTheme.chart,
+                        zoom: { enabled: true, type: 'x' },
+                        animations: { enabled: true, speed: 500, dynamicAnimation: { enabled: true } },
+                        toolbar: { show: true, tools: { download: true, zoom: true, zoomin: true, zoomout: true, reset: true } }
+                      },
+                      colors: statuses.map((_, i) => CHART_COLORS[i]),
+                      stroke: { curve: 'smooth', width: 2.5 },
+                      markers: { size: 4, hover: { size: 6 } },
+                      xaxis: {
+                        categories: areaEvolutionData.map((r) => formatWeekLabel(r.week)),
+                        ...apexTheme.xaxis,
+                        labels: { rotate: -25, style: { fontSize: '11px' } },
+                        tickAmount: Math.min(weeks.length, 12)
+                      },
+                      yaxis: { ...apexTheme.yaxis, tickAmount: 5, min: 0, forceNiceScale: true },
+                      grid: { ...apexTheme.grid, padding: { top: 16, right: 16, left: 8, bottom: 24 }, strokeDashArray: 3 },
+                      legend: { ...apexTheme.legend, position: 'top', horizontalAlign: 'right' },
+                      tooltip: {
+                        ...apexTheme.tooltip,
+                        x: { formatter: (_, { dataPointIndex }) => `Période ${formatWeekLabel(areaEvolutionData[dataPointIndex]?.week)}` },
+                        y: { formatter: (v) => `${v} OT` },
+                        shared: true,
+                        intersect: false
+                      }
+                    }}
+                  />
                 </Box>
               ) : (
                 <Box sx={{ py: 8, textAlign: 'center' }}>
@@ -683,23 +686,36 @@ export default function Dashboard() {
 
         {/* Interventions par type */}
         <Grid item xs={12} md={6}>
-          <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden' }}>
+          <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden', transition: 'box-shadow 0.2s', '&:hover': { boxShadow: 4 } }}>
             <CardContent>
               <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Interventions par type (30 j)</Typography>
               {byTypeData.length > 0 ? (
                 <Box sx={{ height: 280 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart layout="vertical" data={byTypeData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-                      <XAxis type="number" tick={tickStyle} tickLine={false} />
-                      <YAxis type="category" dataKey="name" width={90} tick={{ ...tickStyle, fontSize: 11 }} tickLine={false} />
-                      <Tooltip contentStyle={{ borderRadius: 12, border: `1px solid ${tooltipBorder}`, backgroundColor: tooltipBg }} />
-                      <Bar dataKey="count" name="Nombre" radius={[0, 8, 8, 0]} maxBarSize={28}>
-                        {byTypeData.map((entry, i) => (
-                          <Cell key={i} fill={entry.fill} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <ReactApexChart
+                    type="bar"
+                    height={280}
+                    series={[{ name: 'Nombre', data: byTypeData.map((d) => d.count) }]}
+                    options={{
+                      ...apexTheme,
+                      chart: { ...apexTheme.chart, animations: { enabled: true, speed: 600 }, toolbar: { show: false } },
+                      colors: byTypeData.map((d) => d.fill),
+                      plotOptions: {
+                        bar: {
+                          horizontal: true,
+                          borderRadius: 6,
+                          barHeight: '70%',
+                          distributed: true,
+                          dataLabels: { position: 'bottom', formatter: (v) => v }
+                        }
+                      },
+                      dataLabels: { enabled: true },
+                      xaxis: { categories: byTypeData.map((d) => d.name), ...apexTheme.xaxis, labels: { style: { fontSize: '11px' } } },
+                      yaxis: { ...apexTheme.yaxis, labels: { maxWidth: 100 } },
+                      grid: { ...apexTheme.grid, padding: { top: 8, right: 16, left: 8, bottom: 8 } },
+                      tooltip: { ...apexTheme.tooltip, y: { formatter: (v) => `${v} intervention(s)` } },
+                      legend: { show: false }
+                    }}
+                  />
                 </Box>
               ) : (
                 <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -733,23 +749,38 @@ export default function Dashboard() {
                 </Box>
               ) : (
                 <Box sx={{ height: 280 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      layout="vertical"
-                      data={technicianPerformance.map(t => ({ name: (t.technician_name || 'Technicien').slice(0, 18), ot: t.completed_wo_count, heures: parseFloat(t.hours_spent || 0) }))}
-                      margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
-                    >
-                      <XAxis type="number" tick={tickStyle} tickLine={false} allowDecimals={false} />
-                      <YAxis type="category" dataKey="name" width={100} tick={{ ...tickStyle, fontSize: 11 }} tickLine={false} />
-                      <Tooltip
-                        contentStyle={{ borderRadius: 12, border: `1px solid ${tooltipBorder}`, backgroundColor: tooltipBg }}
-                        formatter={(value, name) => [name === 'ot' ? value : `${Number(value).toFixed(1)} h`, name === 'ot' ? 'OT complétés' : 'Heures']}
-                        labelFormatter={() => ''}
-                      />
-                      <Bar dataKey="ot" name="ot" fill={CHART_COLORS[0]} radius={[0, 6, 6, 0]} maxBarSize={20} />
-                      <Bar dataKey="heures" name="heures" fill={CHART_COLORS[3]} radius={[0, 6, 6, 0]} maxBarSize={20} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <ReactApexChart
+                    type="bar"
+                    height={280}
+                    series={[
+                      { name: 'OT complétés', data: technicianPerformance.map((t) => t.completed_wo_count ?? 0) },
+                      { name: 'Heures', data: technicianPerformance.map((t) => parseFloat(t.hours_spent || 0)) }
+                    ]}
+                    options={{
+                      ...apexTheme,
+                      chart: { ...apexTheme.chart, stacked: false, animations: { enabled: true, speed: 600 }, toolbar: { show: false } },
+                      colors: [CHART_COLORS[0], CHART_COLORS[3]],
+                      plotOptions: {
+                        bar: {
+                          horizontal: true,
+                          borderRadius: 6,
+                          barHeight: '65%',
+                          columnWidth: '75%'
+                        }
+                      },
+                      xaxis: { categories: technicianPerformance.map((t) => (t.technician_name || 'Technicien').slice(0, 18)), ...apexTheme.xaxis, tickAmount: 6 },
+                      yaxis: { ...apexTheme.yaxis, labels: { maxWidth: 100 } },
+                      grid: { ...apexTheme.grid, padding: { top: 8, right: 24, left: 8, bottom: 8 } },
+                      legend: { ...apexTheme.legend, position: 'top', horizontalAlign: 'right' },
+                      tooltip: {
+                        ...apexTheme.tooltip,
+                        y: [
+                          { formatter: (v) => `${v} OT` },
+                          { formatter: (v) => `${Number(v).toFixed(1)} h` }
+                        ]
+                      }
+                    }}
+                  />
                 </Box>
               )}
             </CardContent>
@@ -768,18 +799,34 @@ export default function Dashboard() {
                 <Typography color="text.secondary">Aucun coût sur la période</Typography>
               ) : (
                 <Box sx={{ height: 280 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      layout="vertical"
-                      data={(analytics.costsByEquipment || []).map((e) => ({ name: (e.code || e.name || '').slice(0, 14), total: e.totalCost }))}
-                      margin={{ top: 8, right: 24, left: 8, bottom: 8 }}
-                    >
-                      <XAxis type="number" tick={tickStyle} tickLine={false} tickFormatter={(v) => `${v} ${currency}`} />
-                      <YAxis type="category" dataKey="name" width={80} tick={{ ...tickStyle, fontSize: 11 }} tickLine={false} />
-                      <Tooltip contentStyle={{ borderRadius: 12, border: `1px solid ${tooltipBorder}`, backgroundColor: tooltipBg }} formatter={(v) => [`${Number(v).toFixed(2)} ${currency}`, 'Coût total']} />
-                      <Bar dataKey="total" fill={CHART_COLORS[2]} radius={[0, 6, 6, 0]} maxBarSize={24} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <ReactApexChart
+                    type="bar"
+                    height={280}
+                    series={[{ name: 'Coût total', data: (analytics.costsByEquipment || []).map((e) => Number(e.totalCost ?? 0)) }]}
+                    options={{
+                      ...apexTheme,
+                      chart: { ...apexTheme.chart, animations: { enabled: true, speed: 600 }, toolbar: { show: false } },
+                      colors: [CHART_COLORS[2]],
+                      plotOptions: {
+                        bar: {
+                          horizontal: true,
+                          borderRadius: 6,
+                          barHeight: '70%',
+                          dataLabels: { position: 'bottom' }
+                        }
+                      },
+                      dataLabels: { enabled: true, formatter: (v) => `${Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} ${currency}` },
+                      xaxis: {
+                        categories: (analytics.costsByEquipment || []).map((e) => (e.code || e.name || '').slice(0, 14)),
+                        ...apexTheme.xaxis,
+                        labels: { formatter: (v) => `${Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} ${currency}` }
+                      },
+                      yaxis: { ...apexTheme.yaxis, labels: { maxWidth: 90 } },
+                      grid: { ...apexTheme.grid, padding: { top: 8, right: 24, left: 8, bottom: 8 } },
+                      tooltip: { ...apexTheme.tooltip, y: { formatter: (v) => `${Number(v).toFixed(2)} ${currency}` } },
+                      legend: { show: false }
+                    }}
+                  />
                 </Box>
               )}
             </CardContent>

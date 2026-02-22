@@ -323,13 +323,17 @@ export default function Layout() {
   const theme = useTheme();
   const isDark = false; // Mode clair uniquement
 
-  // Déterminer le menu sélectionné basé sur la route actuelle (pathname + chemins des sous-items)
+  // Déterminer le menu sélectionné basé sur la route actuelle (pathname + chemins des sous-items).
+  // Priorité : correspondance exacte du chemin du menu (évite qu'un lien commun comme /creation ouvre le mauvais menu).
   const currentMenuId = useMemo(() => {
     const pathname = location.pathname;
+    for (const menu of menuStructure) {
+      if (pathname === menu.path) return menu.id;
+    }
     let bestMenuId = null;
     let bestPathLen = 0;
     for (const menu of menuStructure) {
-      if (pathname === menu.path || pathname.startsWith(menu.path + '/')) {
+      if (pathname.startsWith(menu.path + '/')) {
         if (menu.path.length >= bestPathLen) {
           bestMenuId = menu.id;
           bestPathLen = menu.path.length;

@@ -22,7 +22,7 @@ export default function ReportsExports() {
     { id: 'workorders', label: 'Ordres de travail', format: 'Excel', icon: <TableChart />, apiPath: '/reports/export/excel', filename: 'rapport-ot.xlsx' },
     { id: 'costs', label: 'Rapport détaillé (coûts, périodes)', format: 'Excel', icon: <TableChart />, apiPath: '/reports/export/detailed', filename: 'rapport-detaille.xlsx', withDates: true },
     { id: 'equipment', label: 'Liste des équipements', format: 'PDF', icon: <PictureAsPdf />, apiPath: '/reports/export/pdf/equipment', filename: 'liste-equipements.pdf' },
-    { id: 'maintenance', label: 'Plans de maintenance', format: 'PDF', icon: <PictureAsPdf />, implemented: false },
+    { id: 'maintenance', label: 'Plans de maintenance', format: 'PDF', icon: <PictureAsPdf />, apiPath: '/reports/export/pdf/maintenance', filename: 'plans-maintenance.pdf' },
     { id: 'stock', label: 'État des stocks', format: 'PDF', icon: <PictureAsPdf />, apiPath: '/reports/export/pdf/stock', filename: 'etat-stocks.pdf' },
     { id: 'kpis', label: 'Indicateurs de performance', format: 'PDF', icon: <PictureAsPdf />, apiPath: '/reports/export/pdf/kpis', filename: 'indicateurs-kpis.pdf', withDates: true }
   ];

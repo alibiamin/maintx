@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Navigate, Link } from 'react-router-dom';
+import { navigateTo } from './projectNavigation';
 import {
   Box,
   Card,
@@ -36,6 +37,7 @@ import { ArrowBack, PlayArrow, Stop, PersonSearch, Star, Schedule, Checklist, In
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useSnackbar } from '../../context/SnackbarContext';
+import { useCurrency } from '../../context/CurrencyContext';
 import { useTranslation } from 'react-i18next';
 
 const statusColors = { pending: 'warning', in_progress: 'info', completed: 'success', cancelled: 'default', deferred: 'default' };
@@ -44,6 +46,7 @@ export default function WorkOrderDetail() {
   const { t } = useTranslation();
   const { id } = useParams();
   const navigate = useNavigate();
+  const currency = useCurrency();
   const [order, setOrder] = useState(null);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -331,7 +334,7 @@ export default function WorkOrderDetail() {
                 const pid = order.projectId;
                 const validId = pid != null && pid !== '' && pid !== 'undefined' && !Number.isNaN(Number(pid)) ? Number(pid) : null;
                 return validId != null ? (
-                  <Button size="small" component={Link} to={`/maintenance-projects/${validId}`} sx={{ p: 0, textTransform: 'none', justifyContent: 'flex-start' }}>
+                  <Button size="small" onClick={() => navigateTo(`/maintenance-projects/${validId}`)} sx={{ p: 0, textTransform: 'none', justifyContent: 'flex-start' }}>
                     {order.projectName || `Projet #${validId}`}
                   </Button>
                 ) : (
@@ -387,15 +390,15 @@ export default function WorkOrderDetail() {
               <>
                 <Grid item xs={12} md={4}>
                   <Typography variant="subtitle2" color="text.secondary">Coût main-d'œuvre</Typography>
-                  <Typography>{order.laborCost != null ? `${Number(order.laborCost).toFixed(2)} €` : '—'}</Typography>
+                  <Typography>{order.laborCost != null ? `${Number(order.laborCost).toFixed(2)} ${currency}` : '—'}</Typography>
                 </Grid>
                 <Grid item xs={12} md={4}>
                   <Typography variant="subtitle2" color="text.secondary">Coût pièces</Typography>
-                  <Typography>{order.partsCost != null ? `${Number(order.partsCost).toFixed(2)} €` : '—'}</Typography>
+                  <Typography>{order.partsCost != null ? `${Number(order.partsCost).toFixed(2)} ${currency}` : '—'}</Typography>
                 </Grid>
                 <Grid item xs={12} md={4}>
                   <Typography variant="subtitle2" color="text.secondary">Coût total</Typography>
-                  <Typography fontWeight={600}>{order.totalCost != null ? `${Number(order.totalCost).toFixed(2)} €` : '—'}</Typography>
+                  <Typography fontWeight={600}>{order.totalCost != null ? `${Number(order.totalCost).toFixed(2)} ${currency}` : '—'}</Typography>
                 </Grid>
               </>
             )}

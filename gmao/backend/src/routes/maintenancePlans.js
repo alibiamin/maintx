@@ -87,23 +87,24 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 ], (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-  const { equipmentId, name, description, frequencyDays, triggerType, counterType, thresholdValue } = req.body;
+  const { equipmentId, name, description, frequencyDays, triggerType, counterType, thresholdValue, procedureId } = req.body;
   const trigger = triggerType === 'counter' ? 'counter' : 'calendar';
   const freq = frequencyDays || 30;
   const nextDue = new Date();
   nextDue.setDate(nextDue.getDate() + freq);
+  const procId = procedureId != null ? (parseInt(procedureId, 10) || null) : null;
   let result;
   try {
     result = db.prepare(`
-      INSERT INTO maintenance_plans (equipment_id, name, description, frequency_days, next_due_date, is_active, trigger_type, counter_type, threshold_value)
-      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
-    `).run(equipmentId, name, description || null, freq, trigger === 'calendar' ? nextDue.toISOString().split('T')[0] : null, trigger, trigger === 'counter' ? (counterType || null) : null, trigger === 'counter' && thresholdValue != null ? parseFloat(thresholdValue) : null);
+      INSERT INTO maintenance_plans (equipment_id, name, description, frequency_days, next_due_date, is_active, trigger_type, counter_type, threshold_value, procedure_id)
+      VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+    `).run(equipmentId, name, description || null, freq, trigger === 'calendar' ? nextDue.toISOString().split('T')[0] : null, trigger, trigger === 'counter' ? (counterType || null) : null, trigger === 'counter' && thresholdValue != null ? parseFloat(thresholdValue) : null, procId);
   } catch (e) {
     if (e.message && e.message.includes('no such column')) {
       result = db.prepare(`
-        INSERT INTO maintenance_plans (equipment_id, name, description, frequency_days, next_due_date, is_active)
-        VALUES (?, ?, ?, ?, ?, 1)
-      `).run(equipmentId, name, description || null, freq, nextDue.toISOString().split('T')[0]);
+        INSERT INTO maintenance_plans (equipment_id, name, description, frequency_days, next_due_date, is_active, procedure_id)
+        VALUES (?, ?, ?, ?, ?, 1, ?)
+      `).run(equipmentId, name, description || null, freq, nextDue.toISOString().split('T')[0], procId);
     } else throw e;
   }
   const row = db.prepare(`

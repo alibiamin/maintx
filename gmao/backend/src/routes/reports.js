@@ -245,6 +245,11 @@ router.get('/export/detailed', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), async 
   `).all(start, end);
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet('Rapport détaillé');
+  let currency = '€';
+  try {
+    const r = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('currency');
+    if (r?.value) currency = String(r.value).trim();
+  } catch (_) {}
   sheet.columns = [
     { header: 'N° OT', key: 'number', width: 15 },
     { header: 'Titre', key: 'title', width: 35 },
@@ -252,7 +257,7 @@ router.get('/export/detailed', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), async 
     { header: 'Type', key: 'type_name', width: 15 },
     { header: 'Statut', key: 'status', width: 12 },
     { header: 'Heures', key: 'hours_spent', width: 10 },
-    { header: 'Coût pièces (€)', key: 'parts_cost', width: 14 },
+    { header: `Coût pièces (${currency})`, key: 'parts_cost', width: 14 },
     { header: 'Date fin', key: 'actual_end', width: 18 }
   ];
   sheet.addRows(rows.map(r => ({ ...r, parts_cost: r.parts_cost ? parseFloat(r.parts_cost).toFixed(2) : 0 })));
@@ -332,6 +337,50 @@ router.get('/export/pdf/equipment', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (
   doc.fontSize(10).text(`Généré le ${new Date().toLocaleDateString('fr-FR')} - ${rows.length} équipement(s)`, 50, 75);
   doc.moveDown();
   writePdfTable(doc, ['Code', 'Désignation', 'Statut', 'Site'], rows.map(r => [r.code, r.name, r.status || '-', r.site_name || '-']), [70, 180, 60, 120]);
+  doc.end();
+});
+
+/**
+ * GET /api/reports/export/pdf/maintenance - Plans de maintenance en PDF
+ */
+router.get('/export/pdf/maintenance', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  let rows = [];
+  try {
+    rows = db.prepare(`
+      SELECT e.code as equipment_code, e.name as equipment_name, mp.name as plan_name,
+             mp.frequency_days, mp.next_due_date, p.name as procedure_name
+      FROM maintenance_plans mp
+      JOIN equipment e ON mp.equipment_id = e.id
+      LEFT JOIN procedures p ON mp.procedure_id = p.id
+      ORDER BY e.code, mp.name
+    `).all();
+  } catch (e) {
+    if (e.message && e.message.includes('no such column')) {
+      rows = db.prepare(`
+        SELECT e.code as equipment_code, e.name as equipment_name, mp.name as plan_name,
+               mp.frequency_days, mp.next_due_date
+        FROM maintenance_plans mp
+        JOIN equipment e ON mp.equipment_id = e.id
+        ORDER BY e.code, mp.name
+      `).all();
+      rows = rows.map((r) => ({ ...r, procedure_name: null }));
+    } else throw e;
+  }
+  const tableRows = rows.map((r) => [
+    (r.equipment_code || '') + ' ' + (r.equipment_name || '-'),
+    r.plan_name || '-',
+    r.frequency_days != null ? `${r.frequency_days} j` : '-',
+    r.next_due_date ? new Date(r.next_due_date).toLocaleDateString('fr-FR') : '-',
+    r.procedure_name || '-'
+  ]);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'attachment; filename=plans-maintenance.pdf');
+  const doc = new PDFDocument({ margin: 50 });
+  doc.pipe(res);
+  doc.fontSize(16).text('Plans de maintenance', 50, 50);
+  doc.fontSize(10).text(`Généré le ${new Date().toLocaleDateString('fr-FR')} - ${rows.length} plan(s)`, 50, 75);
+  doc.moveDown();
+  writePdfTable(doc, ['Équipement', 'Plan', 'Fréquence', 'Prochaine échéance', 'Procédure'], tableRows, [100, 120, 55, 55, 100]);
   doc.end();
 });
 

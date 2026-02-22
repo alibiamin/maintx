@@ -158,7 +158,8 @@ export default function Checklists() {
   const openExecute = (checklist, preFillWorkOrderId) => {
     const initial = {};
     (checklist.items || []).forEach((item) => {
-      initial[item.id] = item.item_type === 'check' ? { is_ok: false, value: null } : { is_ok: null, value: '' };
+      const isCheck = item.item_type === 'check';
+      initial[item.id] = isCheck ? { is_ok: false, value: null } : { is_ok: null, value: '' };
     });
     setExecuteResults(initial);
     setExecuteNotes('');
@@ -356,12 +357,13 @@ export default function Checklists() {
                   <FormControl size="small" sx={{ minWidth: 100 }}>
                     <InputLabel>Type</InputLabel>
                     <Select
-                      value={item.item_type}
+                      value={item.item_type === 'measurement' ? 'measurement' : (item.item_type === 'value' ? 'value' : 'check')}
                       label="Type"
                       onChange={(e) => updateItem(index, 'item_type', e.target.value)}
                     >
                       <MenuItem value="check">Case à cocher</MenuItem>
                       <MenuItem value="value">Valeur</MenuItem>
+                      <MenuItem value="measurement">Mesure</MenuItem>
                     </Select>
                   </FormControl>
                   <IconButton size="small" onClick={() => removeItem(index)} disabled={form.items.length <= 1}>

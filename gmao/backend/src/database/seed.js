@@ -290,6 +290,34 @@ async function seed() {
       .run(wo.number, wo.title, eqId, woTypeId, wo.status, techId, 'medium');
   }
 
+  // Projets de maintenance (regroupement OT, budget)
+  try {
+    const siteIdProj = db.prepare('SELECT id FROM sites WHERE code = ?').get('SITE-01')?.id;
+    const site2IdProj = db.prepare('SELECT id FROM sites WHERE code = ?').get('SITE-02')?.id;
+    const startProj = new Date().toISOString().split('T')[0];
+    const endProj = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const projectsSeed = [
+      { name: 'Maintenance annuelle ligne 1', description: 'Regroupement des OT préventifs et correctifs sur la ligne assemblage', budget: 45000, siteId: siteIdProj, status: 'active' },
+      { name: 'Projet énergie & fluides', description: 'Maintenance transformateurs et pompes', budget: 28000, siteId: siteIdProj, status: 'active' },
+      { name: 'Logistique - Entrepôt', description: 'OT sur convoyeurs et stockage (SITE-02)', budget: 15000, siteId: site2IdProj, status: 'draft' }
+    ];
+    const insProj = db.prepare(`
+      INSERT INTO maintenance_projects (name, description, budget_amount, site_id, start_date, end_date, status)
+      SELECT ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM maintenance_projects WHERE name = ?)
+    `);
+    for (const p of projectsSeed) {
+      insProj.run(p.name, p.description, p.budget, p.siteId || null, startProj, endProj, p.status, p.name);
+    }
+
+    const proj1Id = db.prepare('SELECT id FROM maintenance_projects WHERE name = ?').get('Maintenance annuelle ligne 1')?.id;
+    if (proj1Id) {
+      db.prepare('UPDATE work_orders SET project_id = ? WHERE number IN (?, ?)').run(proj1Id, 'OT-2025-001', 'OT-2025-002');
+    }
+  } catch (e) {
+    if (!e.message?.includes('no such table')) console.warn('Projets de maintenance:', e.message);
+  }
+
   // Étape 2 : Documents, contrats de maintenance, alertes
   try {
     const userId = db.prepare('SELECT id FROM users LIMIT 1').get()?.id || 1;
@@ -571,6 +599,7 @@ async function seed() {
 
   console.log('✅ Données de démo créées');
   console.log('\nDonnées de test pour les nouveaux modules :');
+  console.log('  - Projets de maintenance (3 projets, OT-2025-001 et OT-2025-002 rattachés au 1er)');
   console.log('  - Demandes d\'intervention (pending / validées / rejetées)');
   console.log('  - Compteurs équipement (heures, cycles) sur EQ-001 et EQ-004');
   console.log('  - Plans de maintenance conditionnelle (seuils heures/cycles)');
