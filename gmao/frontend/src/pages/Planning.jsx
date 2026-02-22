@@ -131,7 +131,7 @@ export default function Planning() {
   };
 
   const goToMaintenancePlans = () => {
-    navigate('/maintenance-plans');
+    navigate('/app/maintenance-plans');
     closeDetail();
   };
 
@@ -178,7 +178,7 @@ export default function Planning() {
           >
             30 j
           </Button>
-          <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/creation')}>
+          <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/app/creation')}>
             Déclarer panne
           </Button>
         </Box>

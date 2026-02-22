@@ -67,111 +67,113 @@ import api from '../services/api';
 import { LogoCompact } from './Logo';
 import { LANGUAGES } from '../constants/languages';
 
+const APP_BASE = '/app';
+
 function getMenuStructure() {
   return [
-    { id: 'dashboard', labelKey: 'menu.dashboard', icon: <DashboardIcon />, path: '/', sections: [
+    { id: 'dashboard', labelKey: 'menu.dashboard', icon: <DashboardIcon />, path: APP_BASE, sections: [
       { titleKey: 'section.dashboard_0', items: [
-        { labelKey: 'item.dashboard_overview', path: '/' },
-        { labelKey: 'item.dashboard_kpis', path: '/dashboard/kpis' },
-        { labelKey: 'item.dashboard_activity', path: '/dashboard/activity' }
+        { labelKey: 'item.dashboard_overview', path: APP_BASE },
+        { labelKey: 'item.dashboard_kpis', path: `${APP_BASE}/dashboard/kpis` },
+        { labelKey: 'item.dashboard_activity', path: `${APP_BASE}/dashboard/activity` }
       ]}
     ]},
-    { id: 'creation', labelKey: 'menu.creation', icon: <BusinessIcon />, path: '/creation', sections: [
-      { titleKey: 'section.creation_0', items: [{ labelKey: 'item.creation_new', path: '/creation' }] }
+    { id: 'creation', labelKey: 'menu.creation', icon: <BusinessIcon />, path: `${APP_BASE}/creation`, sections: [
+      { titleKey: 'section.creation_0', items: [{ labelKey: 'item.creation_new', path: `${APP_BASE}/creation` }] }
     ]},
-    { id: 'equipment', labelKey: 'menu.equipment', icon: <BuildIcon />, path: '/equipment', sections: [
+    { id: 'equipment', labelKey: 'menu.equipment', icon: <BuildIcon />, path: `${APP_BASE}/equipment`, sections: [
       { titleKey: 'section.equipment_0', items: [
-        { labelKey: 'item.equipment_list', path: '/equipment' },
-        { labelKey: 'item.equipment_map', path: '/equipment/map' },
-        { labelKey: 'item.equipment_categories', path: '/equipment/categories' },
-        { labelKey: 'item.equipment_models', path: '/equipment/models' },
-        { labelKey: 'item.equipment_technical', path: '/equipment/technical' }
+        { labelKey: 'item.equipment_list', path: `${APP_BASE}/equipment` },
+        { labelKey: 'item.equipment_map', path: `${APP_BASE}/equipment/map` },
+        { labelKey: 'item.equipment_categories', path: `${APP_BASE}/equipment/categories` },
+        { labelKey: 'item.equipment_models', path: `${APP_BASE}/equipment/models` },
+        { labelKey: 'item.equipment_technical', path: `${APP_BASE}/equipment/technical` }
       ]},
       { titleKey: 'section.equipment_1', items: [
-        { labelKey: 'item.management_history', path: '/equipment?view=history' },
-        { labelKey: 'item.management_documents', path: '/equipment?view=documents' },
-        { labelKey: 'item.management_warranties', path: '/equipment?view=warranties' }
+        { labelKey: 'item.management_history', path: `${APP_BASE}/equipment?view=history` },
+        { labelKey: 'item.management_documents', path: `${APP_BASE}/equipment?view=documents` },
+        { labelKey: 'item.management_warranties', path: `${APP_BASE}/equipment?view=warranties` }
       ]}
     ]},
-    { id: 'maintenance', labelKey: 'menu.maintenance', icon: <AssignmentIcon />, path: '/work-orders', sections: [
+    { id: 'maintenance', labelKey: 'menu.maintenance', icon: <AssignmentIcon />, path: `${APP_BASE}/work-orders`, sections: [
       { titleKey: 'section.maintenance_0', items: [
-        { labelKey: 'item.wo_list', path: '/work-orders' },
-        { labelKey: 'item.my_wo_today', path: '/my-work-orders' },
-        { labelKey: 'item.wo_declare', path: '/creation' },
-        { labelKey: 'item.intervention_requests', path: '/intervention-requests' },
-        { labelKey: 'item.wo_in_progress', path: '/work-orders?status=in_progress' },
-        { labelKey: 'item.wo_pending', path: '/work-orders?status=pending' }
+        { labelKey: 'item.wo_list', path: `${APP_BASE}/work-orders` },
+        { labelKey: 'item.my_wo_today', path: `${APP_BASE}/my-work-orders` },
+        { labelKey: 'item.wo_declare', path: `${APP_BASE}/creation` },
+        { labelKey: 'item.intervention_requests', path: `${APP_BASE}/intervention-requests` },
+        { labelKey: 'item.wo_in_progress', path: `${APP_BASE}/work-orders?status=in_progress` },
+        { labelKey: 'item.wo_pending', path: `${APP_BASE}/work-orders?status=pending` }
       ]},
       { titleKey: 'section.maintenance_1', items: [
-        { labelKey: 'item.plans', path: '/maintenance-plans' },
-        { labelKey: 'item.projects', path: '/maintenance-projects' },
-        { labelKey: 'item.checklists', path: '/checklists' },
-        { labelKey: 'item.procedures', path: '/procedures' },
-        { labelKey: 'item.due', path: '/maintenance-plans/due' }
+        { labelKey: 'item.plans', path: `${APP_BASE}/maintenance-plans` },
+        { labelKey: 'item.projects', path: `${APP_BASE}/maintenance-projects` },
+        { labelKey: 'item.checklists', path: `${APP_BASE}/checklists` },
+        { labelKey: 'item.procedures', path: `${APP_BASE}/procedures` },
+        { labelKey: 'item.due', path: `${APP_BASE}/maintenance-plans/due` }
       ]},
       { titleKey: 'section.maintenance_2', items: [
-        { labelKey: 'item.planning_calendar', path: '/planning' },
-        { labelKey: 'item.planning_assignments', path: '/planning/assignments' },
-        { labelKey: 'item.planning_resources', path: '/planning/resources' }
+        { labelKey: 'item.planning_calendar', path: `${APP_BASE}/planning` },
+        { labelKey: 'item.planning_assignments', path: `${APP_BASE}/planning/assignments` },
+        { labelKey: 'item.planning_resources', path: `${APP_BASE}/planning/resources` }
       ]}
     ]},
-    { id: 'stock', labelKey: 'menu.stock', icon: <StockIcon />, path: '/stock', sections: [
+    { id: 'stock', labelKey: 'menu.stock', icon: <StockIcon />, path: `${APP_BASE}/stock`, sections: [
       { titleKey: 'section.stock_0', items: [
-        { labelKey: 'item.stock_list', path: '/stock' },
-        { labelKey: 'item.stock_movements', path: '/stock/movements' },
-        { labelKey: 'item.stock_inventories', path: '/stock/inventories' },
-        { labelKey: 'item.stock_alerts', path: '/stock/alerts' }
+        { labelKey: 'item.stock_list', path: `${APP_BASE}/stock` },
+        { labelKey: 'item.stock_movements', path: `${APP_BASE}/stock/movements` },
+        { labelKey: 'item.stock_inventories', path: `${APP_BASE}/stock/inventories` },
+        { labelKey: 'item.stock_alerts', path: `${APP_BASE}/stock/alerts` }
       ]},
       { titleKey: 'section.stock_1', items: [
-        { labelKey: 'item.stock_entries', path: '/stock/entries' },
-        { labelKey: 'item.stock_exits', path: '/stock/exits' },
-        { labelKey: 'item.stock_transfers', path: '/stock/transfers' },
-        { labelKey: 'item.stock_reorders', path: '/stock/reorders' }
+        { labelKey: 'item.stock_entries', path: `${APP_BASE}/stock/entries` },
+        { labelKey: 'item.stock_exits', path: `${APP_BASE}/stock/exits` },
+        { labelKey: 'item.stock_transfers', path: `${APP_BASE}/stock/transfers` },
+        { labelKey: 'item.stock_reorders', path: `${APP_BASE}/stock/reorders` }
       ]}
     ]},
-    { id: 'suppliers', labelKey: 'menu.suppliers', icon: <SupplierIcon />, path: '/suppliers', sections: [
+    { id: 'suppliers', labelKey: 'menu.suppliers', icon: <SupplierIcon />, path: `${APP_BASE}/suppliers`, sections: [
       { titleKey: 'section.suppliers_0', items: [
-        { labelKey: 'item.suppliers_list', path: '/suppliers' },
-        { labelKey: 'item.contracts', path: '/contracts' },
-        { labelKey: 'item.suppliers_orders', path: '/suppliers/orders' }
+        { labelKey: 'item.suppliers_list', path: `${APP_BASE}/suppliers` },
+        { labelKey: 'item.contracts', path: `${APP_BASE}/contracts` },
+        { labelKey: 'item.suppliers_orders', path: `${APP_BASE}/suppliers/orders` }
       ]}
     ]},
-    { id: 'tools', labelKey: 'menu.tools', icon: <ToolsIcon />, path: '/tools', sections: [
+    { id: 'tools', labelKey: 'menu.tools', icon: <ToolsIcon />, path: `${APP_BASE}/tools`, sections: [
       { titleKey: 'section.tools_0', items: [
-        { labelKey: 'item.tools_list', path: '/tools' },
-        { labelKey: 'item.tools_assignments', path: '/tools/assignments' },
-        { labelKey: 'item.tools_calibrations', path: '/tools/calibrations' }
+        { labelKey: 'item.tools_list', path: `${APP_BASE}/tools` },
+        { labelKey: 'item.tools_assignments', path: `${APP_BASE}/tools/assignments` },
+        { labelKey: 'item.tools_calibrations', path: `${APP_BASE}/tools/calibrations` }
       ]}
     ]},
-    { id: 'reports', labelKey: 'menu.reports', icon: <ReportsIcon />, path: '/reports', sections: [
+    { id: 'reports', labelKey: 'menu.reports', icon: <ReportsIcon />, path: `${APP_BASE}/reports`, sections: [
       { titleKey: 'section.reports_0', items: [
-        { labelKey: 'item.reports_costs', path: '/reports' },
-        { labelKey: 'item.reports_availability', path: '/reports?tab=availability' },
-        { labelKey: 'item.reports_exports', path: '/reports/exports' }
+        { labelKey: 'item.reports_costs', path: `${APP_BASE}/reports` },
+        { labelKey: 'item.reports_availability', path: `${APP_BASE}/reports?tab=availability` },
+        { labelKey: 'item.reports_exports', path: `${APP_BASE}/reports/exports` }
       ]}
     ]},
-    { id: 'sites', labelKey: 'menu.sites', icon: <BusinessIcon />, path: '/sites', sections: [
+    { id: 'sites', labelKey: 'menu.sites', icon: <BusinessIcon />, path: `${APP_BASE}/sites`, sections: [
       { titleKey: 'section.sites_0', items: [
-        { labelKey: 'item.sites_list', path: '/sites' },
-        { labelKey: 'item.sites_lines', path: '/sites/lines' },
-        { labelKey: 'item.sites_map', path: '/sites/map' }
+        { labelKey: 'item.sites_list', path: `${APP_BASE}/sites` },
+        { labelKey: 'item.sites_lines', path: `${APP_BASE}/sites/lines` },
+        { labelKey: 'item.sites_map', path: `${APP_BASE}/sites/map` }
       ]}
     ]},
-    { id: 'effectif', labelKey: 'menu.effectif', icon: <PeopleIcon />, path: '/technicians', sections: [
+    { id: 'effectif', labelKey: 'menu.effectif', icon: <PeopleIcon />, path: `${APP_BASE}/technicians`, sections: [
       { titleKey: 'section.effectif_0', items: [
-        { labelKey: 'item.technicians_list', path: '/technicians' },
-        { labelKey: 'item.technicians_competencies', path: '/technicians/competencies' },
-        { labelKey: 'item.technicians_rules', path: '/technicians/type-competencies' },
-        { labelKey: 'item.technicians_team', path: '/technicians/team' }
+        { labelKey: 'item.technicians_list', path: `${APP_BASE}/technicians` },
+        { labelKey: 'item.technicians_competencies', path: `${APP_BASE}/technicians/competencies` },
+        { labelKey: 'item.technicians_rules', path: `${APP_BASE}/technicians/type-competencies` },
+        { labelKey: 'item.technicians_team', path: `${APP_BASE}/technicians/team` }
       ]}
     ]},
-    { id: 'settings', labelKey: 'menu.settings', icon: <SettingsIcon />, path: '/settings', sections: [
+    { id: 'settings', labelKey: 'menu.settings', icon: <SettingsIcon />, path: `${APP_BASE}/settings`, sections: [
       { titleKey: 'section.settings_0', items: [
-        { labelKey: 'item.settings_config', path: '/settings' },
-        { labelKey: 'item.settings_alerts', path: '/settings?tab=alertes' },
-        { labelKey: 'item.failure_codes', path: '/failure-codes' },
-        { labelKey: 'item.settings_users', path: '/users' },
-        { labelKey: 'item.settings_roles', path: '/settings/roles' }
+        { labelKey: 'item.settings_config', path: `${APP_BASE}/settings` },
+        { labelKey: 'item.settings_alerts', path: `${APP_BASE}/settings?tab=alertes` },
+        { labelKey: 'item.failure_codes', path: `${APP_BASE}/failure-codes` },
+        { labelKey: 'item.settings_users', path: `${APP_BASE}/users` },
+        { labelKey: 'item.settings_roles', path: `${APP_BASE}/settings/roles` }
       ]}
     ]}
   ];
@@ -476,7 +478,7 @@ export default function Layout() {
       }
       if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey && !inInput) {
         e.preventDefault();
-        navigate('/work-orders/new');
+        navigate('/app/work-orders/new');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -498,10 +500,10 @@ export default function Layout() {
         }}
       >
         <Toolbar sx={{ gap: 2, minHeight: '56px !important', px: 2 }}>
-          {/* Logo maintx — cliquable vers accueil */}
+          {/* Logo — cliquable vers tableau de bord */}
           <Box
             component={RouterLink}
-            to="/"
+            to="/app"
             sx={{
               display: 'flex',
               alignItems: 'center',
@@ -763,8 +765,8 @@ export default function Layout() {
                 if (!alert.fromDashboard && !alert.is_read) markAlertRead(alert.id);
                 setAlertAnchorEl(null);
                 if (alert.entity_type === 'work_order' && alert.entity_id) navigate(`/work-orders/${alert.entity_id}`);
-                if (alert.entity_type === 'stock_alert') navigate('/stock/alerts');
-                if (alert.entity_type === 'maintenance_plan' && alert.entity_id) navigate('/maintenance-plans/due');
+                if (alert.entity_type === 'stock_alert') navigate('/app/stock/alerts');
+                if (alert.entity_type === 'maintenance_plan' && alert.entity_id) navigate('/app/maintenance-plans/due');
               }}
               sx={{ flexDirection: 'column', alignItems: 'flex-start', py: 1.5 }}
             >
@@ -1086,7 +1088,7 @@ export default function Layout() {
         >
           <Box sx={{ p: 3 }}>
             <Breadcrumbs sx={{ mb: 2 }} aria-label="Breadcrumb">
-              <Link component={RouterLink} to="/" underline="hover" color="inherit" sx={{ fontSize: '0.875rem' }}>
+              <Link component={RouterLink} to="/app" underline="hover" color="inherit" sx={{ fontSize: '0.875rem' }}>
                 {t('common.home')}
               </Link>
               {location.pathname.split('/').filter(Boolean).map((segment, i, arr) => {

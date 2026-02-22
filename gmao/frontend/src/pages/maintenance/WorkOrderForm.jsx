@@ -95,7 +95,7 @@ export default function WorkOrderForm() {
 
   return (
     <Box>
-      <Button startIcon={<ArrowBack />} onClick={() => navigate('/work-orders')} sx={{ mb: 2 }}>Retour</Button>
+      <Button startIcon={<ArrowBack />} onClick={() => navigate('/app/work-orders')} sx={{ mb: 2 }}>Retour</Button>
       <Card sx={{ maxWidth: 640, borderRadius: 2 }}>
         <CardContent>
           <Box component="form" onSubmit={handleSubmit}>
@@ -174,7 +174,7 @@ export default function WorkOrderForm() {
             </Grid>
             <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
               <Button type="submit" variant="contained" startIcon={<Save />} disabled={loading || !form.title}>Creer</Button>
-              <Button onClick={() => navigate('/work-orders')}>Annuler</Button>
+              <Button onClick={() => navigate('/app/work-orders')}>Annuler</Button>
             </Box>
           </Box>
         </CardContent>

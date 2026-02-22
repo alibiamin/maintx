@@ -95,7 +95,7 @@ export default function TechnicianDetail() {
       setPersonalDepartment(r.data.department ?? '');
       setPersonalHireDate(r.data.hire_date ?? '');
       setPersonalContractType(r.data.contract_type ?? '');
-    }).catch(() => navigate('/technicians')).finally(() => setLoading(false));
+    }).catch(() => navigate('/app/technicians')).finally(() => setLoading(false));
   }, [id, navigate]);
 
   const handleSaveCompetencies = () => {
@@ -280,7 +280,7 @@ export default function TechnicianDetail() {
 
   return (
     <Box>
-      <Button startIcon={<ArrowBack />} onClick={() => navigate('/technicians')} sx={{ mb: 2 }}>Retour</Button>
+      <Button startIcon={<ArrowBack />} onClick={() => navigate('/app/technicians')} sx={{ mb: 2 }}>Retour</Button>
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={4}>

@@ -71,7 +71,7 @@ export default function CompetenciesPage() {
 
   return (
     <Box>
-      <Button startIcon={<ArrowBack />} onClick={() => navigate('/technicians')} sx={{ mb: 2 }}>Retour</Button>
+      <Button startIcon={<ArrowBack />} onClick={() => navigate('/app/technicians')} sx={{ mb: 2 }}>Retour</Button>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h5" fontWeight={700}>Compétences</Typography>
         {canEdit && <Button variant="contained" startIcon={<Add />} onClick={() => handleOpen()}>Ajouter</Button>}

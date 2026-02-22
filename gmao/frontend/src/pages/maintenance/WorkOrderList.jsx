@@ -71,7 +71,7 @@ export default function WorkOrderList() {
           <p style={{ margin: '4px 0 0', color: '#64748b' }}>Maintenance corrective et preventive</p>
         </Box>
         {canCreate && (
-          <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/creation')}>
+          <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/app/creation')}>
             Declarer une panne
           </Button>
         )}
@@ -139,7 +139,7 @@ export default function WorkOrderList() {
                   <TableCell>{wo.assignedName || '-'}</TableCell>
                   <TableCell>{new Date(wo.createdAt).toLocaleDateString('fr-FR')}</TableCell>
                   <TableCell align="right">
-                    <IconButton size="small" onClick={() => navigate('/work-orders/' + wo.id)}><Visibility /></IconButton>
+                    <IconButton size="small" onClick={() => navigate('/app/work-orders/' + wo.id)}><Visibility /></IconButton>
                   </TableCell>
                 </TableRow>
               ))}

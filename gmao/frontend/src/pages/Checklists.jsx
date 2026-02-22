@@ -180,7 +180,7 @@ export default function Checklists() {
     const checklist = checklists.find((c) => c.id === s.executeChecklistId);
     if (checklist) {
       openExecute(checklist, s.workOrderId);
-      navigate('/checklists', { replace: true, state: {} });
+      navigate('/app/checklists', { replace: true, state: {} });
     }
   }, [location.state, loading, checklists]);
 

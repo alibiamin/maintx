@@ -13,18 +13,32 @@ import {
   Button,
   CircularProgress,
   TextField,
-  InputAdornment
+  InputAdornment,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
-import { Search, Factory } from '@mui/icons-material';
+import { Search, Factory, Edit } from '@mui/icons-material';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { useSnackbar } from '../context/SnackbarContext';
 
 export default function SitesLines() {
   const [lines, setLines] = useState([]);
+  const [sites, setSites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [editLigne, setEditLigne] = useState(null);
+  const [ligneForm, setLigneForm] = useState({ siteId: '', code: '', name: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const { user } = useAuth();
+  const snackbar = useSnackbar();
+  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
 
   useEffect(() => {
     loadLines();
+    api.get('/sites').then((r) => setSites(r.data || [])).catch(() => setSites([]));
   }, []);
 
   const loadLines = async () => {
@@ -41,6 +55,32 @@ export default function SitesLines() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const openEditLigne = (l) => {
+    setEditLigne(l);
+    setLigneForm({
+      siteId: l.site_id != null ? String(l.site_id) : '',
+      code: l.code || '',
+      name: l.name || ''
+    });
+  };
+
+  const saveLigne = () => {
+    if (!editLigne) return;
+    setSubmitting(true);
+    api.put(`/lignes/${editLigne.id}`, {
+      siteId: ligneForm.siteId ? parseInt(ligneForm.siteId, 10) : undefined,
+      code: ligneForm.code.trim(),
+      name: ligneForm.name.trim()
+    })
+      .then((r) => {
+        setLines((prev) => prev.map((x) => (x.id === r.data.id ? { ...r.data, siteName: r.data.site_name } : x)));
+        setEditLigne(null);
+        snackbar.showSuccess('Ligne enregistrée');
+      })
+      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'))
+      .finally(() => setSubmitting(false));
   };
 
   const filteredLines = lines.filter((l) =>
@@ -96,6 +136,7 @@ export default function SitesLines() {
                   <TableCell>Code</TableCell>
                   <TableCell>Équipements</TableCell>
                   <TableCell>Statut</TableCell>
+                  {canEdit && <TableCell align="right">Action</TableCell>}
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -107,14 +148,19 @@ export default function SitesLines() {
                         {line.name}
                       </Box>
                     </TableCell>
-                    <TableCell>{line.siteName}</TableCell>
+                    <TableCell>{line.siteName || line.site_name}</TableCell>
                     <TableCell>{line.code || '-'}</TableCell>
                     <TableCell>
-                      <Chip label={line.equipmentCount || 0} size="small" />
+                      <Chip label={line.equipmentCount ?? 0} size="small" />
                     </TableCell>
                     <TableCell>
                       <Chip label={line.status || 'Actif'} size="small" color={line.status === 'Actif' ? 'success' : 'default'} />
                     </TableCell>
+                    {canEdit && (
+                      <TableCell align="right">
+                        <Button size="small" startIcon={<Edit />} onClick={() => openEditLigne(line)}>Modifier</Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -122,6 +168,22 @@ export default function SitesLines() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!editLigne} onClose={() => setEditLigne(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Modifier la ligne</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <TextField select SelectProps={{ native: true }} label="Site" value={ligneForm.siteId} onChange={(e) => setLigneForm((f) => ({ ...f, siteId: e.target.value }))} fullWidth required>
+            <option value="">—</option>
+            {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </TextField>
+          <TextField label="Code" value={ligneForm.code} onChange={(e) => setLigneForm((f) => ({ ...f, code: e.target.value }))} fullWidth required />
+          <TextField label="Nom" value={ligneForm.name} onChange={(e) => setLigneForm((f) => ({ ...f, name: e.target.value }))} fullWidth required />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditLigne(null)}>Annuler</Button>
+          <Button variant="contained" onClick={saveLigne} disabled={submitting || !ligneForm.siteId || !ligneForm.code.trim() || !ligneForm.name.trim()}>Enregistrer</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

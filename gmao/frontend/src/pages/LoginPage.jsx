@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -98,7 +98,7 @@ export default function LoginPage() {
       if (elapsed < minDisplayMs) {
         await new Promise((r) => setTimeout(r, minDisplayMs - elapsed));
       }
-      navigate('/');
+      navigate('/app');
     } catch (err) {
       setError(err.response?.data?.error || t('login.error'));
     } finally {
@@ -509,6 +509,11 @@ export default function LoginPage() {
               >
                 {loading ? t('login.submitting') : t('login.submit')}
               </Button>
+              <Box sx={{ mt: 2, textAlign: 'center' }}>
+                <Link component={RouterLink} to="/" underline="hover" sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
+                  Retour à l'accueil
+                </Link>
+              </Box>
             </form>
           </CardContent>
         </Card>

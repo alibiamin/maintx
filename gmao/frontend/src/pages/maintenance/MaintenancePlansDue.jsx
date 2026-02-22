@@ -171,7 +171,7 @@ export default function MaintenancePlansDue() {
                           size="small"
                           variant="contained"
                           startIcon={<Add />}
-                          onClick={() => navigate('/work-orders/new', { state: { maintenancePlanId: plan.id, equipmentId: plan.equipment_id, title: plan.name } })}
+                          onClick={() => navigate('/app/work-orders/new', { state: { maintenancePlanId: plan.id, equipmentId: plan.equipment_id, title: plan.name } })}
                         >
                           Créer un OT
                         </Button>
@@ -188,7 +188,7 @@ export default function MaintenancePlansDue() {
                         <Button
                           size="small"
                           sx={{ ml: 1 }}
-                          onClick={() => navigate('/maintenance-plans')}
+                          onClick={() => navigate('/app/maintenance-plans')}
                         >
                           Voir plan
                         </Button>

@@ -70,8 +70,8 @@ export default function DashboardActivity() {
           Activité récente
         </Typography>
         <Box display="flex" gap={1}>
-          <Button startIcon={<ArrowBack />} onClick={() => navigate('/')} size="small">Tableau de bord</Button>
-          <Button startIcon={<ListIcon />} onClick={() => navigate('/work-orders')} size="small" variant="outlined">Tous les OT</Button>
+          <Button startIcon={<ArrowBack />} onClick={() => navigate('/app')} size="small">Tableau de bord</Button>
+          <Button startIcon={<ListIcon />} onClick={() => navigate('/app/work-orders')} size="small" variant="outlined">Tous les OT</Button>
         </Box>
       </Box>
       <Card sx={{ borderRadius: 2 }}>

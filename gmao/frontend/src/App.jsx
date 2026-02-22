@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
+import Landing from './pages/Landing';
 import Layout from './components/Layout';
 import AppLoadingScreen from './components/AppLoadingScreen';
 import AppLoadingScreenWithMinDelay from './components/AppLoadingScreenWithMinDelay';
@@ -90,10 +91,10 @@ function AppInitialLoader({ children }) {
 
 export default function App() {
   return (
-    <AppInitialLoader>
     <Routes>
+      <Route path="/" element={<Landing />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
+      <Route path="/app" element={<AppInitialLoader><PrivateRoute><Layout /></PrivateRoute></AppInitialLoader>}>
         <Route index element={<Dashboard />} />
         <Route path="dashboard/kpis" element={<DashboardKPIs />} />
         <Route path="dashboard/activity" element={<DashboardActivity />} />
@@ -155,6 +156,5 @@ export default function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
-    </AppInitialLoader>
   );
 }

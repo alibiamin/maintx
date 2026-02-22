@@ -143,7 +143,7 @@ export default function MaintenancePlans() {
                             size="small"
                             variant="outlined"
                             startIcon={<Add />}
-                            onClick={() => navigate('/work-orders/new', { state: { maintenancePlanId: plan.id, equipmentId: plan.equipment_id, title: plan.name } })}
+                            onClick={() => navigate('/app/work-orders/new', { state: { maintenancePlanId: plan.id, equipmentId: plan.equipment_id, title: plan.name } })}
                             sx={{ mr: 1 }}
                           >
                             Créer un OT

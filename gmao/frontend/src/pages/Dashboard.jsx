@@ -314,7 +314,7 @@ export default function Dashboard() {
                     transition: 'transform 0.2s, box-shadow 0.2s',
                     '&:hover': { transform: 'translateY(-2px)', boxShadow: 2 }
                   }}
-                  onClick={() => navigate('/stock/alerts')}
+                  onClick={() => navigate('/app/stock/alerts')}
                 >
                   <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                     <Typography variant="body2" fontWeight={600}>Stock sous seuil</Typography>
@@ -333,7 +333,7 @@ export default function Dashboard() {
                     cursor: 'pointer',
                     '&:hover': { boxShadow: 2 }
                   }}
-                  onClick={() => navigate('/work-orders')}
+                  onClick={() => navigate('/app/work-orders')}
                 >
                   <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                     <Typography variant="body2" fontWeight={600}>SLA dépassé</Typography>
@@ -357,7 +357,7 @@ export default function Dashboard() {
                     cursor: 'pointer',
                     '&:hover': { boxShadow: 2 }
                   }}
-                  onClick={() => navigate('/maintenance-plans/due')}
+                  onClick={() => navigate('/app/maintenance-plans/due')}
                 >
                   <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
                     <Typography variant="body2" fontWeight={600}>Plans en retard</Typography>
@@ -738,7 +738,7 @@ export default function Dashboard() {
                   </Typography>
                   <Typography variant="body2" color="text.secondary">OT complétés et heures sur les {period} derniers jours</Typography>
                 </Box>
-                <Button size="small" endIcon={<ArrowForward />} onClick={() => navigate('/reports?tab=technician')} sx={{ textTransform: 'none', fontWeight: 600 }}>
+                <Button size="small" endIcon={<ArrowForward />} onClick={() => navigate('/app/reports?tab=technician')} sx={{ textTransform: 'none', fontWeight: 600 }}>
                   Rapport
                 </Button>
               </Box>
@@ -845,7 +845,7 @@ export default function Dashboard() {
                   </Typography>
                   <Typography variant="body2" color="text.secondary">Sur les 90 derniers jours</Typography>
                 </Box>
-                <Button size="small" endIcon={<ArrowForward />} onClick={() => navigate('/equipment')} sx={{ textTransform: 'none', fontWeight: 600 }}>
+                <Button size="small" endIcon={<ArrowForward />} onClick={() => navigate('/app/equipment')} sx={{ textTransform: 'none', fontWeight: 600 }}>
                   Voir tout
                 </Button>
               </Box>
@@ -911,7 +911,7 @@ export default function Dashboard() {
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
                 <Typography variant="h6" fontWeight={700}>Activité récente</Typography>
-                <Chip label="Voir tous les OT" size="small" onClick={() => navigate('/work-orders')} sx={{ cursor: 'pointer' }} variant="outlined" icon={<ArrowForward sx={{ fontSize: 16 }} />} />
+                <Chip label="Voir tous les OT" size="small" onClick={() => navigate('/app/work-orders')} sx={{ cursor: 'pointer' }} variant="outlined" icon={<ArrowForward sx={{ fontSize: 16 }} />} />
               </Box>
               {recent.length === 0 ? (
                 <Box sx={{ py: 6, textAlign: 'center' }}>

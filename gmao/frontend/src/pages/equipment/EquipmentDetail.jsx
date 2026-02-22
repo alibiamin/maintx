@@ -28,7 +28,7 @@ import {
   FormControlLabel,
   Checkbox
 } from '@mui/material';
-import { ArrowBack, Delete, Add, ContentCopy, AttachMoney } from '@mui/icons-material';
+import { ArrowBack, Delete, Add, ContentCopy, AttachMoney, Edit } from '@mui/icons-material';
 import api from '../../services/api';
 import { useSnackbar } from '../../context/SnackbarContext';
 import { useAuth } from '../../context/AuthContext';
@@ -75,6 +75,12 @@ export default function EquipmentDetail() {
   const [assetDialogOpen, setAssetDialogOpen] = useState(false);
   const [assetForm, setAssetForm] = useState({ acquisitionValue: '', depreciationYears: '', residualValue: '', depreciationStartDate: '' });
   const [assetSubmitting, setAssetSubmitting] = useState(false);
+  const [editMainOpen, setEditMainOpen] = useState(false);
+  const [editMainForm, setEditMainForm] = useState({ code: '', name: '', description: '', categoryId: '', ligneId: '', parentId: '', serialNumber: '', manufacturer: '', model: '', location: '', criticite: 'B', status: 'operational', installationDate: '' });
+  const [categories, setCategories] = useState([]);
+  const [lignes, setLignes] = useState([]);
+  const [parentEquipmentList, setParentEquipmentList] = useState([]);
+  const [editMainSubmitting, setEditMainSubmitting] = useState(false);
   const { user } = useAuth();
   const currency = useCurrency();
   const canEditEquipment = ['administrateur', 'responsable_maintenance'].includes(user?.role);
@@ -96,12 +102,12 @@ export default function EquipmentDetail() {
 
   useEffect(() => {
     if (id === 'new') {
-      navigate('/creation', { replace: true });
+      navigate('/app/creation', { replace: true });
       return;
     }
     if (!numId) {
       setLoading(false);
-      navigate('/equipment');
+      navigate('/app/equipment');
       return;
     }
     setLoading(true);
@@ -123,7 +129,7 @@ export default function EquipmentDetail() {
         setSpareParts(Array.isArray(parts) ? parts : []);
       })
       .catch((err) => {
-        if (err.response?.status === 404) navigate('/equipment');
+        if (err.response?.status === 404) navigate('/app/equipment');
         else setEquipment(null);
       })
       .finally(() => setLoading(false));
@@ -250,6 +256,57 @@ export default function EquipmentDetail() {
     setAssetDialogOpen(true);
   };
 
+  const openEditMainDialog = () => {
+    setEditMainForm({
+      code: equipment?.code ?? '',
+      name: equipment?.name ?? '',
+      description: equipment?.description ?? '',
+      categoryId: equipment?.categoryId != null ? String(equipment.categoryId) : '',
+      ligneId: equipment?.ligneId != null ? String(equipment.ligneId) : '',
+      parentId: equipment?.parentId != null ? String(equipment.parentId) : '',
+      serialNumber: equipment?.serialNumber ?? '',
+      manufacturer: equipment?.manufacturer ?? '',
+      model: equipment?.model ?? '',
+      location: equipment?.location ?? '',
+      criticite: equipment?.criticite ?? 'B',
+      status: equipment?.status ?? 'operational',
+      installationDate: equipment?.installationDate ? equipment.installationDate.slice(0, 10) : ''
+    });
+    setEditMainOpen(true);
+    Promise.all([
+      api.get('/equipment/categories').then((r) => setCategories(r.data || [])).catch(() => setCategories([])),
+      api.get('/lignes').then((r) => setLignes(r.data || [])).catch(() => setLignes([])),
+      api.get('/equipment', { params: { limit: 500 } }).then((r) => {
+        const list = r.data?.data ?? r.data ?? [];
+        setParentEquipmentList(Array.isArray(list) ? list.filter((e) => e.id !== equipment?.id) : []);
+      }).catch(() => setParentEquipmentList([]))
+    ]);
+  };
+
+  const handleSaveEditMain = () => {
+    if (!numId) return;
+    setEditMainSubmitting(true);
+    const payload = {
+      code: editMainForm.code.trim(),
+      name: editMainForm.name.trim(),
+      description: editMainForm.description.trim() || undefined,
+      categoryId: editMainForm.categoryId ? parseInt(editMainForm.categoryId, 10) : undefined,
+      ligneId: editMainForm.ligneId ? parseInt(editMainForm.ligneId, 10) : undefined,
+      parentId: editMainForm.parentId === '' ? undefined : (editMainForm.parentId ? parseInt(editMainForm.parentId, 10) : null),
+      serialNumber: editMainForm.serialNumber.trim() || undefined,
+      manufacturer: editMainForm.manufacturer.trim() || undefined,
+      model: editMainForm.model.trim() || undefined,
+      location: editMainForm.location.trim() || undefined,
+      criticite: editMainForm.criticite,
+      status: editMainForm.status,
+      installationDate: editMainForm.installationDate || undefined
+    };
+    api.put(`/equipment/${numId}`, payload)
+      .then((r) => { setEquipment(r.data); setEditMainOpen(false); snackbar.showSuccess('Équipement enregistré'); })
+      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'))
+      .finally(() => setEditMainSubmitting(false));
+  };
+
   const handleSaveAsset = () => {
     setAssetSubmitting(true);
     api.put(`/equipment/${numId}`, {
@@ -270,9 +327,12 @@ export default function EquipmentDetail() {
   return (
     <Box>
       <Box display="flex" alignItems="center" gap={1} sx={{ mb: 2 }}>
-        <Button startIcon={<ArrowBack />} onClick={() => navigate('/equipment')}>Retour</Button>
+        <Button startIcon={<ArrowBack />} onClick={() => navigate('/app/equipment')}>Retour</Button>
         {canEditEquipment && (
-          <Button startIcon={<ContentCopy />} variant="outlined" onClick={openCloneDialog}>Cloner</Button>
+          <>
+            <Button startIcon={<Edit />} variant="outlined" onClick={openEditMainDialog}>Modifier</Button>
+            <Button startIcon={<ContentCopy />} variant="outlined" onClick={openCloneDialog}>Cloner</Button>
+          </>
         )}
       </Box>
       <Card sx={{ mb: 2 }}>
@@ -554,6 +614,62 @@ export default function EquipmentDetail() {
         <DialogActions>
           <Button onClick={() => setCloneDialogOpen(false)}>Annuler</Button>
           <Button variant="contained" onClick={handleClone} disabled={cloneSubmitting || !cloneForm.code.trim() || !cloneForm.name.trim()}>Cloner</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={editMainOpen} onClose={() => setEditMainOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Modifier l&apos;équipement</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <TextField label="Code" value={editMainForm.code} onChange={(e) => setEditMainForm((f) => ({ ...f, code: e.target.value }))} fullWidth required />
+          <TextField label="Nom" value={editMainForm.name} onChange={(e) => setEditMainForm((f) => ({ ...f, name: e.target.value }))} fullWidth required />
+          <TextField label="Description" value={editMainForm.description} onChange={(e) => setEditMainForm((f) => ({ ...f, description: e.target.value }))} fullWidth multiline minRows={2} />
+          <FormControl fullWidth size="small">
+            <InputLabel>Catégorie</InputLabel>
+            <Select value={editMainForm.categoryId} label="Catégorie" onChange={(e) => setEditMainForm((f) => ({ ...f, categoryId: e.target.value }))}>
+              <MenuItem value="">—</MenuItem>
+              {categories.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl fullWidth size="small">
+            <InputLabel>Ligne</InputLabel>
+            <Select value={editMainForm.ligneId} label="Ligne" onChange={(e) => setEditMainForm((f) => ({ ...f, ligneId: e.target.value }))}>
+              <MenuItem value="">—</MenuItem>
+              {lignes.map((l) => <MenuItem key={l.id} value={l.id}>{l.name} {l.code ? `(${l.code})` : ''}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl fullWidth size="small">
+            <InputLabel>Parent (section / machine)</InputLabel>
+            <Select value={editMainForm.parentId} label="Parent (section / machine)" onChange={(e) => setEditMainForm((f) => ({ ...f, parentId: e.target.value }))}>
+              <MenuItem value="">— Aucun —</MenuItem>
+              {parentEquipmentList.map((e) => <MenuItem key={e.id} value={e.id}>{e.code} — {e.name}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <TextField label="N° série" value={editMainForm.serialNumber} onChange={(e) => setEditMainForm((f) => ({ ...f, serialNumber: e.target.value }))} fullWidth />
+          <TextField label="Constructeur" value={editMainForm.manufacturer} onChange={(e) => setEditMainForm((f) => ({ ...f, manufacturer: e.target.value }))} fullWidth />
+          <TextField label="Modèle" value={editMainForm.model} onChange={(e) => setEditMainForm((f) => ({ ...f, model: e.target.value }))} fullWidth />
+          <TextField label="Localisation" value={editMainForm.location} onChange={(e) => setEditMainForm((f) => ({ ...f, location: e.target.value }))} fullWidth />
+          <FormControl fullWidth size="small">
+            <InputLabel>Criticité</InputLabel>
+            <Select value={editMainForm.criticite} label="Criticité" onChange={(e) => setEditMainForm((f) => ({ ...f, criticite: e.target.value }))}>
+              <MenuItem value="A">A</MenuItem>
+              <MenuItem value="B">B</MenuItem>
+              <MenuItem value="C">C</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl fullWidth size="small">
+            <InputLabel>Statut</InputLabel>
+            <Select value={editMainForm.status} label="Statut" onChange={(e) => setEditMainForm((f) => ({ ...f, status: e.target.value }))}>
+              <MenuItem value="operational">Opérationnel</MenuItem>
+              <MenuItem value="maintenance">En maintenance</MenuItem>
+              <MenuItem value="out_of_service">Hors service</MenuItem>
+              <MenuItem value="retired">Retiré</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField label="Date d'installation" type="date" value={editMainForm.installationDate} onChange={(e) => setEditMainForm((f) => ({ ...f, installationDate: e.target.value }))} fullWidth InputLabelProps={{ shrink: true }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditMainOpen(false)}>Annuler</Button>
+          <Button variant="contained" onClick={handleSaveEditMain} disabled={editMainSubmitting || !editMainForm.code.trim() || !editMainForm.name.trim()}>Enregistrer</Button>
         </DialogActions>
       </Dialog>
     </Box>

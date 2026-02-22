@@ -72,7 +72,7 @@ export default function WorkOrderDetail() {
 
   const loadOrder = () => {
     if (id === 'new') return;
-    api.get(`/work-orders/${id}`).then(r => setOrder(r.data)).catch(() => navigate('/work-orders'));
+    api.get(`/work-orders/${id}`).then(r => setOrder(r.data)).catch(() => navigate('/app/work-orders'));
   };
 
   const loadReservations = () => {
@@ -93,7 +93,7 @@ export default function WorkOrderDetail() {
       setReservations(Array.isArray(resRes?.data) ? resRes.data : []);
       const parts = partsRes?.data?.data ?? partsRes?.data ?? [];
       setSpareParts(Array.isArray(parts) ? parts : []);
-    }).catch(() => navigate('/work-orders')).finally(() => setLoading(false));
+    }).catch(() => navigate('/app/work-orders')).finally(() => setLoading(false));
   }, [id, navigate]);
 
   useEffect(() => {
@@ -266,7 +266,7 @@ export default function WorkOrderDetail() {
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-        <Button startIcon={<ArrowBack />} onClick={() => navigate('/work-orders')}>Retour</Button>
+        <Button startIcon={<ArrowBack />} onClick={() => navigate('/app/work-orders')}>Retour</Button>
         <Button startIcon={<Print />} onClick={handlePrintPdf} disabled={actionLoading} variant="outlined" size="small">
           Imprimer / PDF
         </Button>
@@ -519,7 +519,7 @@ export default function WorkOrderDetail() {
               <List dense disablePadding>
                 {planChecklists.map((c) => (
                   <ListItem key={c.id} disablePadding secondaryAction={
-                    <Button size="small" variant="outlined" onClick={() => navigate('/checklists', { state: { executeChecklistId: c.id, workOrderId: order.id } })}>
+                    <Button size="small" variant="outlined" onClick={() => navigate('/app/checklists', { state: { executeChecklistId: c.id, workOrderId: order.id } })}>
                       Exécuter
                     </Button>
                   }>

@@ -177,7 +177,7 @@ export default function StockAlerts() {
           <Button
             variant="outlined"
             startIcon={<ShoppingCart />}
-            onClick={() => navigate('/stock/reorders')}
+            onClick={() => navigate('/app/stock/reorders')}
             sx={{ alignSelf: 'center', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}
           >
             Réapprovisionnements
@@ -223,7 +223,7 @@ export default function StockAlerts() {
               <Button
                 variant="outlined"
                 startIcon={<ArrowForward />}
-                onClick={() => navigate('/stock')}
+                onClick={() => navigate('/app/stock')}
                 sx={{ textTransform: 'none', fontWeight: 600 }}
               >
                 Voir le stock
@@ -316,7 +316,7 @@ export default function StockAlerts() {
                           size="small"
                           variant="outlined"
                           startIcon={<ShoppingCart />}
-                          onClick={() => navigate('/stock/reorders')}
+                          onClick={() => navigate('/app/stock/reorders')}
                           sx={{ textTransform: 'none', fontWeight: 600 }}
                         >
                           Commander

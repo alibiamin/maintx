@@ -80,7 +80,7 @@ export default function EquipmentForm() {
 
   return (
     <Box>
-      <Button startIcon={<ArrowBack />} onClick={() => navigate('/equipment')} sx={{ mb: 2 }}>
+      <Button startIcon={<ArrowBack />} onClick={() => navigate('/app/equipment')} sx={{ mb: 2 }}>
         Retour
       </Button>
       <Card sx={{ maxWidth: 720, borderRadius: 2 }}>
@@ -185,7 +185,7 @@ export default function EquipmentForm() {
               <Button type="submit" variant="contained" startIcon={<Save />} disabled={loading || !form.code || !form.name}>
                 {loading ? 'Création...' : 'Créer'}
               </Button>
-              <Button onClick={() => navigate('/equipment')}>Annuler</Button>
+              <Button onClick={() => navigate('/app/equipment')}>Annuler</Button>
             </Box>
           </Box>
         </CardContent>

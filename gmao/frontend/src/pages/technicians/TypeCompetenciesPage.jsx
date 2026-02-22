@@ -77,7 +77,7 @@ export default function TypeCompetenciesPage() {
 
   return (
     <Box>
-      <Button startIcon={<ArrowBack />} onClick={() => navigate('/technicians')} sx={{ mb: 2 }}>Retour</Button>
+      <Button startIcon={<ArrowBack />} onClick={() => navigate('/app/technicians')} sx={{ mb: 2 }}>Retour</Button>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>Règles d'affectation</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Liez chaque type d'ordre de travail aux compétences requises (niveau 1-5). Les suggestions d'affectation utiliseront ces règles.

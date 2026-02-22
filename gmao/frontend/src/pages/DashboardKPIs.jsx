@@ -64,7 +64,7 @@ export default function DashboardKPIs() {
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={3}>
         <Box display="flex" alignItems="center" gap={2}>
-          <Button startIcon={<ArrowBack />} onClick={() => navigate('/')} size="small">Tableau de bord</Button>
+          <Button startIcon={<ArrowBack />} onClick={() => navigate('/app')} size="small">Tableau de bord</Button>
           <Typography variant="h5" fontWeight={700}>
             Indicateurs de performance (KPIs)
           </Typography>
@@ -97,7 +97,7 @@ export default function DashboardKPIs() {
         ))}
       </Grid>
       <Box mt={3}>
-        <Button startIcon={<BarChart />} variant="outlined" onClick={() => navigate('/reports')}>
+        <Button startIcon={<BarChart />} variant="outlined" onClick={() => navigate('/app/reports')}>
           Voir les rapports détaillés
         </Button>
       </Box>

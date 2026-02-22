@@ -119,7 +119,7 @@ export default function TeamPage() {
 
   return (
     <Box>
-      <Button startIcon={<ArrowBack />} onClick={() => navigate('/technicians')} sx={{ mb: 2 }}>
+      <Button startIcon={<ArrowBack />} onClick={() => navigate('/app/technicians')} sx={{ mb: 2 }}>
         Retour
       </Button>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 1 }}>

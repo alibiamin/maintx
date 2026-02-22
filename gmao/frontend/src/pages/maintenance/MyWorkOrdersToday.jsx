@@ -77,7 +77,7 @@ export default function MyWorkOrdersToday() {
         <Card>
           <CardContent>
             <Typography color="text.secondary">Aucun OT prévu pour vous aujourd'hui.</Typography>
-            <Button sx={{ mt: 2 }} variant="outlined" onClick={() => navigate('/work-orders')}>Voir tous les OT</Button>
+            <Button sx={{ mt: 2 }} variant="outlined" onClick={() => navigate('/app/work-orders')}>Voir tous les OT</Button>
           </CardContent>
         </Card>
       ) : (
