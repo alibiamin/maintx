@@ -84,25 +84,25 @@ export default function ToolsAssignments() {
                 <TableRow>
                   <TableCell>Outil</TableCell>
                   <TableCell>Technicien</TableCell>
+                  <TableCell>OT</TableCell>
                   <TableCell>Date assignation</TableCell>
-                  <TableCell>Date retour prévue</TableCell>
                   <TableCell>Statut</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filteredAssignments.map((assignment) => (
                   <TableRow key={assignment.id}>
-                    <TableCell>{assignment.toolName}</TableCell>
+                    <TableCell>{assignment.toolName || assignment.tool_code || '-'}</TableCell>
                     <TableCell>
                       <Box display="flex" alignItems="center" gap={1}>
                         <Person />
-                        {assignment.userName}
+                        {assignment.userName || '-'}
                       </Box>
                     </TableCell>
-                    <TableCell>{new Date(assignment.assigned_date).toLocaleDateString('fr-FR')}</TableCell>
-                    <TableCell>{assignment.expected_return_date ? new Date(assignment.expected_return_date).toLocaleDateString('fr-FR') : '-'}</TableCell>
+                    <TableCell>{assignment.work_order_number || '-'}</TableCell>
+                    <TableCell>{(assignment.assigned_at && new Date(assignment.assigned_at).toLocaleDateString('fr-FR')) || '-'}</TableCell>
                     <TableCell>
-                      <Chip label={assignment.status} size="small" color={assignment.status === 'returned' ? 'success' : 'default'} />
+                      <Chip label={assignment.returned_at ? 'Retourné' : 'En cours'} size="small" color={assignment.returned_at ? 'success' : 'default'} />
                     </TableCell>
                   </TableRow>
                 ))}

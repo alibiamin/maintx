@@ -138,8 +138,16 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
     } = req.body;
 
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Nom requis' });
-    const code = codification.generateCodeIfNeeded('outil', codeProvided);
-    if (!code || !code.trim()) return res.status(400).json({ error: 'Code requis ou configurer la codification dans Paramétrage' });
+    let code = codification.generateCodeIfNeeded('outil', codeProvided);
+    if (!code || !code.trim()) {
+      try {
+        const last = db.prepare('SELECT code FROM tools WHERE code LIKE ? ORDER BY code DESC LIMIT 1').get('OUT-%');
+        const n = last ? parseInt(String(last.code).replace('OUT-', ''), 10) + 1 : 1;
+        code = 'OUT-' + String(n).padStart(4, '0');
+      } catch (e) {
+        code = 'OUT-' + Date.now().toString(36).toUpperCase().slice(-4);
+      }
+    }
 
     const result = db.prepare(`
       INSERT INTO tools (
@@ -173,8 +181,11 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
 });
 
 // PUT /api/tools/:id
-router.put('/:id', (req, res) => {
+router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   try {
+    const current = db.prepare('SELECT * FROM tools WHERE id = ?').get(req.params.id);
+    if (!current) return res.status(404).json({ error: 'Outil non trouvé' });
+
     const {
       name,
       description,
@@ -190,6 +201,19 @@ router.put('/:id', (req, res) => {
       purchase_price
     } = req.body;
 
+    const nameVal = name !== undefined ? name : current.name;
+    const descriptionVal = description !== undefined ? description : current.description;
+    const toolTypeVal = tool_type !== undefined ? tool_type : current.tool_type;
+    const manufacturerVal = manufacturer !== undefined ? manufacturer : current.manufacturer;
+    const modelVal = model !== undefined ? model : current.model;
+    const serialNumberVal = serial_number !== undefined ? serial_number : current.serial_number;
+    const locationVal = location !== undefined ? location : current.location;
+    const statusVal = status !== undefined ? status : current.status;
+    const calibrationDateVal = calibration_date !== undefined ? calibration_date : current.calibration_date;
+    const calibrationDueDateVal = calibration_due_date !== undefined ? calibration_due_date : current.calibration_due_date;
+    const purchaseDateVal = purchase_date !== undefined ? purchase_date : current.purchase_date;
+    const purchasePriceVal = purchase_price !== undefined ? (parseFloat(purchase_price) || 0) : (current.purchase_price ?? 0);
+
     db.prepare(`
       UPDATE tools
       SET name = ?, description = ?, tool_type = ?, manufacturer = ?, model = ?,
@@ -198,18 +222,18 @@ router.put('/:id', (req, res) => {
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
-      name,
-      description || null,
-      tool_type || null,
-      manufacturer || null,
-      model || null,
-      serial_number || null,
-      location || null,
-      status,
-      calibration_date || null,
-      calibration_due_date || null,
-      purchase_date || null,
-      purchase_price || 0,
+      nameVal,
+      descriptionVal || null,
+      toolTypeVal || null,
+      manufacturerVal || null,
+      modelVal || null,
+      serialNumberVal || null,
+      locationVal || null,
+      statusVal || 'available',
+      calibrationDateVal || null,
+      calibrationDueDateVal || null,
+      purchaseDateVal || null,
+      purchasePriceVal,
       req.params.id
     );
 
@@ -284,8 +308,10 @@ router.post('/:id/return', (req, res) => {
 });
 
 // DELETE /api/tools/:id
-router.delete('/:id', (req, res) => {
+router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   try {
+    const tool = db.prepare('SELECT id FROM tools WHERE id = ?').get(req.params.id);
+    if (!tool) return res.status(404).json({ error: 'Outil non trouvé' });
     db.prepare('DELETE FROM tools WHERE id = ?').run(req.params.id);
     res.json({ message: 'Outil supprimé' });
   } catch (error) {

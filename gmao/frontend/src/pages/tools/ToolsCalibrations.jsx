@@ -87,30 +87,29 @@ export default function ToolsCalibrations() {
                 <TableRow>
                   <TableCell>Outil</TableCell>
                   <TableCell>Date calibration</TableCell>
-                  <TableCell>Date expiration</TableCell>
-                  <TableCell>Organisme</TableCell>
+                  <TableCell>Date d'échéance</TableCell>
                   <TableCell>Statut</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filteredCalibrations.map((cal) => {
-                  const isExpiring = new Date(cal.expiration_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-                  const isExpired = new Date(cal.expiration_date) < new Date();
+                  const dueDate = cal.calibration_due_date;
+                  const isExpiring = dueDate && new Date(dueDate) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                  const isExpired = dueDate && new Date(dueDate) < new Date();
                   return (
                     <TableRow key={cal.id}>
-                      <TableCell>{cal.toolName}</TableCell>
-                      <TableCell>{new Date(cal.calibration_date).toLocaleDateString('fr-FR')}</TableCell>
+                      <TableCell>{cal.toolName || cal.name || cal.code || '-'}</TableCell>
+                      <TableCell>{(cal.calibration_date && new Date(cal.calibration_date).toLocaleDateString('fr-FR')) || '-'}</TableCell>
                       <TableCell>
                         <Box display="flex" alignItems="center" gap={1}>
-                          {new Date(cal.expiration_date).toLocaleDateString('fr-FR')}
+                          {(dueDate && new Date(dueDate).toLocaleDateString('fr-FR')) || '-'}
                           {isExpiring && !isExpired && <Warning color="warning" fontSize="small" />}
                           {isExpired && <Warning color="error" fontSize="small" />}
                         </Box>
                       </TableCell>
-                      <TableCell>{cal.calibration_organization || '-'}</TableCell>
                       <TableCell>
                         <Chip
-                          label={cal.is_valid ? 'Valide' : 'Expirée'}
+                          label={cal.is_valid && !isExpired ? 'Valide' : 'Expirée'}
                           size="small"
                           color={cal.is_valid && !isExpired ? 'success' : 'error'}
                         />
