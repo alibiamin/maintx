@@ -27,3 +27,6 @@ build/
 # Archives (éviter fichiers > 50 Mo sur GitHub)
 *.zip
 *.rar
+
+# Base de données (ne pas versionner)
+gmao/backend/data/*.db
