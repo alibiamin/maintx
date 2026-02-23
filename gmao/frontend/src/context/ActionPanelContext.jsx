@@ -38,6 +38,24 @@ const ENTITY_LABELS = {
 
 const APP_BASE = '/app';
 
+/** Page de création dédiée par type d'entité (chaque création dans son module, pas le menu Création). */
+function getCreationPath(entityType) {
+  switch (entityType) {
+    case 'work-orders': return `${APP_BASE}/maintenance/creation/work-order`;
+    case 'maintenance-plans': return `${APP_BASE}/maintenance/creation/plan`;
+    case 'checklists': return `${APP_BASE}/maintenance/creation/checklist`;
+    case 'stock': return `${APP_BASE}/stock/creation/piece`;
+    case 'suppliers': return `${APP_BASE}/suppliers/creation/supplier`;
+    case 'contracts': return `${APP_BASE}/suppliers/creation/contract`;
+    case 'tools': return `${APP_BASE}/tools/creation/tool`;
+    case 'sites': return `${APP_BASE}/equipment/creation/site`;
+    case 'equipment': return `${APP_BASE}/equipment/creation/machine`;
+    case 'users': return `${APP_BASE}/settings/creation/user`;
+    case 'failure-codes': return `${APP_BASE}/settings/creation/failure-code`;
+    default: return `${APP_BASE}/equipment/creation/machine`;
+  }
+}
+
 /** Chemins réels par type d'entité (certains sont sous settings/, pas à la racine /app). */
 function getPathsForEntity(entityType, ent) {
   if (ent?.id == null) return { detailPath: null, editPath: null, detailNavigate: null };
@@ -108,7 +126,7 @@ function buildFromPageContext(pageContext, navigate) {
   }
 
   const actions = [
-    { id: 'add', label: `Créer un ${label}`, icon: <Add />, display: 'button', variant: 'contained', onClick: () => navigate(`${APP_BASE}/creation`) },
+    { id: 'add', label: `Créer un ${label}`, icon: <Add />, display: 'button', variant: 'contained', onClick: () => navigate(getCreationPath(entityType)) },
     { id: 'import', label: 'Importer', icon: <Download />, display: 'button', variant: 'outlined', onClick: () => {} },
     { divider: true },
     { id: 'print', label: 'Imprimer la liste', icon: <Print />, display: 'standalone', onClick: () => window.print() },
@@ -125,7 +143,7 @@ export function getDefaultPageContext(pathname) {
   if (segs.length === 0) return { type: 'list', entityType: 'equipment' };
   if (segs[0] === 'settings' && segs[1] === 'roles') return { type: 'list', entityType: 'roles' };
   const entityType = segs[0];
-  if (segs.length >= 2 && !['map', 'categories', 'technical', 'new', 'roles', 'lines', 'assignments', 'resources', 'movements', 'inventories', 'alerts', 'entries', 'exits', 'transfers', 'reorders', 'orders', 'exports', 'calibrations', 'due', 'activity', 'kpis'].includes(segs[1])) {
+  if (segs.length >= 2 && !['map', 'categories', 'technical', 'new', 'roles', 'lines', 'assignments', 'resources', 'movements', 'inventories', 'alerts', 'entries', 'exits', 'transfers', 'reorders', 'orders', 'exports', 'calibrations', 'due', 'activity', 'kpis', 'creation'].includes(segs[1])) {
     return { type: 'detail', entityType, id: segs[1] };
   }
   return { type: 'list', entityType };

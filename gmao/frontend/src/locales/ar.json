@@ -1,6 +1,7 @@
 {
   "common": {
     "home": "الرئيسية",
+    "back": "رجوع",
     "logout": "تسجيل الخروج",
     "searchPlaceholder": "البحث في قائمة التنقل",
     "menu": "القائمة",
@@ -15,6 +16,12 @@
     "unpin": "إلغاء التثبيت",
     "language": "اللغة",
     "all": "الكل"
+  },
+  "creation": {
+    "title": "إنشاء",
+    "subtitle": "اختر الفئة ونوع العنصر ثم املأ النموذج.",
+    "typeLabel": "نوع العنصر",
+    "moduleFormHint": "املأ النموذج أدناه."
   },
   "flow": {
     "demande": "طلب",
@@ -83,17 +90,23 @@
     "creation_0": "إنشاء",
     "equipment_0": "المعدات",
     "equipment_1": "الإدارة",
+    "equipment_creation": "إنشاء",
     "maintenance_0": "أوامر العمل",
     "maintenance_1": "الصيانة الوقائية",
     "maintenance_2": "التخطيط",
     "stock_0": "المخزون",
     "stock_1": "الإدارة",
+    "stock_creation": "إنشاء",
     "suppliers_0": "الموردون",
+    "suppliers_creation": "إنشاء",
+    "maintenance_creation": "إنشاء",
     "tools_0": "الأدوات والمواد",
+    "tools_creation": "إنشاء",
     "reports_0": "التقارير",
     "sites_0": "المواقع",
     "effectif_0": "الطاقم",
-    "settings_0": "الإعدادات"
+    "settings_0": "الإعدادات",
+    "settings_creation": "إنشاء"
   },
   "item": {
     "dashboard_overview": "نظرة عامة",
@@ -104,6 +117,13 @@
     "equipment_map": "خريطة التسلسل",
     "equipment_categories": "الفئات",
     "equipment_technical": "الملفات الفنية",
+    "creation_site": "موقع",
+    "creation_departement": "قسم",
+    "creation_ligne": "خط",
+    "creation_machine": "آلة / معدات",
+    "creation_section": "قسم",
+    "creation_composant": "مكون",
+    "creation_sous_composant": "مكون فرعي",
     "management_history": "السجل (لكل معدة)",
     "management_documents": "المستندات (لكل معدة)",
     "management_warranties": "الضمانات (لكل معدة)",
@@ -127,7 +147,19 @@
     "stock_transfers": "التحويلات",
     "stock_reorders": "إعادة الطلب",
     "stock_quality": "مراقبة الجودة",
+    "creation_piece": "قطعة غيار",
+    "creation_entree_stock": "دخول مخزون",
+    "creation_sortie_stock": "خروج مخزون",
+    "creation_transfert_stock": "تحويل",
     "suppliers_list": "قائمة الموردين",
+    "creation_fournisseur": "مورد",
+    "creation_commande_fournisseur": "طلب",
+    "creation_contrat": "عقد صيانة",
+    "creation_plan_maintenance": "خطة صيانة",
+    "creation_checklist": "قائمة تحقق",
+    "creation_ordre_travail": "أمر عمل",
+    "creation_outil": "أداة",
+    "creation_assignation_outil": "تعيين أداة",
     "contracts": "العقود",
     "suppliers_orders": "الطلبات",
     "tools_list": "قائمة الأدوات",
@@ -146,7 +178,9 @@
     "settings_alerts": "تنبيهات البريد / الرسائل",
     "settings_users": "المستخدمون",
     "settings_roles": "الأدوار والصلاحيات",
-    "settings_tenants": "العملاء (المستأجرون)"
+    "settings_tenants": "العملاء (المستأجرون)",
+    "creation_user": "مستخدم",
+    "creation_failure_code": "رمز عطل"
   },
   "login": {
     "title": "تسجيل الدخول",

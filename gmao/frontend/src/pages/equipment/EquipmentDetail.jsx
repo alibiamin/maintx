@@ -102,7 +102,7 @@ export default function EquipmentDetail() {
 
   useEffect(() => {
     if (id === 'new') {
-      navigate('/app/creation', { replace: true });
+      navigate('/app/equipment/creation/machine', { replace: true });
       return;
     }
     if (!numId) {

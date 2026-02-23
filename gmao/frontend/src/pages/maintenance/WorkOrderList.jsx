@@ -71,7 +71,7 @@ export default function WorkOrderList() {
           <p style={{ margin: '4px 0 0', color: '#64748b' }}>Maintenance corrective et preventive</p>
         </Box>
         {canCreate && (
-          <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/app/creation')}>
+          <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/app/maintenance/creation/work-order')}>
             Declarer une panne
           </Button>
         )}

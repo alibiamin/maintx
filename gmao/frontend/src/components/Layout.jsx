@@ -26,7 +26,10 @@ import {
   useTheme,
   alpha,
   Popper,
-  CircularProgress
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -77,9 +80,6 @@ function getMenuStructure() {
         { labelKey: 'item.dashboard_activity', path: `${APP_BASE}/dashboard/activity` }
       ]}
     ]},
-    { id: 'creation', labelKey: 'menu.creation', icon: <BusinessIcon />, path: `${APP_BASE}/creation`, sections: [
-      { titleKey: 'section.creation_0', items: [{ labelKey: 'item.creation_new', path: `${APP_BASE}/creation` }] }
-    ]},
     { id: 'equipment', labelKey: 'menu.equipment', icon: <BuildIcon />, path: `${APP_BASE}/equipment`, sections: [
       { titleKey: 'section.equipment_0', items: [
         { labelKey: 'item.equipment_list', path: `${APP_BASE}/equipment` },
@@ -92,13 +92,22 @@ function getMenuStructure() {
         { labelKey: 'item.management_history', path: `${APP_BASE}/equipment?view=history` },
         { labelKey: 'item.management_documents', path: `${APP_BASE}/equipment?view=documents` },
         { labelKey: 'item.management_warranties', path: `${APP_BASE}/equipment?view=warranties` }
+      ]},
+      { titleKey: 'section.equipment_creation', items: [
+        { labelKey: 'item.creation_site', path: `${APP_BASE}/equipment/creation/site` },
+        { labelKey: 'item.creation_departement', path: `${APP_BASE}/equipment/creation/departement` },
+        { labelKey: 'item.creation_ligne', path: `${APP_BASE}/equipment/creation/ligne` },
+        { labelKey: 'item.creation_machine', path: `${APP_BASE}/equipment/creation/machine` },
+        { labelKey: 'item.creation_section', path: `${APP_BASE}/equipment/creation/section` },
+        { labelKey: 'item.creation_composant', path: `${APP_BASE}/equipment/creation/composant` },
+        { labelKey: 'item.creation_sous_composant', path: `${APP_BASE}/equipment/creation/sous_composant` }
       ]}
     ]},
     { id: 'maintenance', labelKey: 'menu.maintenance', icon: <AssignmentIcon />, path: `${APP_BASE}/work-orders`, sections: [
       { titleKey: 'section.maintenance_0', items: [
         { labelKey: 'item.wo_list', path: `${APP_BASE}/work-orders` },
         { labelKey: 'item.my_wo_today', path: `${APP_BASE}/my-work-orders` },
-        { labelKey: 'item.wo_declare', path: `${APP_BASE}/creation` },
+        { labelKey: 'item.wo_declare', path: `${APP_BASE}/maintenance/creation/work-order` },
         { labelKey: 'item.intervention_requests', path: `${APP_BASE}/intervention-requests` },
         { labelKey: 'item.wo_in_progress', path: `${APP_BASE}/work-orders?status=in_progress` },
         { labelKey: 'item.wo_pending', path: `${APP_BASE}/work-orders?status=pending` }
@@ -109,6 +118,11 @@ function getMenuStructure() {
         { labelKey: 'item.checklists', path: `${APP_BASE}/checklists` },
         { labelKey: 'item.procedures', path: `${APP_BASE}/procedures` },
         { labelKey: 'item.due', path: `${APP_BASE}/maintenance-plans/due` }
+      ]},
+      { titleKey: 'section.maintenance_creation', items: [
+        { labelKey: 'item.creation_plan_maintenance', path: `${APP_BASE}/maintenance/creation/plan` },
+        { labelKey: 'item.creation_checklist', path: `${APP_BASE}/maintenance/creation/checklist` },
+        { labelKey: 'item.creation_ordre_travail', path: `${APP_BASE}/maintenance/creation/work-order` }
       ]},
       { titleKey: 'section.maintenance_2', items: [
         { labelKey: 'item.planning_calendar', path: `${APP_BASE}/planning` },
@@ -129,6 +143,12 @@ function getMenuStructure() {
         { labelKey: 'item.stock_transfers', path: `${APP_BASE}/stock/transfers` },
         { labelKey: 'item.stock_reorders', path: `${APP_BASE}/stock/reorders` },
         { labelKey: 'item.stock_quality', path: `${APP_BASE}/stock/quality` }
+      ]},
+      { titleKey: 'section.stock_creation', items: [
+        { labelKey: 'item.creation_piece', path: `${APP_BASE}/stock/creation/piece` },
+        { labelKey: 'item.creation_entree_stock', path: `${APP_BASE}/stock/creation/entry` },
+        { labelKey: 'item.creation_sortie_stock', path: `${APP_BASE}/stock/creation/exit` },
+        { labelKey: 'item.creation_transfert_stock', path: `${APP_BASE}/stock/creation/transfer` }
       ]}
     ]},
     { id: 'suppliers', labelKey: 'menu.suppliers', icon: <SupplierIcon />, path: `${APP_BASE}/suppliers`, sections: [
@@ -136,6 +156,11 @@ function getMenuStructure() {
         { labelKey: 'item.suppliers_list', path: `${APP_BASE}/suppliers` },
         { labelKey: 'item.contracts', path: `${APP_BASE}/contracts` },
         { labelKey: 'item.suppliers_orders', path: `${APP_BASE}/suppliers/orders` }
+      ]},
+      { titleKey: 'section.suppliers_creation', items: [
+        { labelKey: 'item.creation_fournisseur', path: `${APP_BASE}/suppliers/creation/supplier` },
+        { labelKey: 'item.creation_commande_fournisseur', path: `${APP_BASE}/suppliers/creation/order` },
+        { labelKey: 'item.creation_contrat', path: `${APP_BASE}/suppliers/creation/contract` }
       ]}
     ]},
     { id: 'tools', labelKey: 'menu.tools', icon: <ToolsIcon />, path: `${APP_BASE}/tools`, sections: [
@@ -143,6 +168,10 @@ function getMenuStructure() {
         { labelKey: 'item.tools_list', path: `${APP_BASE}/tools` },
         { labelKey: 'item.tools_assignments', path: `${APP_BASE}/tools/assignments` },
         { labelKey: 'item.tools_calibrations', path: `${APP_BASE}/tools/calibrations` }
+      ]},
+      { titleKey: 'section.tools_creation', items: [
+        { labelKey: 'item.creation_outil', path: `${APP_BASE}/tools/creation/tool` },
+        { labelKey: 'item.creation_assignation_outil', path: `${APP_BASE}/tools/creation/assignment` }
       ]}
     ]},
     { id: 'reports', labelKey: 'menu.reports', icon: <ReportsIcon />, path: `${APP_BASE}/reports`, sections: [
@@ -175,6 +204,10 @@ function getMenuStructure() {
         { labelKey: 'item.settings_users', path: `${APP_BASE}/users` },
         { labelKey: 'item.settings_roles', path: `${APP_BASE}/settings/roles` },
         { labelKey: 'item.settings_tenants', path: `${APP_BASE}/settings/tenants` }
+      ]},
+      { titleKey: 'section.settings_creation', items: [
+        { labelKey: 'item.creation_user', path: `${APP_BASE}/settings/creation/user` },
+        { labelKey: 'item.creation_failure_code', path: `${APP_BASE}/settings/creation/failure-code` }
       ]}
     ]}
   ];
@@ -362,7 +395,6 @@ export default function Layout() {
     if (currentMenuId) {
       if (!selectedMenuId || selectedMenuId !== currentMenuId) {
         setSelectedMenuId(currentMenuId);
-        setDetailPanelOpen(true);
       }
       const menu = menuStructure.find(m => m.id === currentMenuId);
       if (menu) {
@@ -945,200 +977,165 @@ export default function Layout() {
           </Box>
         </Paper>
 
-        {/* Panneau détaillé à droite - moderne */}
-        {selectedMenu && detailPanelOpen && (
-          <Paper
-            elevation={0}
-            sx={{
-              width: 380,
-              flexShrink: 0,
-              bgcolor: isDark ? alpha(theme.palette.background.paper, 0.98) : 'white',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              borderLeft: '1px solid',
-              borderColor: 'divider',
-              boxShadow: isDark ? '-4px 0 24px rgba(0,0,0,0.3)' : '-4px 0 20px rgba(0,0,0,0.06)',
-              transition: 'all 0.3s ease'
-            }}
-          >
-            {/* Header du panneau détaillé */}
-            <Box
-              sx={{
-                p: 2,
-                borderBottom: '1px solid',
-                borderColor: 'divider',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2
-              }}
-            >
-              <TextField
-                size="small"
-                placeholder={t('common.searchPlaceholder')}
-                value={menuSearch}
-                onChange={(e) => setMenuSearch(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Search />
-                    </InputAdornment>
-                  )
+        {/* Modal des sous-menus du menu sélectionné */}
+        <Dialog
+          open={!!(selectedMenu && detailPanelOpen)}
+          onClose={() => setDetailPanelOpen(false)}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: {
+              borderRadius: 2,
+              maxHeight: '85vh'
+            }
+          }}
+        >
+          {selectedMenu && (
+            <>
+              <DialogTitle
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  py: 2
                 }}
-                sx={{ flex: 1, maxWidth: 400 }}
-              />
-              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={collapseAll}
-                  sx={{
-                    bgcolor: '#2EB23E',
-                    '&:hover': { bgcolor: '#259633' },
-                    textTransform: 'none',
-                    px: 2
-                  }}
-                >
-                  {t('common.collapseAll')}
-                </Button>
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={expandAll}
-                  sx={{
-                    bgcolor: '#2EB23E',
-                    '&:hover': { bgcolor: '#259633' },
-                    textTransform: 'none',
-                    px: 2
-                  }}
-                >
-                  {t('common.expandAll')}
-                </Button>
-                <IconButton
-                  size="small"
-                  onClick={() => setDetailPanelOpen(false)}
-                  sx={{ ml: 1 }}
-                >
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Box sx={{ color: 'primary.main' }}>{selectedMenu.icon}</Box>
+                  <Typography variant="h6" fontWeight={700}>
+                    {t(selectedMenu.labelKey)}
+                  </Typography>
+                </Box>
+                <IconButton size="small" onClick={() => setDetailPanelOpen(false)} aria-label={t('common.cancel')}>
                   <Close />
                 </IconButton>
-              </Box>
-            </Box>
+              </DialogTitle>
+              <DialogContent sx={{ p: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <TextField
+                    size="small"
+                    placeholder={t('common.searchPlaceholder')}
+                    value={menuSearch}
+                    onChange={(e) => setMenuSearch(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search />
+                        </InputAdornment>
+                      )
+                    }}
+                    sx={{ flex: 1, minWidth: 200 }}
+                  />
+                  <Button variant="outlined" size="small" onClick={collapseAll} sx={{ textTransform: 'none' }}>
+                    {t('common.collapseAll')}
+                  </Button>
+                  <Button variant="outlined" size="small" onClick={expandAll} sx={{ textTransform: 'none' }}>
+                    {t('common.expandAll')}
+                  </Button>
+                </Box>
+                <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+                  {selectedMenu.sections.map((section, sectionIndex) => {
+                    const sectionKey = `${selectedMenuId}-${sectionIndex}`;
+                    const isExpanded = expandedSections[sectionKey] !== false;
+                    const filteredSectionItems = filterItems(section.items);
 
-            {/* Contenu du panneau détaillé */}
-            <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
-              {selectedMenu.sections.map((section, sectionIndex) => {
-                const sectionKey = `${selectedMenuId}-${sectionIndex}`;
-                const isExpanded = expandedSections[sectionKey] !== false;
-                const filteredSectionItems = filterItems(section.items);
+                    if (filteredSectionItems.length === 0) return null;
 
-                if (filteredSectionItems.length === 0) return null;
-
-                return (
-                  <Box key={sectionIndex} sx={{ mb: 3 }}>
-                    {/* Titre de section avec bouton expand/collapse */}
-                    <Box
-                      onClick={() => toggleSection(sectionKey)}
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1,
-                        cursor: 'pointer',
-                        mb: 1.5,
-                        '&:hover': { opacity: 0.8 }
-                      }}
-                    >
-                      {isExpanded ? (
-                        <ExpandLess sx={{ color: '#2EB23E' }} />
-                      ) : (
-                        <ExpandMore sx={{ color: '#2EB23E' }} />
-                      )}
-                      <Typography
-                        variant="h6"
-                        fontWeight={700}
-                        sx={{ color: 'text.primary', fontSize: '1.05rem' }}
-                      >
-                        {t(section.titleKey)}
-                      </Typography>
-                    </Box>
-
-                    {/* Items de la section en colonnes */}
-                    <Collapse in={isExpanded}>
-                      <Box
-                        sx={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-                          gap: 1.5,
-                          ml: 3
-                        }}
-                      >
-                        {filteredSectionItems.map((item, itemIndex) => {
-                          const itemPathOnly = item.path.split('?')[0];
-                          const itemSearch = item.path.includes('?') ? item.path.slice(item.path.indexOf('?')) : '';
-                          const isActive = location.pathname === itemPathOnly && (itemSearch ? location.search === itemSearch : !location.search);
-                          const pinned = isPinned(item.path);
-                          return (
-                            <Box
-                              key={itemIndex}
-                              onClick={() => {
-                                navigate(item.path);
-                                setMenuSearch('');
-                              }}
-                              sx={{
-                                p: 1.5,
-                                pl: 1,
-                                borderRadius: 1.5,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 0.5,
-                                bgcolor: isActive
-                                  ? alpha(theme.palette.primary.main, 0.12)
-                                  : 'transparent',
-                                border: '1px solid',
-                                borderColor: isActive ? 'primary.main' : 'transparent',
-                                '&:hover': {
-                                  bgcolor: alpha(theme.palette.primary.main, 0.06),
-                                  borderColor: 'primary.main'
-                                },
-                                transition: 'all 0.2s ease'
-                              }}
-                            >
-                              <IconButton
-                                size="small"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  togglePin(item);
-                                }}
-                                sx={{ p: 0.25 }}
-                                aria-label={pinned ? t('common.unpin') : t('common.pin')}
-                              >
-                                {pinned ? (
-                                  <Star fontSize="small" sx={{ color: 'primary.main' }} />
-                                ) : (
-                                  <StarBorder fontSize="small" sx={{ color: 'text.secondary' }} />
-                                )}
-                              </IconButton>
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  flex: 1,
-                                  color: isActive ? 'primary.main' : 'text.secondary',
-                                  fontWeight: isActive ? 600 : 400
-                                }}
-                              >
-                                {t(item.labelKey)}
-                              </Typography>
-                            </Box>
-                          );
-                        })}
+                    return (
+                      <Box key={sectionIndex} sx={{ mb: 2.5 }}>
+                        <Box
+                          onClick={() => toggleSection(sectionKey)}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1,
+                            cursor: 'pointer',
+                            mb: 1,
+                            '&:hover': { opacity: 0.8 }
+                          }}
+                        >
+                          {isExpanded ? (
+                            <ExpandLess sx={{ color: 'primary.main' }} />
+                          ) : (
+                            <ExpandMore sx={{ color: 'primary.main' }} />
+                          )}
+                          <Typography variant="subtitle1" fontWeight={700} sx={{ color: 'text.primary' }}>
+                            {t(section.titleKey)}
+                          </Typography>
+                        </Box>
+                        <Collapse in={isExpanded}>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, ml: 2 }}>
+                            {filteredSectionItems.map((item, itemIndex) => {
+                              const itemPathOnly = item.path.split('?')[0];
+                              const itemSearch = item.path.includes('?') ? item.path.slice(item.path.indexOf('?')) : '';
+                              const isActive = location.pathname === itemPathOnly && (itemSearch ? location.search === itemSearch : !location.search);
+                              const pinned = isPinned(item.path);
+                              return (
+                                <Box
+                                  key={itemIndex}
+                                  onClick={() => {
+                                    navigate(item.path);
+                                    setMenuSearch('');
+                                    setDetailPanelOpen(false);
+                                  }}
+                                  sx={{
+                                    p: 1.25,
+                                    pl: 1,
+                                    borderRadius: 1.5,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 0.5,
+                                    bgcolor: isActive ? alpha(theme.palette.primary.main, 0.12) : 'transparent',
+                                    border: '1px solid',
+                                    borderColor: isActive ? 'primary.main' : 'transparent',
+                                    '&:hover': {
+                                      bgcolor: alpha(theme.palette.primary.main, 0.06),
+                                      borderColor: 'primary.main'
+                                    },
+                                    transition: 'all 0.2s ease'
+                                  }}
+                                >
+                                  <IconButton
+                                    size="small"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      togglePin(item);
+                                    }}
+                                    sx={{ p: 0.25 }}
+                                    aria-label={pinned ? t('common.unpin') : t('common.pin')}
+                                  >
+                                    {pinned ? (
+                                      <Star fontSize="small" sx={{ color: 'primary.main' }} />
+                                    ) : (
+                                      <StarBorder fontSize="small" sx={{ color: 'text.secondary' }} />
+                                    )}
+                                  </IconButton>
+                                  <Typography
+                                    variant="body2"
+                                    sx={{
+                                      flex: 1,
+                                      color: isActive ? 'primary.main' : 'text.secondary',
+                                      fontWeight: isActive ? 600 : 400
+                                    }}
+                                  >
+                                    {t(item.labelKey)}
+                                  </Typography>
+                                </Box>
+                              );
+                            })}
+                          </Box>
+                        </Collapse>
                       </Box>
-                    </Collapse>
-                  </Box>
-                );
-              })}
-            </Box>
-          </Paper>
-        )}
+                    );
+                  })}
+                </Box>
+              </DialogContent>
+            </>
+          )}
+        </Dialog>
 
         {/* Zone de contenu principal */}
         <Box

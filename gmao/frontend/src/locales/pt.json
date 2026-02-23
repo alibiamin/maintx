@@ -1,6 +1,7 @@
 {
   "common": {
     "home": "Início",
+    "back": "Voltar",
     "logout": "Sair",
     "searchPlaceholder": "Pesquisar no menu de navegação",
     "menu": "Menu",
@@ -15,6 +16,12 @@
     "unpin": "Desfixar",
     "language": "Idioma",
     "all": "Todos"
+  },
+  "creation": {
+    "title": "Criação",
+    "subtitle": "Escolha a categoria e o tipo de elemento e preencha o formulário.",
+    "typeLabel": "Tipo de elemento",
+    "moduleFormHint": "Preencha o formulário abaixo."
   },
   "flow": {
     "demande": "Pedido",
@@ -83,17 +90,23 @@
     "creation_0": "Criação",
     "equipment_0": "Equipamentos",
     "equipment_1": "Gestão",
+    "equipment_creation": "Criação",
     "maintenance_0": "Ordens de trabalho",
     "maintenance_1": "Manutenção preventiva",
     "maintenance_2": "Planeamento",
     "stock_0": "Stock",
     "stock_1": "Gestão",
+    "stock_creation": "Criação",
     "suppliers_0": "Fornecedores",
+    "suppliers_creation": "Criação",
+    "maintenance_creation": "Criação",
     "tools_0": "Ferramentas e materiais",
+    "tools_creation": "Criação",
     "reports_0": "Relatórios",
     "sites_0": "Sítios",
     "effectif_0": "Efetivo",
-    "settings_0": "Configuração"
+    "settings_0": "Configuração",
+    "settings_creation": "Criação"
   },
   "item": {
     "dashboard_overview": "Visão geral",
@@ -104,6 +117,13 @@
     "equipment_map": "Mapa hierárquico",
     "equipment_categories": "Categorias",
     "equipment_technical": "Fichas técnicas",
+    "creation_site": "Sítio",
+    "creation_departement": "Departamento",
+    "creation_ligne": "Linha",
+    "creation_machine": "Máquina / Equipamento",
+    "creation_section": "Secção",
+    "creation_composant": "Componente",
+    "creation_sous_composant": "Subcomponente",
     "management_history": "Histórico (por equipamento)",
     "management_documents": "Documentos (por equipamento)",
     "management_warranties": "Garantias (por equipamento)",
@@ -127,7 +147,19 @@
     "stock_transfers": "Transferências",
     "stock_reorders": "Pontos de encomenda",
     "stock_quality": "Controlo de qualidade",
+    "creation_piece": "Peça",
+    "creation_entree_stock": "Entrada de stock",
+    "creation_sortie_stock": "Saída de stock",
+    "creation_transfert_stock": "Transferência",
     "suppliers_list": "Lista de fornecedores",
+    "creation_fournisseur": "Fornecedor",
+    "creation_commande_fournisseur": "Encomenda",
+    "creation_contrat": "Contrato de manutenção",
+    "creation_plan_maintenance": "Plano de manutenção",
+    "creation_checklist": "Lista de verificação",
+    "creation_ordre_travail": "Ordem de trabalho",
+    "creation_outil": "Ferramenta",
+    "creation_assignation_outil": "Atribuição de ferramenta",
     "contracts": "Contratos",
     "suppliers_orders": "Encomendas",
     "tools_list": "Lista de ferramentas",
@@ -146,7 +178,9 @@
     "settings_alerts": "Alertas email / SMS",
     "settings_users": "Utilizadores",
     "settings_roles": "Funções e permissões",
-    "settings_tenants": "Clientes (tenants)"
+    "settings_tenants": "Clientes (tenants)",
+    "creation_user": "Utilizador",
+    "creation_failure_code": "Código de avaria"
   },
   "login": {
     "title": "Iniciar sessão",

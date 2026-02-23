@@ -18,12 +18,16 @@ import {
   FormControlLabel,
   Checkbox
 } from '@mui/material';
-import { Save, Backup, Email, Sms, Add, Edit, Delete } from '@mui/icons-material';
+import { Save, Backup, Email, Sms, Add, Edit, Delete, ArrowUpward, ArrowDownward } from '@mui/icons-material';
 import IconButton from '@mui/material/IconButton';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
 import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -62,21 +66,29 @@ export default function Settings() {
   const [unitsLoading, setUnitsLoading] = useState(false);
   const [unitDialog, setUnitDialog] = useState({ open: false, id: null, name: '', symbol: '' });
   const [unitSaving, setUnitSaving] = useState(false);
+  const [kpiDefinitions, setKpiDefinitions] = useState([]);
+  const [kpiSources, setKpiSources] = useState([]);
+  const [kpiLoading, setKpiLoading] = useState(false);
+  const [kpiDialog, setKpiDialog] = useState({ open: false, id: null, name: '', source_key: '', color: 'primary', icon: '', is_visible: true });
+  const [kpiSaving, setKpiSaving] = useState(false);
   const { user } = useAuth();
   const canEditCodification = ['administrateur', 'responsable_maintenance'].includes(user?.role);
   const canEditUnits = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEditKpis = ['administrateur', 'responsable_maintenance'].includes(user?.role);
   const isAdmin = user?.role === 'administrateur';
   const canViewAudit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
   const snackbar = useSnackbar();
   const [searchParams, setSearchParams] = useSearchParams();
-  const alertesTabIndex = isAdmin ? 5 : 4;
-  const auditTabIndex = alertesTabIndex + 1;
   const unitsTabIndex = 3;
+  const kpiTabIndex = 4;
+  const alertesTabIndex = isAdmin ? 6 : 5;
+  const auditTabIndex = alertesTabIndex + 1;
 
   useEffect(() => {
     if (searchParams.get('tab') === 'alertes') setTab(alertesTabIndex);
     if (searchParams.get('tab') === 'audit') setTab(auditTabIndex);
-  }, [searchParams.get('tab'), alertesTabIndex, auditTabIndex]);
+    if (searchParams.get('tab') === 'kpis') setTab(kpiTabIndex);
+  }, [searchParams.get('tab'), alertesTabIndex, auditTabIndex, kpiTabIndex]);
 
   useEffect(() => {
     if (!canViewAudit || tab !== auditTabIndex) return;
@@ -144,6 +156,83 @@ export default function Settings() {
       .then(() => {
         snackbar.showSuccess('Unité supprimée');
         setUnits((prev) => prev.filter((u) => u.id !== id));
+      })
+      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'));
+  };
+
+  useEffect(() => {
+    if (tab !== kpiTabIndex) return;
+    setKpiLoading(true);
+    Promise.all([
+      api.get('/settings/kpi-definitions'),
+      api.get('/settings/kpi-definitions/sources')
+    ])
+      .then(([defRes, srcRes]) => {
+        setKpiDefinitions(Array.isArray(defRes.data) ? defRes.data : []);
+        setKpiSources(Array.isArray(srcRes.data) ? srcRes.data : []);
+      })
+      .catch(() => {
+        setKpiDefinitions([]);
+        setKpiSources([]);
+      })
+      .finally(() => setKpiLoading(false));
+  }, [tab, kpiTabIndex]);
+
+  const openKpiDialog = (k = null) => {
+    setKpiDialog({
+      open: true,
+      id: k?.id ?? null,
+      name: k?.name ?? '',
+      source_key: k?.source_key ?? '',
+      color: k?.color ?? 'primary',
+      icon: k?.icon ?? '',
+      is_visible: k?.is_visible !== 0 && k?.is_visible !== false
+    });
+  };
+  const closeKpiDialog = () => setKpiDialog({ open: false, id: null, name: '', source_key: '', color: 'primary', icon: '', is_visible: true });
+  const handleSaveKpi = () => {
+    const { id, name, source_key, color, icon, is_visible } = kpiDialog;
+    if (!name || !name.trim()) { snackbar.showError('Nom requis'); return; }
+    if (!source_key || !source_key.trim()) { snackbar.showError('Indicateur (source) requis'); return; }
+    setKpiSaving(true);
+    const promise = id
+      ? api.put(`/settings/kpi-definitions/${id}`, { name: name.trim(), source_key, color, icon: icon || null, is_visible: !!is_visible })
+      : api.post('/settings/kpi-definitions', { name: name.trim(), source_key, color, icon: icon || null, is_visible: !!is_visible });
+    promise
+      .then(() => {
+        snackbar.showSuccess(id ? 'Indicateur modifié' : 'Indicateur ajouté');
+        closeKpiDialog();
+        api.get('/settings/kpi-definitions').then((r) => setKpiDefinitions(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+      })
+      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'))
+      .finally(() => setKpiSaving(false));
+  };
+  const handleDeleteKpi = (id) => {
+    if (!window.confirm('Supprimer cet indicateur de la page KPIs ?')) return;
+    api.delete(`/settings/kpi-definitions/${id}`)
+      .then(() => {
+        snackbar.showSuccess('Indicateur supprimé');
+        setKpiDefinitions((prev) => prev.filter((k) => k.id !== id));
+      })
+      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'));
+  };
+  const moveKpi = (index, direction) => {
+    if (index + direction < 0 || index + direction >= kpiDefinitions.length) return;
+    const next = [...kpiDefinitions];
+    const a = next[index];
+    const b = next[index + direction];
+    const orderA = a.order_index;
+    const orderB = b.order_index;
+    api.put('/settings/kpi-definitions/reorder', {
+      order: [
+        { id: a.id, order_index: orderB },
+        { id: b.id, order_index: orderA }
+      ]
+    })
+      .then(() => {
+        [next[index], next[index + direction]] = [next[index + direction], next[index]];
+        setKpiDefinitions(next);
+        snackbar.showSuccess('Ordre mis à jour');
       })
       .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'));
   };
@@ -231,6 +320,7 @@ export default function Settings() {
         <Tab label="Codes défaut" />
         <Tab label="Codification" />
         <Tab label="Unités" />
+        <Tab label="Indicateurs KPI" />
         {isAdmin && <Tab label="Sauvegarde" />}
         <Tab label="Alertes email / SMS" />
         {canViewAudit && <Tab label="Journal d'audit" />}
@@ -415,7 +505,99 @@ export default function Settings() {
         </DialogActions>
       </Dialog>
 
-      {isAdmin && tab === 4 && (
+      {tab === kpiTabIndex && (
+        <Card sx={{ borderRadius: 2 }}>
+          <CardContent>
+            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+              Indicateurs de performance (KPIs)
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Choisissez et ordonnez les indicateurs affichés sur la page Indicateurs de performance. Vous pouvez ajouter, modifier, supprimer ou réordonner les cartes.
+            </Typography>
+            {kpiLoading ? (
+              <Box display="flex" justifyContent="center" p={2}><CircularProgress /></Box>
+            ) : (
+              <>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell width={48}>Ordre</TableCell>
+                      <TableCell>Nom</TableCell>
+                      <TableCell>Source (donnée)</TableCell>
+                      <TableCell>Visible</TableCell>
+                      {canEditKpis && <TableCell width={160}>Actions</TableCell>}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {kpiDefinitions.map((k, index) => (
+                      <TableRow key={k.id}>
+                        <TableCell>
+                          {canEditKpis && (
+                            <Box display="flex" gap={0.5}>
+                              <IconButton size="small" disabled={index === 0} onClick={() => moveKpi(index, -1)} title="Monter"><ArrowUpward fontSize="small" /></IconButton>
+                              <IconButton size="small" disabled={index === kpiDefinitions.length - 1} onClick={() => moveKpi(index, 1)} title="Descendre"><ArrowDownward fontSize="small" /></IconButton>
+                            </Box>
+                          )}
+                        </TableCell>
+                        <TableCell>{k.name}</TableCell>
+                        <TableCell>{kpiSources.find((s) => s.key === k.source_key)?.label ?? k.source_key}</TableCell>
+                        <TableCell>{k.is_visible ? 'Oui' : 'Non'}</TableCell>
+                        {canEditKpis && (
+                          <TableCell>
+                            <IconButton size="small" onClick={() => openKpiDialog(k)} title="Modifier"><Edit fontSize="small" /></IconButton>
+                            <IconButton size="small" onClick={() => handleDeleteKpi(k.id)} title="Supprimer" color="error"><Delete fontSize="small" /></IconButton>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {canEditKpis && (
+                  <Button startIcon={<Add />} variant="outlined" sx={{ mt: 2 }} onClick={() => openKpiDialog()}>
+                    Ajouter un indicateur
+                  </Button>
+                )}
+                {kpiDefinitions.length === 0 && !kpiLoading && (
+                  <Typography color="text.secondary" sx={{ mt: 2 }}>Aucun indicateur personnalisé. La page KPIs affichera les indicateurs par défaut. Ajoutez-en pour personnaliser.</Typography>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={kpiDialog.open} onClose={closeKpiDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>{kpiDialog.id ? 'Modifier l\'indicateur' : 'Nouvel indicateur KPI'}</DialogTitle>
+        <DialogContent>
+          <TextField autoFocus fullWidth label="Nom affiché" value={kpiDialog.name} onChange={(e) => setKpiDialog((d) => ({ ...d, name: e.target.value }))} placeholder="ex: Disponibilité" sx={{ mt: 1 }} />
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Source (donnée)</InputLabel>
+            <Select value={kpiDialog.source_key} label="Source (donnée)" onChange={(e) => setKpiDialog((d) => ({ ...d, source_key: e.target.value }))}>
+              <MenuItem value="">—</MenuItem>
+              {kpiSources.map((s) => (
+                <MenuItem key={s.key} value={s.key}>{s.label}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Couleur</InputLabel>
+            <Select value={kpiDialog.color} label="Couleur" onChange={(e) => setKpiDialog((d) => ({ ...d, color: e.target.value }))}>
+              <MenuItem value="primary">Principal</MenuItem>
+              <MenuItem value="success">Succès</MenuItem>
+              <MenuItem value="warning">Attention</MenuItem>
+              <MenuItem value="error">Erreur</MenuItem>
+              <MenuItem value="info">Info</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControlLabel control={<Checkbox checked={!!kpiDialog.is_visible} onChange={(e) => setKpiDialog((d) => ({ ...d, is_visible: e.target.checked }))} />} label="Visible sur la page KPIs" sx={{ mt: 2, display: 'block' }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeKpiDialog}>Annuler</Button>
+          <Button variant="contained" onClick={handleSaveKpi} disabled={kpiSaving}>{kpiSaving ? 'Enregistrement…' : 'Enregistrer'}</Button>
+        </DialogActions>
+      </Dialog>
+
+      {isAdmin && tab === 5 && (
         <Card sx={{ borderRadius: 2 }}>
           <CardContent>
             <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>

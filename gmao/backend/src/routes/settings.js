@@ -177,6 +177,125 @@ router.delete('/units/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res
   }
 });
 
+// ——— Indicateurs KPI configurables (paramétrage) ———
+const KPI_SOURCES = [
+  { key: 'availabilityRate', label: 'Disponibilité équipements', format: 'percent', icon: 'Speed' },
+  { key: 'preventiveComplianceRate', label: 'Respect plans préventifs', format: 'percent', icon: 'Schedule' },
+  { key: 'totalCostPeriod', label: 'Coût maintenance (période)', format: 'currency', icon: 'Euro' },
+  { key: 'mttr', label: 'MTTR (temps moyen réparation)', format: 'hours', icon: 'Build' },
+  { key: 'mtbf', label: 'MTBF (entre pannes)', format: 'days', icon: 'TrendingUp' },
+  { key: 'slaBreached', label: 'OT en retard (SLA)', format: 'number', icon: 'Warning' },
+  { key: 'oee', label: 'OEE (simplifié)', format: 'percent', icon: 'Speed' }
+];
+
+router.get('/kpi-definitions/sources', (req, res) => {
+  res.json(KPI_SOURCES);
+});
+
+router.get('/kpi-definitions', (req, res) => {
+  const db = req.db;
+  try {
+    const rows = db.prepare(`
+      SELECT id, name, source_key, order_index, color, icon, is_visible, created_at
+      FROM kpi_definitions ORDER BY order_index ASC, id ASC
+    `).all();
+    res.json(rows);
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) return res.json([]);
+    res.status(500).json({ error: e.message || 'Erreur chargement indicateurs KPI' });
+  }
+});
+
+router.post('/kpi-definitions', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
+  const { name, source_key, order_index, color, icon, is_visible } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'Nom requis' });
+  if (!source_key || !String(source_key).trim()) return res.status(400).json({ error: 'Source (indicateur) requise' });
+  const validSource = KPI_SOURCES.some(s => s.key === source_key);
+  if (!validSource) return res.status(400).json({ error: 'Source non reconnue' });
+  try {
+    const maxOrder = db.prepare('SELECT COALESCE(MAX(order_index), -1) + 1 as next FROM kpi_definitions').get();
+    const order = order_index != null ? parseInt(order_index, 10) : (maxOrder?.next ?? 0);
+    db.prepare(`
+      INSERT INTO kpi_definitions (name, source_key, order_index, color, icon, is_visible)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      String(name).trim(),
+      String(source_key).trim(),
+      isNaN(order) ? 0 : order,
+      color && ['primary', 'success', 'warning', 'error', 'info'].includes(color) ? color : 'primary',
+      icon ? String(icon).trim() : null,
+      is_visible === false || is_visible === 0 ? 0 : 1
+    );
+    const row = db.prepare('SELECT id, name, source_key, order_index, color, icon, is_visible, created_at FROM kpi_definitions ORDER BY id DESC LIMIT 1').get();
+    res.status(201).json(row);
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) return res.status(500).json({ error: 'Table kpi_definitions absente. Exécutez les migrations.' });
+    res.status(500).json({ error: e.message || 'Erreur création indicateur' });
+  }
+});
+
+router.put('/kpi-definitions/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
+  const id = parseInt(req.params.id, 10);
+  const { name, source_key, order_index, color, icon, is_visible } = req.body || {};
+  if (!id || isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
+  try {
+    const updates = [];
+    const values = [];
+    if (name !== undefined) { updates.push('name = ?'); values.push(String(name).trim()); }
+    if (source_key !== undefined) {
+      const validSource = KPI_SOURCES.some(s => s.key === source_key);
+      if (!validSource) return res.status(400).json({ error: 'Source non reconnue' });
+      updates.push('source_key = ?'); values.push(String(source_key).trim());
+    }
+    if (order_index !== undefined) { updates.push('order_index = ?'); values.push(parseInt(order_index, 10) || 0); }
+    if (color !== undefined) { updates.push('color = ?'); values.push(['primary', 'success', 'warning', 'error', 'info'].includes(color) ? color : 'primary'); }
+    if (icon !== undefined) { updates.push('icon = ?'); values.push(icon ? String(icon).trim() : null); }
+    if (is_visible !== undefined) { updates.push('is_visible = ?'); values.push(is_visible === false || is_visible === 0 ? 0 : 1); }
+    if (updates.length === 0) return res.status(400).json({ error: 'Aucune donnée à mettre à jour' });
+    values.push(id);
+    db.prepare('UPDATE kpi_definitions SET ' + updates.join(', ') + ' WHERE id = ?').run(...values);
+    const row = db.prepare('SELECT id, name, source_key, order_index, color, icon, is_visible, created_at FROM kpi_definitions WHERE id = ?').get(id);
+    if (!row) return res.status(404).json({ error: 'Indicateur non trouvé' });
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Erreur mise à jour indicateur' });
+  }
+});
+
+router.put('/kpi-definitions/reorder', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
+  const order = req.body?.order; // [ { id, order_index }, ... ]
+  if (!Array.isArray(order) || order.length === 0) return res.status(400).json({ error: 'Tableau order requis' });
+  try {
+    const stmt = db.prepare('UPDATE kpi_definitions SET order_index = ? WHERE id = ?');
+    for (const item of order) {
+      const id = parseInt(item.id, 10);
+      const order_index = parseInt(item.order_index, 10);
+      if (!id || isNaN(id)) continue;
+      stmt.run(isNaN(order_index) ? 0 : order_index, id);
+    }
+    res.json({ message: 'Ordre enregistré' });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Erreur mise à jour ordre' });
+  }
+});
+
+router.delete('/kpi-definitions/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
+  const id = parseInt(req.params.id, 10);
+  if (!id || isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
+  try {
+    const r = db.prepare('DELETE FROM kpi_definitions WHERE id = ?').run(id);
+    if (r.changes === 0) return res.status(404).json({ error: 'Indicateur non trouvé' });
+    res.json({ message: 'Indicateur supprimé' });
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) return res.status(404).json({ error: 'Indicateur non trouvé' });
+    res.status(500).json({ error: e.message || 'Erreur suppression' });
+  }
+});
+
 // ——— Sauvegarde base de données (réservé aux administrateurs) ———
 router.get('/backup', authorize(ROLES.ADMIN), (req, res) => {
   const db = req.db;

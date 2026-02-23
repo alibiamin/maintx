@@ -316,7 +316,7 @@ export default function WorkOrderDetail() {
       .finally(() => setActionLoading(false));
   };
 
-  if (id === 'new') return <Navigate to="/app/creation" replace />;
+  if (id === 'new') return <Navigate to="/app/maintenance/creation/work-order" replace />;
   if (loading || !order) return <Box p={4}><CircularProgress /></Box>;
 
   const statusOptions = [

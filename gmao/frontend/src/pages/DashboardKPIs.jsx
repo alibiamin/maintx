@@ -16,27 +16,84 @@ import { TrendingUp, Build, Euro, Schedule, Speed, Warning, ArrowBack, BarChart 
 import api from '../services/api';
 import { useCurrency } from '../context/CurrencyContext';
 
+const ICON_MAP = { Speed, Schedule, Euro, Build, TrendingUp, Warning };
+
+function formatKpiValue(sourceKey, rawValue, kpis, currency) {
+  switch (sourceKey) {
+    case 'availabilityRate':
+      return { value: `${Number(rawValue ?? 0).toFixed(1)}%`, sub: `${kpis?.operationalCount ?? 0}/${kpis?.totalEquipment ?? 0} opérationnels`, progress: rawValue ?? 0 };
+    case 'preventiveComplianceRate':
+      return { value: `${Number(rawValue ?? 100).toFixed(1)}%`, sub: 'Plans exécutés à temps', progress: rawValue ?? 100 };
+    case 'totalCostPeriod':
+      return { value: `${Number(rawValue ?? 0).toLocaleString('fr-FR')} ${currency}`, sub: `Pièces : ${(kpis?.partsCost ?? 0).toLocaleString('fr-FR')} ${currency} · Main d'œuvre : ${(kpis?.laborCost ?? 0).toLocaleString('fr-FR')} ${currency}` };
+    case 'mttr':
+      return { value: rawValue != null ? `${Number(rawValue).toFixed(1)} h` : '—', sub: 'Heures moyennes par OT terminé' };
+    case 'mtbf':
+      return { value: rawValue != null ? `${Number(rawValue).toFixed(1)} j` : '—', sub: 'Jours moyens entre pannes' };
+    case 'slaBreached':
+      return { value: String(rawValue ?? 0), sub: 'À traiter en priorité', colorOverride: (rawValue ?? 0) > 0 ? 'error' : 'default' };
+    case 'oee':
+      return { value: `${Number(rawValue ?? 0).toFixed(1)}%`, sub: 'OEE (disponibilité)', progress: rawValue ?? 0 };
+    default:
+      return { value: rawValue != null ? String(rawValue) : '—', sub: '' };
+  }
+}
+
+const DEFAULT_CARDS = [
+  { name: 'Disponibilité équipements', source_key: 'availabilityRate', color: 'primary', icon: 'Speed' },
+  { name: 'Respect plans préventifs', source_key: 'preventiveComplianceRate', color: 'success', icon: 'Schedule' },
+  { name: 'Coût maintenance (période)', source_key: 'totalCostPeriod', color: 'warning', icon: 'Euro' },
+  { name: 'MTTR (temps moyen réparation)', source_key: 'mttr', color: 'info', icon: 'Build' },
+  { name: 'MTBF (entre pannes)', source_key: 'mtbf', color: 'success', icon: 'TrendingUp' },
+  { name: 'OT en retard (SLA)', source_key: 'slaBreached', color: 'error', icon: 'Warning' }
+];
+
 export default function DashboardKPIs() {
   const currency = useCurrency();
   const [kpis, setKpis] = useState(null);
+  const [definitions, setDefinitions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState(30);
   const navigate = useNavigate();
 
   useEffect(() => {
-    loadKPIs();
+    loadData();
   }, [period]);
 
-  const loadKPIs = async () => {
+  const loadData = async () => {
+    setLoading(true);
     try {
-      const res = await api.get('/dashboard/kpis', { params: { period } });
-      setKpis(res.data);
+      const [kpiRes, defRes] = await Promise.all([
+        api.get('/dashboard/kpis', { params: { period } }),
+        api.get('/settings/kpi-definitions').catch(() => ({ data: [] }))
+      ]);
+      setKpis(kpiRes.data);
+      setDefinitions(Array.isArray(defRes.data) ? defRes.data : []);
     } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
     }
   };
+
+  const visibleDefinitions = definitions.length > 0
+    ? definitions.filter((d) => d.is_visible !== 0 && d.is_visible !== false).sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
+    : DEFAULT_CARDS.map((d, i) => ({ ...d, order_index: i }));
+
+  const kpiCards = visibleDefinitions.map((def) => {
+    const rawValue = kpis?.[def.source_key];
+    const formatted = formatKpiValue(def.source_key, rawValue, kpis, currency);
+    const IconComponent = ICON_MAP[def.icon] || Speed;
+    const color = formatted.colorOverride ?? def.color ?? 'primary';
+    return {
+      title: def.name,
+      value: formatted.value,
+      sub: formatted.sub,
+      progress: formatted.progress,
+      color,
+      icon: IconComponent
+    };
+  });
 
   if (loading) {
     return (
@@ -45,20 +102,6 @@ export default function DashboardKPIs() {
       </Box>
     );
   }
-
-  const availabilityRate = kpis?.availabilityRate ?? 0;
-  const preventiveRate = kpis?.preventiveComplianceRate ?? 100;
-  const totalCost = kpis?.totalCostPeriod ?? 0;
-  const mttr = kpis?.mttr ?? null;
-
-  const kpiCards = [
-    { title: 'Disponibilité équipements', value: `${Number(availabilityRate).toFixed(1)}%`, sub: `${kpis?.operationalCount ?? 0}/${kpis?.totalEquipment ?? 0} opérationnels`, icon: Speed, color: 'primary', progress: availabilityRate },
-    { title: 'Respect plans préventifs', value: `${Number(preventiveRate).toFixed(1)}%`, sub: 'Plans exécutés à temps', icon: Schedule, color: 'success', progress: preventiveRate },
-    { title: 'Coût maintenance (période)', value: `${Number(totalCost).toLocaleString('fr-FR')} ${currency}`, sub: `Pièces : ${(kpis?.partsCost ?? 0).toLocaleString('fr-FR')} ${currency} · Main d'œuvre : ${(kpis?.laborCost ?? 0).toLocaleString('fr-FR')} ${currency}`, icon: Euro, color: 'warning' },
-    { title: 'MTTR (temps moyen réparation)', value: mttr != null ? `${Number(mttr).toFixed(1)} h` : '—', sub: 'Heures moyennes par OT terminé', icon: Build, color: 'info' },
-    { title: 'MTBF (entre pannes)', value: kpis?.mtbf != null ? `${Number(kpis.mtbf).toFixed(1)} j` : '—', sub: 'Jours moyens entre pannes', icon: TrendingUp, color: 'success' },
-    { title: 'OT en retard (SLA)', value: String(kpis?.slaBreached ?? 0), sub: 'À traiter en priorité', icon: Warning, color: (kpis?.slaBreached ?? 0) > 0 ? 'error' : 'default' }
-  ];
 
   return (
     <Box>
@@ -99,6 +142,9 @@ export default function DashboardKPIs() {
       <Box mt={3}>
         <Button startIcon={<BarChart />} variant="outlined" onClick={() => navigate('/app/reports')}>
           Voir les rapports détaillés
+        </Button>
+        <Button variant="outlined" sx={{ ml: 2 }} onClick={() => navigate('/app/settings?tab=kpis')}>
+          Personnaliser les indicateurs
         </Button>
       </Box>
     </Box>

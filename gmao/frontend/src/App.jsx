@@ -101,8 +101,8 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="dashboard/kpis" element={<DashboardKPIs />} />
         <Route path="dashboard/activity" element={<DashboardActivity />} />
-        <Route path="creation" element={<Creation />} />
         <Route path="equipment" element={<EquipmentList />} />
+        <Route path="equipment/creation/:type" element={<Creation />} />
         <Route path="equipment/map" element={<EquipmentMap />} />
         <Route path="equipment/categories" element={<EquipmentCategories />} />
         <Route path="equipment/models" element={<EquipmentModelsList />} />
@@ -113,6 +113,7 @@ export default function App() {
         <Route path="equipment/:id/documents" element={<EquipmentDocuments />} />
         <Route path="equipment/:id/warranties" element={<EquipmentWarranties />} />
         <Route path="work-orders" element={<WorkOrderList />} />
+        <Route path="maintenance/creation/:type" element={<Creation />} />
         <Route path="my-work-orders" element={<MyWorkOrdersToday />} />
         <Route path="work-orders/new" element={<WorkOrderForm />} />
         <Route path="work-orders/:id" element={<WorkOrderDetail />} />
@@ -127,6 +128,7 @@ export default function App() {
         <Route path="maintenance-projects/:id/edit" element={<MaintenanceProjectForm />} />
         <Route path="maintenance-projects/:id" element={<MaintenanceProjectDetail />} />
         <Route path="stock" element={<StockList />} />
+        <Route path="stock/creation/:type" element={<Creation />} />
         <Route path="stock/parts/:id" element={<StockFiche />} />
         <Route path="stock/movements" element={<StockMovements />} />
         <Route path="stock/inventories" element={<StockInventories />} />
@@ -137,6 +139,7 @@ export default function App() {
         <Route path="stock/reorders" element={<StockReorders />} />
         <Route path="stock/quality" element={<StockQuality />} />
         <Route path="suppliers" element={<SuppliersList />} />
+        <Route path="suppliers/creation/:type" element={<Creation />} />
         <Route path="suppliers/orders" element={<SuppliersOrders />} />
         <Route path="sites" element={<Sites />} />
         <Route path="sites/lines" element={<SitesLines />} />
@@ -145,11 +148,13 @@ export default function App() {
         <Route path="reports/exports" element={<ReportsExports />} />
         <Route path="contracts" element={<Contracts />} />
         <Route path="tools" element={<Tools />} />
+        <Route path="tools/creation/:type" element={<Creation />} />
         <Route path="tools/assignments" element={<ToolsAssignments />} />
         <Route path="tools/calibrations" element={<ToolsCalibrations />} />
         <Route path="checklists" element={<Checklists />} />
         <Route path="procedures" element={<ProceduresList />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="settings/creation/:type" element={<Creation />} />
         <Route path="settings/roles" element={<SettingsRoles />} />
         <Route path="settings/tenants" element={<SettingsTenants />} />
         <Route path="failure-codes" element={<FailureCodesList />} />

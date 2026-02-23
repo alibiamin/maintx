@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation, useParams } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -17,7 +17,7 @@ import {
   Tabs,
   Tab
 } from '@mui/material';
-import { Save, Image } from '@mui/icons-material';
+import { Save, Image, ArrowBack } from '@mui/icons-material';
 import api from '../services/api';
 import { useCurrency } from '../context/CurrencyContext';
 import { useTranslation } from 'react-i18next';
@@ -94,12 +94,37 @@ const getDefaultForm = (type) => {
   return { ...(defaults[type] || {}) };
 };
 
+const CATEGORY_IDS = ['hierarchie', 'stock', 'outils', 'fournisseurs', 'maintenance', 'parametres'];
+
+const MODULE_CREATION = {
+  '/app/stock/creation': { categoryId: 'stock', backPath: '/app/stock', typeMap: { piece: 'piece', entry: 'entree_stock', exit: 'sortie_stock', transfer: 'transfert_stock' } },
+  '/app/suppliers/creation': { categoryId: 'fournisseurs', backPath: '/app/suppliers', typeMap: { supplier: 'fournisseur', order: 'commande_fournisseur', contract: 'contrat' } },
+  '/app/maintenance/creation': { categoryId: 'maintenance', backPath: '/app/work-orders', typeMap: { plan: 'plan_maintenance', checklist: 'checklist', 'work-order': 'ordre_travail' } },
+  '/app/tools/creation': { categoryId: 'outils', backPath: '/app/tools', typeMap: { tool: 'outil', assignment: 'assignation_outil' } },
+  '/app/equipment/creation': { categoryId: 'hierarchie', backPath: '/app/equipment', typeMap: { site: 'site', departement: 'departement', ligne: 'ligne', machine: 'machine', section: 'section', composant: 'composant', sous_composant: 'sous_composant' } },
+  '/app/settings/creation': { categoryId: 'parametres', backPath: '/app/settings', typeMap: { user: 'utilisateur', 'failure-code': 'code_defaut' } }
+};
+
+function getModuleCreationContext(pathname, urlType) {
+  for (const [prefix, ctx] of Object.entries(MODULE_CREATION)) {
+    if (pathname.startsWith(prefix) && urlType) {
+      const creationType = ctx.typeMap[urlType];
+      if (creationType) return { ...ctx, creationType };
+    }
+  }
+  return null;
+}
+
 export default function Creation() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
+  const params = useParams();
+  const [searchParams] = useSearchParams();
   const currency = useCurrency();
-  const [categoryId, setCategoryId] = useState('hierarchie');
-  const [creationType, setCreationType] = useState('site');
+  const moduleContext = getModuleCreationContext(location.pathname, params.type);
+  const [categoryId, setCategoryId] = useState(moduleContext?.categoryId || 'hierarchie');
+  const [creationType, setCreationType] = useState(moduleContext?.creationType || 'site');
   const [form, setForm] = useState(getDefaultForm('site'));
   const [sites, setSites] = useState([]);
   const [departements, setDepartements] = useState([]);
@@ -196,13 +221,38 @@ export default function Creation() {
     api.get('/checklists').then(r => setChecklists(Array.isArray(r.data) ? r.data : [])).catch(() => setChecklists([]));
   }, []);
 
+  const categoryFromUrl = searchParams.get('category');
+  const typeFromUrl = searchParams.get('type');
+
   useEffect(() => {
+    if (moduleContext) {
+      setCategoryId(moduleContext.categoryId);
+      setCreationType(moduleContext.creationType);
+      setForm(getDefaultForm(moduleContext.creationType));
+      setError('');
+      setSuccess('');
+      return;
+    }
+    if (categoryFromUrl && CATEGORY_IDS.includes(categoryFromUrl)) {
+      setCategoryId(categoryFromUrl);
+      const typesForCategory = TYPES_BY_CATEGORY[categoryFromUrl] || [];
+      const typeExists = typeFromUrl && typesForCategory.some((ty) => ty.value === typeFromUrl);
+      const typeToSet = typeExists ? typeFromUrl : (typesForCategory[0]?.value || 'site');
+      setCreationType(typeToSet);
+      setForm(getDefaultForm(typeToSet));
+      setError('');
+      setSuccess('');
+    }
+  }, [moduleContext?.categoryId, moduleContext?.creationType, categoryFromUrl, typeFromUrl]);
+
+  useEffect(() => {
+    if (moduleContext) return;
     const firstType = types[0]?.value || 'site';
-    setCreationType(firstType);
-    setForm(getDefaultForm(firstType));
-    setError('');
-    setSuccess('');
-  }, [categoryId]);
+    if (creationType !== firstType && !types.some((ty) => ty.value === creationType)) {
+      setCreationType(firstType);
+      setForm(getDefaultForm(firstType));
+    }
+  }, [categoryId, moduleContext]);
 
   // Garder creationType et form cohérents avec les types de la catégorie (évite value hors options)
   useEffect(() => {
@@ -229,15 +279,15 @@ export default function Creation() {
     const run = () => {
       if (creationType === 'site') {
         return api.post('/sites', { name: form.name, address: form.address || undefined })
-          .then(r => { setSuccess(r.data?.code ? `Site créé avec le code ${r.data.code}.` : 'Site créé.'); setForm(getDefaultForm('site')); });
+          .then(r => { setSuccess(r.data?.code ? `Site créé avec le code ${r.data.code}.` : 'Site créé.'); setForm(getDefaultForm('site')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (creationType === 'departement') {
         return api.post('/departements', { siteId: parseInt(form.siteId), name: form.name, description: form.description || undefined })
-          .then(r => { setSuccess(r.data?.code ? `Département créé avec le code ${r.data.code}.` : 'Département créé.'); setForm(getDefaultForm('departement')); });
+          .then(r => { setSuccess(r.data?.code ? `Département créé avec le code ${r.data.code}.` : 'Département créé.'); setForm(getDefaultForm('departement')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (creationType === 'ligne') {
         return api.post('/lignes', { siteId: parseInt(form.siteId), name: form.name })
-          .then(r => { setSuccess(r.data?.code ? `Ligne créée avec le code ${r.data.code}.` : 'Ligne créée.'); setForm(getDefaultForm('ligne')); });
+          .then(r => { setSuccess(r.data?.code ? `Ligne créée avec le code ${r.data.code}.` : 'Ligne créée.'); setForm(getDefaultForm('ligne')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (['machine', 'section', 'composant', 'sous_composant'].includes(creationType)) {
         const equipmentTypeMap = { machine: 'machine', section: 'section', composant: 'composant', sous_composant: 'sous_composant' };
@@ -278,13 +328,13 @@ export default function Creation() {
         return api.post('/stock/movements', {
           sparePartId: parseInt(form.sparePartId), quantity: parseInt(form.quantity),
           movementType: 'in', reference: form.reference || undefined, notes: form.notes || undefined
-        }).then(() => { setSuccess('Entrée enregistrée.'); setForm(getDefaultForm('entree_stock')); });
+        }).then(() => { setSuccess('Entrée enregistrée.'); setForm(getDefaultForm('entree_stock')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (creationType === 'sortie_stock') {
         return api.post('/stock/movements', {
           sparePartId: parseInt(form.sparePartId), quantity: Math.abs(parseInt(form.quantity)),
           movementType: 'out', workOrderId: form.workOrderId ? parseInt(form.workOrderId) : undefined, notes: form.notes || undefined
-        }).then(() => { setSuccess('Sortie enregistrée.'); setForm(getDefaultForm('sortie_stock')); });
+        }).then(() => { setSuccess('Sortie enregistrée.'); setForm(getDefaultForm('sortie_stock')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (creationType === 'transfert_stock') {
         return api.post('/stock/movements', {
@@ -298,21 +348,21 @@ export default function Creation() {
           name: form.name, description: form.description || undefined,
           tool_type: form.tool_type || undefined, location: form.location || undefined,
           calibration_due_date: form.calibration_due_date || undefined
-        }).then(r => { setSuccess(r.data?.code ? `Outil créé avec le code ${r.data.code}.` : 'Outil créé.'); setForm(getDefaultForm('outil')); });
+        }).then(r => { setSuccess(r.data?.code ? `Outil créé avec le code ${r.data.code}.` : 'Outil créé.'); setForm(getDefaultForm('outil')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (creationType === 'assignation_outil') {
         return api.post(`/tools/${form.toolId}/assign`, {
           assigned_to: form.assignedTo ? parseInt(form.assignedTo) : undefined,
           work_order_id: form.workOrderId ? parseInt(form.workOrderId) : undefined,
           notes: form.notes || undefined
-        }).then(() => { setSuccess('Assignation enregistrée.'); setForm(getDefaultForm('assignation_outil')); });
+        }).then(() => { setSuccess('Assignation enregistrée.'); setForm(getDefaultForm('assignation_outil')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (creationType === 'fournisseur') {
         return api.post('/suppliers', {
           ...(nextCode ? {} : { code: form.code }),
           name: form.name, contactPerson: form.contactPerson || undefined,
           email: form.email || undefined, phone: form.phone || undefined, address: form.address || undefined
-        }).then(r => { setSuccess(r.data?.code ? `Fournisseur créé avec le code ${r.data.code}.` : 'Fournisseur créé.'); setForm(getDefaultForm('fournisseur')); });
+        }).then(r => { setSuccess(r.data?.code ? `Fournisseur créé avec le code ${r.data.code}.` : 'Fournisseur créé.'); setForm(getDefaultForm('fournisseur')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (creationType === 'commande_fournisseur') {
         return api.post('/suppliers/orders', { supplierId: parseInt(form.supplierId) })
@@ -324,14 +374,14 @@ export default function Creation() {
           equipment_id: form.equipment_id ? parseInt(form.equipment_id) : undefined,
           contract_type: form.contract_type || 'preventive', start_date: form.start_date, end_date: form.end_date,
           annual_cost: parseFloat(form.annual_cost) || 0
-        }).then(() => { setSuccess('Contrat créé.'); setForm(getDefaultForm('contrat')); });
+        }).then(() => { setSuccess('Contrat créé.'); setForm(getDefaultForm('contrat')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (creationType === 'plan_maintenance') {
         return api.post('/maintenance-plans', {
           equipmentId: parseInt(form.equipmentId), name: form.name,
           description: form.description || undefined, frequencyDays: parseInt(form.frequencyDays) || 30,
           procedureId: form.procedureId ? parseInt(form.procedureId, 10) : undefined
-        }).then(() => { setSuccess('Plan créé.'); setForm(getDefaultForm('plan_maintenance')); });
+        }).then(() => { setSuccess('Plan créé.'); setForm(getDefaultForm('plan_maintenance')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (creationType === 'checklist') {
         const items = (form.items || []).filter(it => it?.item_text?.trim()).map((it, i) => ({ item_text: it.item_text.trim(), item_type: it.item_type || 'check', order_index: i }));
@@ -340,7 +390,7 @@ export default function Creation() {
           maintenance_plan_id: form.maintenance_plan_id ? parseInt(form.maintenance_plan_id) : undefined,
           is_template: !!form.is_template,
           items
-        }).then(() => { setSuccess('Checklist créée.'); setForm(getDefaultForm('checklist')); });
+        }).then(() => { setSuccess('Checklist créée.'); setForm(getDefaultForm('checklist')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (creationType === 'ordre_travail') {
         const planId = form.maintenancePlanId ? parseInt(form.maintenancePlanId, 10) : undefined;
@@ -371,13 +421,13 @@ export default function Creation() {
           phone: form.phone || undefined, address: form.address || undefined, city: form.city || undefined, postalCode: form.postalCode || undefined,
           employeeNumber: form.employeeNumber || undefined, jobTitle: form.jobTitle || undefined, department: form.department || undefined,
           hireDate: form.hireDate || undefined, contractType: form.contractType || undefined
-        }).then(() => { setSuccess('Utilisateur créé.'); setForm(getDefaultForm('utilisateur')); });
+        }).then(() => { setSuccess('Utilisateur créé.'); setForm(getDefaultForm('utilisateur')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (creationType === 'code_defaut') {
         return api.post('/failure-codes', {
           ...(nextCode ? {} : { code: form.code }),
           name: form.name, description: form.description || undefined, category: form.category || undefined
-        }).then(r => { setSuccess(r.data?.code ? `Code défaut créé avec le code ${r.data.code}.` : 'Code défaut créé.'); setForm(getDefaultForm('code_defaut')); });
+        }).then(r => { setSuccess(r.data?.code ? `Code défaut créé avec le code ${r.data.code}.` : 'Code défaut créé.'); setForm(getDefaultForm('code_defaut')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       return Promise.reject(new Error('Type non géré'));
     };
@@ -409,27 +459,48 @@ export default function Creation() {
     return false;
   };
 
+  const typeLabel = types.find(t => t.value === creationType)?.label || creationType;
+  const isModuleCreation = !!moduleContext;
+
   return (
     <Box>
-      <Typography variant="h5" fontWeight={700} sx={{ mb: 0.5 }}>Création</Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Choisissez une catégorie et un type d&apos;élément, puis renseignez le formulaire.
-      </Typography>
+      {isModuleCreation ? (
+        <>
+          <Button startIcon={<ArrowBack />} onClick={() => navigate(moduleContext.backPath)} sx={{ mb: 1 }} size="small">
+            {t('common.back')}
+          </Button>
+          <Typography variant="h5" fontWeight={700} sx={{ mb: 0.5 }}>{typeLabel}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            {t('creation.moduleFormHint', { type: typeLabel })}
+          </Typography>
+        </>
+      ) : (
+        <>
+          <Typography variant="h5" fontWeight={700} sx={{ mb: 0.5 }}>{t('creation.title')}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            {t('creation.subtitle')}
+          </Typography>
+        </>
+      )}
 
       <Card sx={{ maxWidth: 720, borderRadius: 2 }}>
         <CardContent>
-          <Tabs value={categoryId} onChange={(_, v) => setCategoryId(v)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-            {CATEGORIES.map(c => <Tab key={c.id} value={c.id} label={c.label} />)}
-          </Tabs>
+          {!isModuleCreation && (
+            <Tabs value={categoryId} onChange={(_, v) => setCategoryId(v)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+              {CATEGORIES.map(c => <Tab key={c.id} value={c.id} label={c.label} />)}
+            </Tabs>
+          )}
 
-          <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-            <InputLabel>Type d&apos;élément</InputLabel>
-            <Select value={effectiveType} label="Type d'élément" onChange={(e) => { setCreationType(e.target.value); setForm(getDefaultForm(e.target.value)); }}>
-              {types.map(t => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
-            </Select>
-          </FormControl>
+          {!isModuleCreation && (
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel>{t('creation.typeLabel')}</InputLabel>
+              <Select value={effectiveType} label={t('creation.typeLabel')} onChange={(e) => { setCreationType(e.target.value); setForm(getDefaultForm(e.target.value)); }}>
+                {types.map(t => <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>)}
+              </Select>
+            </FormControl>
+          )}
 
-          <Divider sx={{ my: 2 }} />
+          {!isModuleCreation && <Divider sx={{ my: 2 }} />}
           {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
           {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
 

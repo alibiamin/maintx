@@ -548,16 +548,16 @@ export default function Dashboard() {
             </Typography>
             <Grid container spacing={1.5}>
               {[
-                { label: 'Sites', value: summary.sitesCount, path: '/sites', icon: Business, sub: `${summary.lignesCount} lignes` },
-                { label: 'Équipements', value: summary.equipmentCount, path: '/equipment', icon: Build, sub: `${summary.equipmentOperational} opérationnels` },
-                { label: 'OT en attente', value: summary.workOrdersPending, path: '/work-orders?status=pending', icon: Assignment },
-                { label: 'OT en cours', value: summary.workOrdersInProgress, path: '/work-orders?status=in_progress', icon: AddTask },
-                { label: 'Plans préventifs', value: summary.maintenancePlansActive, path: '/maintenance-plans', icon: Schedule, sub: summary.maintenancePlansOverdue > 0 ? `${summary.maintenancePlansOverdue} en retard` : null },
-                { label: 'Stock', value: summary.stockPartsCount, path: '/stock', icon: Inventory, sub: summary.stockAlertsCount > 0 ? `${summary.stockAlertsCount} alerte(s)` : null },
-                { label: 'Fournisseurs', value: summary.suppliersCount, path: '/suppliers', icon: People },
-                { label: 'Outils', value: summary.toolsCount, path: '/tools', icon: Handyman },
-                { label: 'Création', value: null, path: '/creation', icon: Add, sub: 'Nouvel OT, équipement…' },
-                { label: 'Rapports', value: null, path: '/reports', icon: Assessment, sub: 'Coûts, disponibilité' }
+                { label: 'Sites', value: summary.sitesCount, path: '/app/sites', icon: Business, sub: `${summary.lignesCount} lignes` },
+                { label: 'Équipements', value: summary.equipmentCount, path: '/app/equipment', icon: Build, sub: `${summary.equipmentOperational} opérationnels` },
+                { label: 'OT en attente', value: summary.workOrdersPending, path: '/app/work-orders?status=pending', icon: Assignment },
+                { label: 'OT en cours', value: summary.workOrdersInProgress, path: '/app/work-orders?status=in_progress', icon: AddTask },
+                { label: 'Plans préventifs', value: summary.maintenancePlansActive, path: '/app/maintenance-plans', icon: Schedule, sub: summary.maintenancePlansOverdue > 0 ? `${summary.maintenancePlansOverdue} en retard` : null },
+                { label: 'Stock', value: summary.stockPartsCount, path: '/app/stock', icon: Inventory, sub: summary.stockAlertsCount > 0 ? `${summary.stockAlertsCount} alerte(s)` : null },
+                { label: 'Fournisseurs', value: summary.suppliersCount, path: '/app/suppliers', icon: People },
+                { label: 'Outils', value: summary.toolsCount, path: '/app/tools', icon: Handyman },
+                { label: 'Création', value: null, path: '/app/maintenance/creation/work-order', icon: Add, sub: 'Nouvel OT, équipement…' },
+                { label: 'Rapports', value: null, path: '/app/reports', icon: Assessment, sub: 'Coûts, disponibilité' }
               ].map(({ label, value, path, icon: Icon, sub }) => (
                 <Grid item xs={6} sm={4} md={2} key={label}>
                   <Card

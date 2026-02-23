@@ -1,6 +1,7 @@
 {
   "common": {
     "home": "Start",
+    "back": "Zurück",
     "logout": "Abmelden",
     "searchPlaceholder": "Im Navigationsmenü suchen",
     "menu": "Menü",
@@ -15,6 +16,12 @@
     "unpin": "Lösen",
     "language": "Sprache",
     "all": "Alle"
+  },
+  "creation": {
+    "title": "Erstellung",
+    "subtitle": "Kategorie und Elementtyp wählen, dann Formular ausfüllen.",
+    "typeLabel": "Elementtyp",
+    "moduleFormHint": "Formular unten ausfüllen."
   },
   "flow": {
     "demande": "Anfrage",
@@ -83,17 +90,23 @@
     "creation_0": "Erstellung",
     "equipment_0": "Anlagen",
     "equipment_1": "Verwaltung",
+    "equipment_creation": "Erstellung",
     "maintenance_0": "Arbeitsaufträge",
     "maintenance_1": "Vorbeugende Wartung",
     "maintenance_2": "Planung",
     "stock_0": "Bestand",
     "stock_1": "Verwaltung",
+    "stock_creation": "Erstellung",
     "suppliers_0": "Lieferanten",
+    "suppliers_creation": "Erstellung",
+    "maintenance_creation": "Erstellung",
     "tools_0": "Werkzeuge und Material",
+    "tools_creation": "Erstellung",
     "reports_0": "Berichte",
     "sites_0": "Standorte",
     "effectif_0": "Mitarbeiter",
-    "settings_0": "Einstellungen"
+    "settings_0": "Einstellungen",
+    "settings_creation": "Erstellung"
   },
   "item": {
     "dashboard_overview": "Übersicht",
@@ -104,6 +117,13 @@
     "equipment_map": "Hierarchiekarte",
     "equipment_categories": "Kategorien",
     "equipment_technical": "Technische Blätter",
+    "creation_site": "Standort",
+    "creation_departement": "Abteilung",
+    "creation_ligne": "Linie",
+    "creation_machine": "Anlage / Maschine",
+    "creation_section": "Bereich",
+    "creation_composant": "Komponente",
+    "creation_sous_composant": "Unterkomponente",
     "management_history": "Verlauf (pro Anlage)",
     "management_documents": "Dokumente (pro Anlage)",
     "management_warranties": "Garantien (pro Anlage)",
@@ -127,7 +147,19 @@
     "stock_transfers": "Umlagerungen",
     "stock_reorders": "Meldebestände",
     "stock_quality": "Qualitätskontrolle",
+    "creation_piece": "Ersatzteil",
+    "creation_entree_stock": "Bestandseingang",
+    "creation_sortie_stock": "Bestandsausgang",
+    "creation_transfert_stock": "Umlagerung",
     "suppliers_list": "Lieferantenliste",
+    "creation_fournisseur": "Lieferant",
+    "creation_commande_fournisseur": "Bestellung",
+    "creation_contrat": "Wartungsvertrag",
+    "creation_plan_maintenance": "Wartungsplan",
+    "creation_checklist": "Checkliste",
+    "creation_ordre_travail": "Arbeitsauftrag",
+    "creation_outil": "Werkzeug",
+    "creation_assignation_outil": "Werkzeugzuweisung",
     "contracts": "Verträge",
     "suppliers_orders": "Bestellungen",
     "tools_list": "Werkzeugliste",
@@ -146,7 +178,9 @@
     "settings_alerts": "E-Mail-/SMS-Benachrichtigungen",
     "settings_users": "Benutzer",
     "settings_roles": "Rollen und Berechtigungen",
-    "settings_tenants": "Kunden (Tenants)"
+    "settings_tenants": "Kunden (Tenants)",
+    "creation_user": "Benutzer",
+    "creation_failure_code": "Fehlercode"
   },
   "login": {
     "title": "Anmelden",
