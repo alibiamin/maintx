@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -18,12 +19,13 @@ import api from '../../services/api';
 import { useSnackbar } from '../../context/SnackbarContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
-import projectNav from './projectNavigation';
 
+const APP_BASE = '/app';
 const STATUS_LABELS = { draft: 'Brouillon', active: 'Actif', completed: 'Terminé', cancelled: 'Annulé' };
 const CAN_CREATE_ROLES = ['administrateur', 'responsable_maintenance'];
 
 export default function MaintenanceProjectsList() {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
@@ -33,10 +35,20 @@ export default function MaintenanceProjectsList() {
 
   const load = () => {
     setLoading(true);
+    setProjects([]);
     api
       .get('/maintenance-projects')
-      .then((res) => setProjects(Array.isArray(res.data) ? res.data : []))
-      .catch(() => snackbar.showError('Erreur chargement des projets'))
+      .then((res) => {
+        const raw = res.data;
+        const arr = Array.isArray(raw) ? raw : (raw?.data ?? []);
+        const byId = new Map();
+        arr.forEach((p) => { if (p && p.id != null && !byId.has(p.id)) byId.set(p.id, p); });
+        setProjects([...byId.values()]);
+      })
+      .catch(() => {
+        snackbar.showError('Erreur chargement des projets');
+        setProjects([]);
+      })
       .finally(() => setLoading(false));
   };
 
@@ -46,11 +58,11 @@ export default function MaintenanceProjectsList() {
 
   const openNew = () => {
     if (!canCreate) return;
-    projectNav.new();
+    navigate(`${APP_BASE}/maintenance-projects/new`);
   };
 
   const openDetail = (id) => {
-    projectNav.detail(id);
+    navigate(`${APP_BASE}/maintenance-projects/${id}`);
   };
 
   const button = (

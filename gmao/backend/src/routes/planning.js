@@ -3,19 +3,13 @@
  */
 
 const express = require('express');
-const db = require('../database/db');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
 
-/**
- * GET /api/planning/gantt
- * Retourne toutes les interventions (OT + plans préventifs) dans la plage [start, end]
- * pour affichage dans un diagramme de Gantt.
- * Chaque item a: id, type (preventive|corrective), title, start, end, equipment, assigned, priority, status, etc.
- */
 router.get('/gantt', (req, res) => {
+  const db = req.db;
   try {
     const { start, end } = req.query;
     const s = start || new Date().toISOString().split('T')[0];
@@ -130,6 +124,7 @@ router.get('/gantt', (req, res) => {
  * Affectations des techniciens (OT assignés par utilisateur)
  */
 router.get('/assignments', (req, res) => {
+  const db = req.db;
   try {
     const rows = db.prepare(`
       SELECT wo.id as work_order_id, wo.number as work_order_number, wo.title as work_order_title,
@@ -166,6 +161,7 @@ router.get('/assignments', (req, res) => {
  * Ressources disponibles (techniciens, équipements) pour le planning
  */
 router.get('/resources', (req, res) => {
+  const db = req.db;
   try {
     const technicians = db.prepare(`
       SELECT u.id, u.first_name, u.last_name, u.email,

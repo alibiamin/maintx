@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Navigate, Link } from 'react-router-dom';
-import { navigateTo } from './projectNavigation';
 import {
   Box,
   Card,
@@ -33,7 +32,7 @@ import {
   TableHead,
   TableRow
 } from '@mui/material';
-import { ArrowBack, PlayArrow, Stop, PersonSearch, Star, Schedule, Checklist, Inventory, Description, Download, Delete, Upload, Print, Add } from '@mui/icons-material';
+import { ArrowBack, PlayArrow, Stop, PersonSearch, Star, Schedule, Checklist, Inventory, Description, Download, Delete, Upload, Print, Add, MenuBook, Build } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useSnackbar } from '../../context/SnackbarContext';
@@ -55,6 +54,7 @@ export default function WorkOrderDetail() {
   const [suggestedList, setSuggestedList] = useState([]);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [planChecklists, setPlanChecklists] = useState([]);
+  const [assignedChecklists, setAssignedChecklists] = useState([]);
   const [woChecklistExecutions, setWoChecklistExecutions] = useState([]);
   const [stockMovements, setStockMovements] = useState([]);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
@@ -65,6 +65,12 @@ export default function WorkOrderDetail() {
   const [spareParts, setSpareParts] = useState([]);
   const [reservationForm, setReservationForm] = useState({ sparePartId: '', quantity: 1 });
   const [reservationSubmitting, setReservationSubmitting] = useState(false);
+  const [toolAssignments, setToolAssignments] = useState([]);
+  const [tools, setTools] = useState([]);
+  const [selectedToolId, setSelectedToolId] = useState('');
+  const [toolAssigning, setToolAssigning] = useState(false);
+  const [selectedOperatorId, setSelectedOperatorId] = useState('');
+  const [operatorAdding, setOperatorAdding] = useState(false);
   const { user } = useAuth();
   const snackbar = useSnackbar();
   const canEdit = ['administrateur', 'responsable_maintenance', 'technicien'].includes(user?.role);
@@ -80,21 +86,33 @@ export default function WorkOrderDetail() {
     api.get(`/work-orders/${id}/reservations`).then(r => setReservations(Array.isArray(r.data) ? r.data : [])).catch(() => setReservations([]));
   };
 
+  const loadToolAssignments = () => {
+    if (!id || id === 'new') return;
+    api.get(`/work-orders/${id}/tool-assignments`).then(r => setToolAssignments(Array.isArray(r.data) ? r.data : [])).catch(() => setToolAssignments([]));
+  };
+
   useEffect(() => {
     if (id === 'new') return;
     Promise.all([
       api.get(`/work-orders/${id}`),
       api.get('/users/assignable').then(r => r.data).catch(() => []),
       api.get(`/work-orders/${id}/reservations`).catch(() => ({ data: [] })),
-      api.get('/stock/parts').catch(() => ({ data: [] }))
-    ]).then(([wo, u, resRes, partsRes]) => {
+      api.get('/stock/parts').catch(() => ({ data: [] })),
+      api.get('/tools').catch(() => ({ data: [] }))
+    ]).then(([wo, u, resRes, partsRes, toolsRes]) => {
       setOrder(wo.data);
       setUsers(u);
       setReservations(Array.isArray(resRes?.data) ? resRes.data : []);
       const parts = partsRes?.data?.data ?? partsRes?.data ?? [];
       setSpareParts(Array.isArray(parts) ? parts : []);
+      setTools(Array.isArray(toolsRes?.data) ? toolsRes.data : []);
     }).catch(() => navigate('/app/work-orders')).finally(() => setLoading(false));
   }, [id, navigate]);
+
+  useEffect(() => {
+    if (!order?.id) return;
+    loadToolAssignments();
+  }, [order?.id]);
 
   useEffect(() => {
     if (!order?.maintenancePlanId) return;
@@ -102,6 +120,17 @@ export default function WorkOrderDetail() {
       .then(r => setPlanChecklists(r.data || []))
       .catch(() => setPlanChecklists([]));
   }, [order?.maintenancePlanId]);
+
+  useEffect(() => {
+    const ids = order?.assignedChecklistIds;
+    if (!ids?.length) { setAssignedChecklists([]); return; }
+    api.get('/checklists')
+      .then(r => {
+        const list = r.data || [];
+        setAssignedChecklists(list.filter(c => ids.includes(c.id)));
+      })
+      .catch(() => setAssignedChecklists([]));
+  }, [order?.id, order?.assignedChecklistIds?.length]);
 
   useEffect(() => {
     if (!order?.id) return;
@@ -204,8 +233,43 @@ export default function WorkOrderDetail() {
   const handleAssign = (userId) => {
     if (!canEdit || !order?.id) return;
     api.put(`/work-orders/${order.id}`, { assignedTo: userId || null })
-      .then(r => { setOrder(r.data); setSuggestOpen(false); snackbar.showSuccess('Technicien affecté'); })
+      .then(r => { setOrder(r.data); setSuggestOpen(false); snackbar.showSuccess('Responsable principal mis à jour'); })
       .catch(() => snackbar.showError('Erreur'));
+  };
+
+  const handleAddOperator = () => {
+    if (!canEdit || !order?.id || !selectedOperatorId) return;
+    setOperatorAdding(true);
+    api.post(`/work-orders/${order.id}/operators`, { userId: parseInt(selectedOperatorId, 10) })
+      .then(() => { loadOrder(); setSelectedOperatorId(''); snackbar.showSuccess('Opérateur ajouté'); })
+      .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'))
+      .finally(() => setOperatorAdding(false));
+  };
+
+  const handleRemoveOperator = (userId) => {
+    if (!canEdit || !order?.id) return;
+    if (!window.confirm('Retirer cet opérateur de l\'OT ?')) return;
+    api.delete(`/work-orders/${order.id}/operators/${userId}`)
+      .then(() => { loadOrder(); snackbar.showSuccess('Opérateur retiré'); })
+      .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'));
+  };
+
+  const handleAssignTool = () => {
+    if (!canEdit || !order?.id || !selectedToolId) return;
+    setToolAssigning(true);
+    const assigneeId = order.assignedTo || (order.assignedOperators && order.assignedOperators[0]?.id) || user?.id;
+    api.post(`/tools/${selectedToolId}/assign`, { work_order_id: order.id, assigned_to: assigneeId })
+      .then(() => { loadToolAssignments(); setSelectedToolId(''); api.get('/tools').then(r => setTools(r.data || [])); snackbar.showSuccess('Outil affecté'); })
+      .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'))
+      .finally(() => setToolAssigning(false));
+  };
+
+  const handleReturnTool = (toolId, assignmentId) => {
+    if (!canEdit || !toolId || !assignmentId) return;
+    if (!window.confirm('Enregistrer le retour de cet outil ?')) return;
+    api.post(`/tools/${toolId}/return`, { assignment_id: assignmentId })
+      .then(() => { loadToolAssignments(); api.get('/tools').then(r => setTools(r.data || [])); snackbar.showSuccess('Outil retourné'); })
+      .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'));
   };
 
   const loadSuggestions = () => {
@@ -334,7 +398,7 @@ export default function WorkOrderDetail() {
                 const pid = order.projectId;
                 const validId = pid != null && pid !== '' && pid !== 'undefined' && !Number.isNaN(Number(pid)) ? Number(pid) : null;
                 return validId != null ? (
-                  <Button size="small" onClick={() => navigateTo(`/maintenance-projects/${validId}`)} sx={{ p: 0, textTransform: 'none', justifyContent: 'flex-start' }}>
+                  <Button size="small" onClick={() => navigate(`/app/maintenance-projects/${validId}`)} sx={{ p: 0, textTransform: 'none', justifyContent: 'flex-start' }}>
                     {order.projectName || `Projet #${validId}`}
                   </Button>
                 ) : (
@@ -343,19 +407,14 @@ export default function WorkOrderDetail() {
               })()}
             </Grid>
             <Grid item xs={12} md={4}>
-              <Typography variant="subtitle2" color="text.secondary">Technicien assigné</Typography>
+              <Typography variant="subtitle2" color="text.secondary">Responsable principal</Typography>
               {canEdit && users.length ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                  <Select size="small" value={order.assignedTo || ''} onChange={(e) => handleAssign(e.target.value || null)} sx={{ minWidth: 180 }}>
-                    <MenuItem value="">Non assigné</MenuItem>
-                    {users.filter(u => u.role_name === 'technicien' || u.role_name === 'responsable_maintenance').map(u => (
-                      <MenuItem key={u.id} value={u.id}>{u.first_name} {u.last_name}</MenuItem>
-                    ))}
-                  </Select>
-                  <Button size="small" variant="outlined" startIcon={<PersonSearch />} onClick={loadSuggestions}>
-                    Suggérer techniciens
-                  </Button>
-                </Box>
+                <Select size="small" value={order.assignedTo || ''} onChange={(e) => handleAssign(e.target.value || null)} sx={{ minWidth: 180 }}>
+                  <MenuItem value="">Non assigné</MenuItem>
+                  {users.filter(u => u.role_name === 'technicien' || u.role_name === 'responsable_maintenance').map(u => (
+                    <MenuItem key={u.id} value={u.id}>{u.first_name} {u.last_name}</MenuItem>
+                  ))}
+                </Select>
               ) : (
                 <Typography>{order.assignedName || '-'}</Typography>
               )}
@@ -403,6 +462,126 @@ export default function WorkOrderDetail() {
               </>
             )}
           </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Équipe / Opérateurs — plusieurs opérateurs possibles */}
+      <Card sx={{ mt: 2 }}>
+        <CardContent>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <PersonSearch /> Équipe / Opérateurs
+          </Typography>
+          {((order.assignedOperators && order.assignedOperators.length > 0) || order.assignedTo || order.assignedName) ? (
+            <>
+              <List dense disablePadding sx={{ mb: canEdit ? 2 : 0 }}>
+                {order.assignedTo && !(order.assignedOperators || []).some(o => o.id === order.assignedTo) && (
+                  <ListItem>
+                    <ListItemText primary={order.assignedName || `#${order.assignedTo}`} secondary="Responsable principal" />
+                  </ListItem>
+                )}
+                {(order.assignedOperators || []).map((op) => (
+                  <ListItem key={op.id} secondaryAction={canEdit && (
+                    <IconButton size="small" color="error" onClick={() => handleRemoveOperator(op.id)} title="Retirer"><Delete /></IconButton>
+                  )}>
+                    <ListItemText primary={op.name || `${op.firstName} ${op.lastName}`.trim()} />
+                  </ListItem>
+                ))}
+              </List>
+              {canEdit && users.length > 0 && (
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <FormControl size="small" sx={{ minWidth: 220 }}>
+                    <InputLabel>Ajouter un opérateur</InputLabel>
+                    <Select
+                      value={selectedOperatorId}
+                      label="Ajouter un opérateur"
+                      onChange={(e) => setSelectedOperatorId(e.target.value)}
+                    >
+                      <MenuItem value="">—</MenuItem>
+                      {users.filter(u => !(order.assignedOperators || []).some(o => o.id === u.id) && u.id !== order.assignedTo).map(u => (
+                        <MenuItem key={u.id} value={u.id}>{u.first_name} {u.last_name}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Button size="small" variant="outlined" startIcon={<Add />} disabled={!selectedOperatorId || operatorAdding} onClick={handleAddOperator}>
+                    {operatorAdding ? 'Ajout...' : 'Ajouter'}
+                  </Button>
+                  <Button size="small" variant="outlined" startIcon={<PersonSearch />} onClick={loadSuggestions}>Suggérer techniciens</Button>
+                </Box>
+              )}
+            </>
+          ) : (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: canEdit ? 2 : 0 }}>Aucun opérateur affecté. Ajoutez-en depuis la liste ci-dessous.</Typography>
+              {canEdit && users.length > 0 && (
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <FormControl size="small" sx={{ minWidth: 220 }}>
+                    <InputLabel>Ajouter un opérateur</InputLabel>
+                    <Select value={selectedOperatorId} label="Ajouter un opérateur" onChange={(e) => setSelectedOperatorId(e.target.value)}>
+                      <MenuItem value="">—</MenuItem>
+                      {users.map(u => <MenuItem key={u.id} value={u.id}>{u.first_name} {u.last_name}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                  <Button size="small" variant="outlined" startIcon={<Add />} disabled={!selectedOperatorId || operatorAdding} onClick={handleAddOperator}>
+                    {operatorAdding ? 'Ajout...' : 'Ajouter'}
+                  </Button>
+                  <Button size="small" variant="outlined" startIcon={<PersonSearch />} onClick={loadSuggestions}>Suggérer techniciens</Button>
+                </Box>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Outils affectés à l'OT — ajout / retour */}
+      <Card sx={{ mt: 2 }}>
+        <CardContent>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <Build /> Outils affectés
+          </Typography>
+          {canEdit && (
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+              <FormControl size="small" sx={{ minWidth: 240 }}>
+                <InputLabel>Affecter un outil</InputLabel>
+                <Select value={selectedToolId} label="Affecter un outil" onChange={(e) => setSelectedToolId(e.target.value)}>
+                  <MenuItem value="">Sélectionner</MenuItem>
+                  {tools.filter(t => t.status === 'available').map(t => (
+                    <MenuItem key={t.id} value={t.id}>{t.code} – {t.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Button variant="outlined" size="small" startIcon={<Add />} disabled={!selectedToolId || toolAssigning} onClick={handleAssignTool}>
+                {toolAssigning ? 'Affectation...' : 'Affecter'}
+              </Button>
+            </Box>
+          )}
+          {toolAssignments.length === 0 ? (
+            <Typography color="text.secondary" variant="body2">Aucun outil affecté. Affectez des outils pour l'intervention.</Typography>
+          ) : (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Code</TableCell>
+                  <TableCell>Outil</TableCell>
+                  <TableCell>Affecté à</TableCell>
+                  <TableCell align="right">Action</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {toolAssignments.map((ta) => (
+                  <TableRow key={ta.assignmentId}>
+                    <TableCell>{ta.toolCode}</TableCell>
+                    <TableCell>{ta.toolName}</TableCell>
+                    <TableCell>{ta.assignedToName || '—'}</TableCell>
+                    <TableCell align="right">
+                      {canEdit && (
+                        <Button size="small" color="primary" onClick={() => handleReturnTool(ta.toolId, ta.assignmentId)}>Retour</Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
@@ -474,6 +653,51 @@ export default function WorkOrderDetail() {
         </Card>
       )}
 
+      {/* Procédures / modes opératoires — une ou plusieurs à suivre pour réaliser l'OT */}
+      {((order.procedures && order.procedures.length > 0) || order.procedureId || order.procedureName) && (
+        <Card sx={{ mt: 2 }}>
+          <CardContent>
+            <Typography variant="subtitle1" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <MenuBook /> Procédures / modes opératoires
+            </Typography>
+            {(order.procedures && order.procedures.length > 0 ? order.procedures : [{ id: order.procedureId, name: order.procedureName, description: order.procedureDescription, steps: order.procedureSteps, safety_notes: order.procedureSafetyNotes }]).map((proc, idx) => (
+              <Box key={proc.id || idx} sx={{ mb: idx < (order.procedures?.length || 1) - 1 ? 3 : 0, pb: idx < (order.procedures?.length || 1) - 1 ? 2 : 0, borderBottom: idx < (order.procedures?.length || 1) - 1 ? 1 : 0, borderColor: 'divider' }}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  {proc.name || `Procédure #${proc.id}`}
+                </Typography>
+                {proc.description && (
+                  <Typography variant="body2" sx={{ mb: 1.5 }}>{proc.description}</Typography>
+                )}
+                {proc.safety_notes && (
+                  <Alert severity="warning" sx={{ mb: 1.5 }}>
+                    <Typography variant="subtitle2" gutterBottom>Consignes de sécurité</Typography>
+                    <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{proc.safety_notes}</Typography>
+                  </Alert>
+                )}
+                {proc.steps && (
+                  <>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>Étapes à suivre</Typography>
+                    <Box component="ol" sx={{ m: 0, pl: 2.5, '& li': { mb: 0.5 } }}>
+                      {(() => {
+                        try {
+                          const steps = typeof proc.steps === 'string' ? JSON.parse(proc.steps) : proc.steps;
+                          if (Array.isArray(steps)) {
+                            return steps.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((s, i) => (
+                              <li key={i}><Typography variant="body2">{s.text || s.label || s.name || String(s)}</Typography></li>
+                            ));
+                          }
+                        } catch (_) {}
+                        return <li><Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{proc.steps}</Typography></li>;
+                      })()}
+                    </Box>
+                  </>
+                )}
+              </Box>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Exécutions de checklists enregistrées pour cet OT */}
       <Card sx={{ mt: 2 }}>
         <CardContent>
@@ -505,29 +729,38 @@ export default function WorkOrderDetail() {
         </CardContent>
       </Card>
 
-      {order.maintenancePlanId && (
+      {((order.maintenancePlanId && planChecklists.length > 0) || (order.assignedChecklistIds && order.assignedChecklistIds.length > 0)) && (
         <Card sx={{ mt: 2 }}>
           <CardContent>
             <Typography variant="subtitle1" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-              <Checklist /> Checklists du plan (à exécuter)
+              <Checklist /> Checklists à exécuter (plan + affectées)
             </Typography>
-            {planChecklists.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">
-                Aucune checklist associée à ce plan. Créez-en une (menu Création ou Checklists) en la rattachant au plan « {order.maintenancePlanName || `#${order.maintenancePlanId}`} ».
-              </Typography>
-            ) : (
-              <List dense disablePadding>
-                {planChecklists.map((c) => (
-                  <ListItem key={c.id} disablePadding secondaryAction={
-                    <Button size="small" variant="outlined" onClick={() => navigate('/app/checklists', { state: { executeChecklistId: c.id, workOrderId: order.id } })}>
-                      Exécuter
-                    </Button>
-                  }>
-                    <ListItemText primary={c.name} secondary={c.description} />
-                  </ListItem>
-                ))}
-              </List>
-            )}
+            {(() => {
+              const byId = new Map();
+              planChecklists.forEach(c => byId.set(c.id, { ...c, source: 'plan' }));
+              assignedChecklists.forEach(c => byId.set(c.id, { ...c, source: 'affectée' }));
+              const allChecklists = [...byId.values()];
+              if (allChecklists.length === 0) {
+                return (
+                  <Typography variant="body2" color="text.secondary">
+                    Aucune checklist (plan ou affectation). Associez un plan ou affectez des checklists à la création ou en modification de l&apos;OT.
+                  </Typography>
+                );
+              }
+              return (
+                <List dense disablePadding>
+                  {allChecklists.map((c) => (
+                    <ListItem key={c.id} disablePadding secondaryAction={
+                      <Button size="small" variant="outlined" onClick={() => navigate('/app/checklists', { state: { executeChecklistId: c.id, workOrderId: order.id } })}>
+                        Exécuter
+                      </Button>
+                    }>
+                      <ListItemText primary={c.name} secondary={c.description || (c.source === 'affectée' ? 'Affectée à l\'OT' : null)} />
+                    </ListItem>
+                  ))}
+                </List>
+              );
+            })()}
           </CardContent>
         </Card>
       )}

@@ -58,7 +58,16 @@ export default function Checklists() {
   const loadChecklists = async () => {
     try {
       const res = await api.get('/checklists');
-      setChecklists(res.data || []);
+      const raw = Array.isArray(res.data) ? res.data : [];
+      // Dédupliquer par (nom + plan) pour éviter lignes identiques en double
+      const seen = new Set();
+      const list = raw.filter((c) => {
+        const key = `${c.name || ''}|${c.maintenance_plan_id ?? ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setChecklists(list);
     } catch (err) {
       console.error(err);
     } finally {

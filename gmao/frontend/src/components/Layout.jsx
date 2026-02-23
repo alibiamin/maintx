@@ -127,7 +127,8 @@ function getMenuStructure() {
         { labelKey: 'item.stock_entries', path: `${APP_BASE}/stock/entries` },
         { labelKey: 'item.stock_exits', path: `${APP_BASE}/stock/exits` },
         { labelKey: 'item.stock_transfers', path: `${APP_BASE}/stock/transfers` },
-        { labelKey: 'item.stock_reorders', path: `${APP_BASE}/stock/reorders` }
+        { labelKey: 'item.stock_reorders', path: `${APP_BASE}/stock/reorders` },
+        { labelKey: 'item.stock_quality', path: `${APP_BASE}/stock/quality` }
       ]}
     ]},
     { id: 'suppliers', labelKey: 'menu.suppliers', icon: <SupplierIcon />, path: `${APP_BASE}/suppliers`, sections: [
@@ -172,7 +173,8 @@ function getMenuStructure() {
         { labelKey: 'item.settings_alerts', path: `${APP_BASE}/settings?tab=alertes` },
         { labelKey: 'item.failure_codes', path: `${APP_BASE}/failure-codes` },
         { labelKey: 'item.settings_users', path: `${APP_BASE}/users` },
-        { labelKey: 'item.settings_roles', path: `${APP_BASE}/settings/roles` }
+        { labelKey: 'item.settings_roles', path: `${APP_BASE}/settings/roles` },
+        { labelKey: 'item.settings_tenants', path: `${APP_BASE}/settings/tenants` }
       ]}
     ]}
   ];

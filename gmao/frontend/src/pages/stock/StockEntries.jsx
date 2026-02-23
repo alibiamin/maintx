@@ -15,7 +15,11 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
 import { Add } from '@mui/icons-material';
 import api from '../../services/api';
@@ -26,7 +30,7 @@ export default function StockEntries() {
   const [parts, setParts] = useState([]);
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ spare_part_id: '', quantity: 1, reference: '', notes: '' });
+  const [form, setForm] = useState({ spare_part_id: '', quantity: 1, status: 'A', reference: '', notes: '' });
 
   useEffect(() => {
     loadEntries();
@@ -55,11 +59,12 @@ export default function StockEntries() {
         sparePartId: parseInt(form.spare_part_id, 10),
         quantity: parseInt(form.quantity, 10),
         movementType: 'in',
+        status: form.status === 'Q' ? 'Q' : 'A',
         reference: form.reference || undefined,
         notes: form.notes || undefined
       });
       setOpen(false);
-      setForm({ spare_part_id: '', quantity: 1, reference: '', notes: '' });
+      setForm({ spare_part_id: '', quantity: 1, status: 'A', reference: '', notes: '' });
       loadEntries();
     } catch (e) {
       console.error(e);
@@ -147,6 +152,17 @@ export default function StockEntries() {
             onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
             inputProps={{ min: 1 }}
           />
+          <FormControl fullWidth margin="dense">
+            <InputLabel>Statut à la réception</InputLabel>
+            <Select
+              value={form.status}
+              label="Statut à la réception"
+              onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+            >
+              <MenuItem value="A">A — Accepté (utilisable directement)</MenuItem>
+              <MenuItem value="Q">Q — Quarantaine (contrôle qualité à faire)</MenuItem>
+            </Select>
+          </FormControl>
           <TextField
             margin="dense"
             label="Référence (bon de livraison, etc.)"

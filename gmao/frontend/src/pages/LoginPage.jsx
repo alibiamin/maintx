@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Box,
@@ -85,6 +85,14 @@ export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const theme = useTheme();
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem('loginError');
+    if (stored) {
+      setError(stored);
+      sessionStorage.removeItem('loginError');
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -514,6 +522,9 @@ export default function LoginPage() {
               >
                 {loading ? t('login.submitting') : t('login.submit')}
               </Button>
+              <Typography variant="caption" sx={{ display: 'block', mt: 1.5, textAlign: 'center', color: 'text.secondary' }}>
+                Première connexion ? admin@xmaint.org / Admin123!
+              </Typography>
               <Box sx={{ mt: 2, textAlign: 'center' }}>
                 <Link component={RouterLink} to="/" underline="hover" sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>
                   Retour à l'accueil

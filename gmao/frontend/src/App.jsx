@@ -41,6 +41,8 @@ const StockEntries = lazy(() => import('./pages/stock/StockEntries'));
 const StockExits = lazy(() => import('./pages/stock/StockExits'));
 const StockTransfers = lazy(() => import('./pages/stock/StockTransfers'));
 const StockReorders = lazy(() => import('./pages/stock/StockReorders'));
+const StockFiche = lazy(() => import('./pages/stock/StockFiche'));
+const StockQuality = lazy(() => import('./pages/stock/StockQuality'));
 const SuppliersList = lazy(() => import('./pages/suppliers/SuppliersList'));
 const SuppliersOrders = lazy(() => import('./pages/suppliers/SuppliersOrders'));
 const Reports = lazy(() => import('./pages/Reports'));
@@ -51,6 +53,7 @@ const SitesLines = lazy(() => import('./pages/SitesLines'));
 const SitesMap = lazy(() => import('./pages/SitesMap'));
 const Settings = lazy(() => import('./pages/Settings'));
 const SettingsRoles = lazy(() => import('./pages/SettingsRoles'));
+const SettingsTenants = lazy(() => import('./pages/SettingsTenants'));
 const FailureCodesList = lazy(() => import('./pages/FailureCodesList'));
 const Contracts = lazy(() => import('./pages/Contracts'));
 const Tools = lazy(() => import('./pages/Tools'));
@@ -124,6 +127,7 @@ export default function App() {
         <Route path="maintenance-projects/:id/edit" element={<MaintenanceProjectForm />} />
         <Route path="maintenance-projects/:id" element={<MaintenanceProjectDetail />} />
         <Route path="stock" element={<StockList />} />
+        <Route path="stock/parts/:id" element={<StockFiche />} />
         <Route path="stock/movements" element={<StockMovements />} />
         <Route path="stock/inventories" element={<StockInventories />} />
         <Route path="stock/alerts" element={<StockAlerts />} />
@@ -131,6 +135,7 @@ export default function App() {
         <Route path="stock/exits" element={<StockExits />} />
         <Route path="stock/transfers" element={<StockTransfers />} />
         <Route path="stock/reorders" element={<StockReorders />} />
+        <Route path="stock/quality" element={<StockQuality />} />
         <Route path="suppliers" element={<SuppliersList />} />
         <Route path="suppliers/orders" element={<SuppliersOrders />} />
         <Route path="sites" element={<Sites />} />
@@ -146,6 +151,7 @@ export default function App() {
         <Route path="procedures" element={<ProceduresList />} />
         <Route path="settings" element={<Settings />} />
         <Route path="settings/roles" element={<SettingsRoles />} />
+        <Route path="settings/tenants" element={<SettingsTenants />} />
         <Route path="failure-codes" element={<FailureCodesList />} />
         <Route path="users" element={<Users />} />
         <Route path="technicians" element={<TechnicianList />} />

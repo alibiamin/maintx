@@ -5,7 +5,6 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const db = require('../database/db');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
@@ -30,7 +29,7 @@ function toProject(row) {
   };
 }
 
-function getWoCosts(woId) {
+function getWoCosts(db, woId) {
   let parts = 0, labor = 0;
   try {
     const r = db.prepare(`
@@ -62,6 +61,7 @@ function getWoCosts(woId) {
 }
 
 function list(req, res) {
+  const db = req.db;
   try {
     const { status, siteId } = req.query;
     let sql = `
@@ -83,6 +83,7 @@ function list(req, res) {
 }
 
 function getOne(req, res) {
+  const db = req.db;
   const id = req.params.id;
   const row = db.prepare(`
     SELECT p.*, s.name as site_name
@@ -112,7 +113,7 @@ function getOne(req, res) {
       plannedEnd: r.planned_end,
       equipmentName: r.equipment_name,
       equipmentCode: r.equipment_code,
-      ...getWoCosts(r.id),
+      ...getWoCosts(db, r.id),
     }));
   } catch (e) {
     if (!e.message?.includes('no such column')) throw e;
@@ -120,10 +121,37 @@ function getOne(req, res) {
   project.workOrders = workOrders;
   project.totalCost = workOrders.reduce((s, wo) => s + (wo.totalCost ?? 0), 0);
   project.budgetAmount = row.budget_amount ?? 0;
+
+  let maintenancePlans = [];
+  try {
+    const planRows = db.prepare(`
+      SELECT mp.id, mp.name, mp.description, mp.frequency_days, mp.next_due_date, mp.is_active,
+             e.name as equipment_name, e.code as equipment_code
+      FROM maintenance_plans mp
+      LEFT JOIN equipment e ON mp.equipment_id = e.id
+      WHERE mp.project_id = ?
+      ORDER BY mp.next_due_date ASC, mp.name
+    `).all(id);
+    maintenancePlans = planRows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description ?? null,
+      frequencyDays: r.frequency_days,
+      nextDueDate: r.next_due_date,
+      isActive: !!r.is_active,
+      equipmentName: r.equipment_name,
+      equipmentCode: r.equipment_code,
+    }));
+  } catch (e) {
+    if (!e.message?.includes('no such column')) { /* project_id non migré */ }
+  }
+  project.maintenancePlans = maintenancePlans;
+
   res.json(project);
 }
 
 function create(req, res) {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     const msg = errors.array().map((e) => e.msg).join(' ; ') || 'Données invalides';
@@ -160,6 +188,7 @@ function create(req, res) {
 }
 
 function update(req, res) {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const id = req.params.id;
@@ -187,6 +216,7 @@ function update(req, res) {
 }
 
 function remove(req, res) {
+  const db = req.db;
   const id = req.params.id;
   const existing = db.prepare('SELECT id FROM maintenance_projects WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Projet non trouvé' });
@@ -195,11 +225,17 @@ function remove(req, res) {
   } catch (e) {
     if (!e.message?.includes('no such column')) throw e;
   }
+  try {
+    db.prepare('UPDATE maintenance_plans SET project_id = NULL WHERE project_id = ?').run(id);
+  } catch (e) {
+    if (!e.message?.includes('no such column')) { /* project_id sur plans non migré */ }
+  }
   db.prepare('DELETE FROM maintenance_projects WHERE id = ?').run(id);
   res.status(204).send();
 }
 
 function linkWorkOrder(req, res) {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const projectId = parseInt(req.params.id, 10);
@@ -216,6 +252,7 @@ function linkWorkOrder(req, res) {
 }
 
 function unlinkWorkOrder(req, res) {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const projectId = parseInt(req.params.id, 10);
@@ -223,6 +260,35 @@ function unlinkWorkOrder(req, res) {
   const r = db.prepare('UPDATE work_orders SET project_id = NULL WHERE id = ? AND project_id = ?').run(workOrderId, projectId);
   if (r.changes === 0) return res.status(404).json({ error: 'OT non trouvé ou non rattaché à ce projet' });
   res.json({ unlinked: true, workOrderId, projectId });
+}
+
+function linkPlan(req, res) {
+  const db = req.db;
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const projectId = parseInt(req.params.id, 10);
+  const planId = parseInt(req.body.planId, 10);
+  if (!db.prepare('SELECT id FROM maintenance_projects WHERE id = ?').get(projectId)) return res.status(404).json({ error: 'Projet non trouvé' });
+  const plan = db.prepare('SELECT id FROM maintenance_plans WHERE id = ?').get(planId);
+  if (!plan) return res.status(404).json({ error: 'Plan de maintenance non trouvé' });
+  try {
+    db.prepare('UPDATE maintenance_plans SET project_id = ? WHERE id = ?').run(projectId, planId);
+  } catch (e) {
+    if (e.message?.includes('no such column')) return res.status(501).json({ error: 'Colonne project_id sur les plans absente. Exécutez les migrations.' });
+    throw e;
+  }
+  res.json({ linked: true, planId, projectId });
+}
+
+function unlinkPlan(req, res) {
+  const db = req.db;
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const projectId = parseInt(req.params.id, 10);
+  const planId = parseInt(req.body.planId, 10);
+  const r = db.prepare('UPDATE maintenance_plans SET project_id = NULL WHERE id = ? AND project_id = ?').run(planId, projectId);
+  if (r.changes === 0) return res.status(404).json({ error: 'Plan non trouvé ou non rattaché à ce projet' });
+  res.json({ unlinked: true, planId, projectId });
 }
 
 // ——— Routes (ordre : spécifique avant :id) ———
@@ -236,6 +302,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 ], create);
 
 router.get('/:id/work-orders', param('id').isInt(), (req, res) => {
+  const db = req.db;
   const id = req.params.id;
   if (!db.prepare('SELECT id FROM maintenance_projects WHERE id = ?').get(id)) return res.status(404).json({ error: 'Projet non trouvé' });
   let rows = [];
@@ -256,6 +323,16 @@ router.post('/:id/unlink-work-order', authorize(ROLES.ADMIN, ROLES.RESPONSABLE),
   param('id').isInt(),
   body('workOrderId').isInt(),
 ], unlinkWorkOrder);
+
+router.post('/:id/link-plan', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+  param('id').isInt(),
+  body('planId').isInt(),
+], linkPlan);
+
+router.post('/:id/unlink-plan', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+  param('id').isInt(),
+  body('planId').isInt(),
+], unlinkPlan);
 
 router.get('/:id', param('id').isInt(), getOne);
 

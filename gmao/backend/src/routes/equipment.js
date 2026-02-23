@@ -4,7 +4,6 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const db = require('../database/db');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
 const codification = require('../services/codification');
 const auditService = require('../services/auditService');
@@ -47,6 +46,7 @@ function formatEquipment(row) {
  * If page/limit provided: Response { data: [...], total: N }. Otherwise: array.
  */
 router.get('/', (req, res) => {
+  const db = req.db;
   const { categoryId, ligneId, status, search, page, limit } = req.query;
   const usePagination = page !== undefined && page !== '';
   const limitNum = usePagination ? Math.min(parseInt(limit, 10) || 20, 100) : 1e6;
@@ -86,6 +86,7 @@ router.get('/', (req, res) => {
  * (Si pas de table departements : Site → Lignes → Équipements)
  */
 router.get('/hierarchy-map', (req, res) => {
+  const db = req.db;
   const sites = db.prepare('SELECT id, code, name, address FROM sites ORDER BY code').all();
   let departements = [];
   try {
@@ -123,12 +124,33 @@ router.get('/hierarchy-map', (req, res) => {
     WHERE equipment_id IS NOT NULL AND status IN ('pending', 'in_progress')
     GROUP BY equipment_id, status, priority
   `).all();
+  let woList = [];
+  try {
+    woList = db.prepare(`
+      SELECT id, number, title, status, priority, equipment_id
+      FROM work_orders
+      WHERE equipment_id IS NOT NULL AND status IN ('pending', 'in_progress')
+      ORDER BY priority = 'critical' DESC, status = 'in_progress' DESC, id
+    `).all();
+  } catch (_) {}
   const woByEquip = {};
   woCounts.forEach(r => {
-    if (!woByEquip[r.equipment_id]) woByEquip[r.equipment_id] = { pending: 0, inProgress: 0, critical: 0 };
+    if (!woByEquip[r.equipment_id]) woByEquip[r.equipment_id] = { pending: 0, inProgress: 0, critical: 0, list: [] };
     woByEquip[r.equipment_id].pending += r.status === 'pending' ? r.cnt : 0;
     woByEquip[r.equipment_id].inProgress += r.status === 'in_progress' ? r.cnt : 0;
     if (r.priority === 'critical') woByEquip[r.equipment_id].critical += r.cnt;
+  });
+  woList.forEach(wo => {
+    if (!wo.equipment_id) return;
+    if (!woByEquip[wo.equipment_id]) woByEquip[wo.equipment_id] = { pending: 0, inProgress: 0, critical: 0, list: [] };
+    if (!woByEquip[wo.equipment_id].list) woByEquip[wo.equipment_id].list = [];
+    woByEquip[wo.equipment_id].list.push({
+      id: wo.id,
+      number: wo.number,
+      title: wo.title,
+      status: wo.status,
+      priority: wo.priority
+    });
   });
   const equipments = equipRows.map(r => ({
     id: r.id,
@@ -147,7 +169,8 @@ router.get('/hierarchy-map', (req, res) => {
     alertPending: woByEquip[r.id]?.pending || 0,
     alertInProgress: woByEquip[r.id]?.inProgress || 0,
     alertCritical: woByEquip[r.id]?.critical || 0,
-    hasAlert: (woByEquip[r.id]?.pending || 0) + (woByEquip[r.id]?.inProgress || 0) > 0
+    hasAlert: (woByEquip[r.id]?.pending || 0) + (woByEquip[r.id]?.inProgress || 0) > 0,
+    workOrdersInProgress: woByEquip[r.id]?.list || []
   }));
   const byLigne = {};
   lignes.forEach(l => { byLigne[l.id] = { ...l, equipments: [] }; });
@@ -202,6 +225,7 @@ router.get('/hierarchy-map', (req, res) => {
 });
 
 router.get('/tree', (req, res) => {
+  const db = req.db;
   const rows = db.prepare(`
     SELECT e.*, c.name as category_name, l.name as ligne_name
     FROM equipment e
@@ -225,8 +249,131 @@ router.get('/tree', (req, res) => {
 });
 
 router.get('/categories', (req, res) => {
-  const cats = db.prepare('SELECT * FROM equipment_categories ORDER BY name').all();
-  res.json(cats);
+  const db = req.db;
+  const rows = db.prepare(`
+    SELECT c.id, c.name, c.description, c.parent_id,
+           p.name as parent_name,
+           (SELECT COUNT(*) FROM equipment e WHERE e.category_id = c.id) as equipment_count
+    FROM equipment_categories c
+    LEFT JOIN equipment_categories p ON c.parent_id = p.id
+    ORDER BY (p.name IS NULL) DESC, p.name, c.name, c.id
+  `).all();
+  const byName = new Map();
+  for (const r of rows) {
+    const name = (r.name != null ? String(r.name).trim() : '') || null;
+    if (!name) continue;
+    const existing = byName.get(name);
+    const count = r.equipment_count ?? 0;
+    if (!existing) {
+      byName.set(name, {
+        id: r.id,
+        name: r.name,
+        description: r.description || null,
+        parentId: r.parent_id || null,
+        parentName: r.parent_name || null,
+        equipmentCount: count
+      });
+    } else {
+      existing.equipmentCount += count;
+    }
+  }
+  const list = [...byName.values()].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  res.json(list);
+});
+
+router.post('/categories', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+  body('name').notEmpty().trim(),
+  body('description').optional().trim(),
+  body('parentId').optional().custom((val) => val === null || val === undefined || val === '' || Number.isInteger(Number(val)))
+], (req, res) => {
+  const db = req.db;
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const name = (req.body.name != null && typeof req.body.name === 'string') ? req.body.name.trim() : '';
+  const description = req.body.description != null && req.body.description !== '' ? String(req.body.description).trim() : null;
+  const parentId = (req.body.parentId === '' || req.body.parentId === null || req.body.parentId === undefined) ? null : parseInt(req.body.parentId, 10);
+  if (!name) return res.status(400).json({ error: 'Le nom est requis' });
+  try {
+    const result = db.prepare(`
+      INSERT INTO equipment_categories (name, description, parent_id) VALUES (?, ?, ?)
+    `).run(name, description, parentId);
+    if (db._save) db._save();
+    const row = db.prepare(`
+      SELECT c.id, c.name, c.description, c.parent_id, p.name as parent_name,
+             (SELECT COUNT(*) FROM equipment e WHERE e.category_id = c.id) as equipment_count
+      FROM equipment_categories c
+      LEFT JOIN equipment_categories p ON c.parent_id = p.id
+      WHERE c.id = ?
+    `).get(result.lastInsertRowid);
+    res.status(201).json({
+      id: row.id,
+      name: row.name,
+      description: row.description || null,
+      parentId: row.parent_id || null,
+      parentName: row.parent_name || null,
+      equipmentCount: row.equipment_count ?? 0
+    });
+  } catch (e) {
+    if (e.message && e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Une catégorie avec ce nom existe déjà' });
+    throw e;
+  }
+});
+
+router.put('/categories/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+  param('id').isInt(),
+  body('name').notEmpty().trim(),
+  body('description').optional().trim(),
+  body('parentId').optional().custom((val) => val === null || val === undefined || val === '' || Number.isInteger(Number(val)))
+], (req, res) => {
+  const db = req.db;
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const id = parseInt(req.params.id);
+  const name = (req.body.name != null && typeof req.body.name === 'string') ? req.body.name.trim() : '';
+  const description = req.body.description != null && req.body.description !== '' ? String(req.body.description).trim() : null;
+  let parentId = req.body.parentId;
+  const newParentId = (parentId === '' || parentId === null || parentId === undefined) ? null : parseInt(parentId, 10);
+  if (name === '') return res.status(400).json({ error: 'Le nom est requis' });
+  const existing = db.prepare('SELECT id FROM equipment_categories WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'Catégorie non trouvée' });
+  if (newParentId !== null && newParentId === id) return res.status(400).json({ error: 'Une catégorie ne peut pas être sa propre parente' });
+  try {
+    db.prepare(`
+      UPDATE equipment_categories SET name = ?, description = ?, parent_id = ? WHERE id = ?
+    `).run(name, description, newParentId, id);
+    if (db._save) db._save();
+    const row = db.prepare(`
+      SELECT c.id, c.name, c.description, c.parent_id, p.name as parent_name,
+             (SELECT COUNT(*) FROM equipment e WHERE e.category_id = c.id) as equipment_count
+      FROM equipment_categories c
+      LEFT JOIN equipment_categories p ON c.parent_id = p.id
+      WHERE c.id = ?
+    `).get(id);
+    res.json({
+      id: row.id,
+      name: row.name,
+      description: row.description || null,
+      parentId: row.parent_id || null,
+      parentName: row.parent_name || null,
+      equipmentCount: row.equipment_count ?? 0
+    });
+  } catch (e) {
+    if (e.message && e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Une catégorie avec ce nom existe déjà' });
+    throw e;
+  }
+});
+
+router.delete('/categories/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+  const db = req.db;
+  const id = parseInt(req.params.id);
+  const cat = db.prepare('SELECT id, name FROM equipment_categories WHERE id = ?').get(id);
+  if (!cat) return res.status(404).json({ error: 'Catégorie non trouvée' });
+  const used = db.prepare('SELECT COUNT(*) as c FROM equipment WHERE category_id = ?').get(id);
+  if (used.c > 0) return res.status(400).json({ error: 'Impossible de supprimer : des équipements utilisent cette catégorie. Réaffectez-les ou supprimez-les.' });
+  const childCount = db.prepare('SELECT COUNT(*) as c FROM equipment_categories WHERE parent_id = ?').get(id);
+  if (childCount.c > 0) return res.status(400).json({ error: 'Impossible de supprimer : des sous-catégories existent. Supprimez ou réaffectez-les d\'abord.' });
+  db.prepare('DELETE FROM equipment_categories WHERE id = ?').run(id);
+  res.status(204).send();
 });
 
 /**
@@ -236,12 +383,13 @@ router.post('/from-model', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('modelId').isInt(),
   body('name').notEmpty().trim()
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const model = db.prepare('SELECT * FROM equipment_models WHERE id = ?').get(req.body.modelId);
   if (!model) return res.status(404).json({ error: 'Modèle non trouvé' });
   const { code: codeProvided, name, ligneId, parentId, serialNumber, installationDate, location } = req.body;
-  const code = codification.generateCodeIfNeeded('machine', codeProvided);
+  const code = codification.generateCodeIfNeeded(db, 'machine', codeProvided);
   if (!code || !code.trim()) return res.status(400).json({ error: 'Code requis ou configurer la codification dans Paramétrage' });
   try {
     const result = db.prepare(`
@@ -265,7 +413,7 @@ router.post('/from-model', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
     );
     const newId = result.lastInsertRowid;
     const newRow = db.prepare('SELECT e.*, c.name as category_name, l.name as ligne_name FROM equipment e LEFT JOIN equipment_categories c ON e.category_id = c.id LEFT JOIN lignes l ON e.ligne_id = l.id WHERE e.id = ?').get(newId);
-    auditService.log('equipment', newId, 'created', { userId: req.user?.id, userEmail: req.user?.email, summary: newRow?.code || newRow?.name });
+    auditService.log(db, 'equipment', newId, 'created', { userId: req.user?.id, userEmail: req.user?.email, summary: newRow?.code || newRow?.name });
     res.status(201).json(formatEquipment(newRow));
   } catch (e) {
     if (e.message && e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Code équipement déjà existant' });
@@ -282,6 +430,7 @@ router.post('/:id/clone', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id')
   body('copyBom').optional().isBoolean(),
   body('copyPlans').optional().isBoolean()
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const sourceId = req.params.id;
@@ -339,7 +488,7 @@ router.post('/:id/clone', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id')
       }
     }
     const newRow = db.prepare('SELECT e.*, c.name as category_name, l.name as ligne_name FROM equipment e LEFT JOIN equipment_categories c ON e.category_id = c.id LEFT JOIN lignes l ON e.ligne_id = l.id WHERE e.id = ?').get(newId);
-    auditService.log('equipment', newId, 'created', { userId: req.user?.id, userEmail: req.user?.email, summary: newRow?.code || newRow?.name });
+    auditService.log(db, 'equipment', newId, 'created', { userId: req.user?.id, userEmail: req.user?.email, summary: newRow?.code || newRow?.name });
     res.status(201).json(formatEquipment(newRow));
   } catch (e) {
     if (e.message && e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Code équipement déjà existant' });
@@ -348,18 +497,27 @@ router.post('/:id/clone', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id')
 });
 
 router.get('/:id/history', param('id').isInt(), (req, res) => {
-  const workOrders = db.prepare(`
-    SELECT wo.*, t.name as type_name, u.first_name || ' ' || u.last_name as assigned_name
-    FROM work_orders wo
-    LEFT JOIN work_order_types t ON wo.type_id = t.id
-    LEFT JOIN users u ON wo.assigned_to = u.id
-    WHERE wo.equipment_id = ?
-    ORDER BY wo.created_at DESC
-  `).all(req.params.id);
-  res.json(workOrders);
+  const db = req.db;
+  try {
+    const workOrders = db.prepare(`
+      SELECT wo.id, wo.number, wo.title, wo.description, wo.status, wo.created_at,
+             t.name as type_name, u.first_name || ' ' || u.last_name as assigned_name,
+             (SELECT COALESCE(SUM(i.hours_spent), 0) FROM interventions i WHERE i.work_order_id = wo.id) as total_hours
+      FROM work_orders wo
+      LEFT JOIN work_order_types t ON wo.type_id = t.id
+      LEFT JOIN users u ON wo.assigned_to = u.id
+      WHERE wo.equipment_id = ?
+      ORDER BY wo.created_at DESC
+    `).all(req.params.id);
+    res.json(workOrders);
+  } catch (err) {
+    if (err.message && err.message.includes('no such table')) return res.json([]);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.get('/:id/documents', (req, res) => {
+  const db = req.db;
   const id = req.params.id;
   if (!/^\d+$/.test(id)) return res.status(400).json({ error: 'ID équipement invalide' });
   try {
@@ -377,6 +535,7 @@ router.get('/:id/documents', (req, res) => {
 });
 
 router.get('/:id/warranties', (req, res) => {
+  const db = req.db;
   const id = req.params.id;
   if (!/^\d+$/.test(id)) return res.status(400).json({ error: 'ID équipement invalide' });
   try {
@@ -398,6 +557,7 @@ router.get('/:id/warranties', (req, res) => {
  * Compteurs (heures, cycles, km) pour maintenance conditionnelle
  */
 router.get('/:id/counters', param('id').isInt(), (req, res) => {
+  const db = req.db;
   const id = req.params.id;
   const eq = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
   if (!eq) return res.status(404).json({ error: 'Équipement non trouvé' });
@@ -422,6 +582,7 @@ router.put('/:id/counters', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECH
     return true;
   })
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const id = req.params.id;
@@ -450,6 +611,7 @@ router.put('/:id/counters', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECH
  * Seuils IoT / prévisionnel pour un équipement
  */
 router.get('/:id/thresholds', param('id').isInt(), (req, res) => {
+  const db = req.db;
   const id = req.params.id;
   const eq = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
   if (!eq) return res.status(404).json({ error: 'Équipement non trouvé' });
@@ -484,6 +646,7 @@ router.post('/:id/thresholds', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param(
   }),
   body('operator').optional().isIn(['>', '<', '>=', '<=', '=', '!='])
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const id = req.params.id;
@@ -519,6 +682,7 @@ router.post('/:id/thresholds', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param(
  * DELETE /api/equipment/:id/thresholds/:tid
  */
 router.delete('/:id/thresholds/:tid', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), param('tid').isInt(), (req, res) => {
+  const db = req.db;
   const result = db.prepare('DELETE FROM equipment_thresholds WHERE id = ? AND equipment_id = ?').run(req.params.tid, req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Seuil non trouvé' });
   res.status(204).send();
@@ -528,6 +692,7 @@ router.delete('/:id/thresholds/:tid', authorize(ROLES.ADMIN, ROLES.RESPONSABLE),
  * GET /api/equipment/:id/bom — Nomenclature (liste des pièces liées à l'équipement)
  */
 router.get('/:id/bom', param('id').isInt(), (req, res) => {
+  const db = req.db;
   const equipmentId = req.params.id;
   const exists = db.prepare('SELECT id FROM equipment WHERE id = ?').get(equipmentId);
   if (!exists) return res.status(404).json({ error: 'Équipement non trouvé' });
@@ -560,6 +725,7 @@ router.post('/:id/bom', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').i
   body('sparePartId').isInt(),
   body('quantity').optional().isInt({ min: 1 })
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const equipmentId = req.params.id;
@@ -591,12 +757,14 @@ router.post('/:id/bom', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').i
  * DELETE /api/equipment/:id/bom/:sparePartId — Retirer une pièce de la nomenclature
  */
 router.delete('/:id/bom/:sparePartId', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), param('sparePartId').isInt(), (req, res) => {
+  const db = req.db;
   const result = db.prepare('DELETE FROM equipment_spare_parts WHERE equipment_id = ? AND spare_part_id = ?').run(req.params.id, req.params.sparePartId);
   if (result.changes === 0) return res.status(404).json({ error: 'Ligne de nomenclature non trouvée' });
   res.status(204).send();
 });
 
 router.get('/:id', param('id').isInt(), (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const row = db.prepare(`
@@ -613,10 +781,11 @@ router.get('/:id', param('id').isInt(), (req, res) => {
 router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').notEmpty().trim()
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const { code: codeProvided, name, description, categoryId, parentId, serialNumber, manufacturer, model, installationDate, location, technicalSpecs, status } = req.body;
-  const code = codification.generateCodeIfNeeded('machine', codeProvided);
+  const code = codification.generateCodeIfNeeded(db, 'machine', codeProvided);
   if (!code || !code.trim()) return res.status(400).json({ error: 'Code requis ou configurer la codification dans Paramétrage' });
   const departmentId = req.body.departmentId != null ? req.body.departmentId : null;
   const equipmentType = req.body.equipmentType || 'machine';
@@ -635,7 +804,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
       equipmentType
     );
     const newRow = db.prepare('SELECT e.*, c.name as category_name, l.name as ligne_name FROM equipment e LEFT JOIN equipment_categories c ON e.category_id = c.id LEFT JOIN lignes l ON e.ligne_id = l.id WHERE e.id = ?').get(result.lastInsertRowid);
-    auditService.log('equipment', result.lastInsertRowid, 'created', { userId: req.user?.id, userEmail: req.user?.email, summary: newRow?.code || newRow?.name });
+    auditService.log(db, 'equipment', result.lastInsertRowid, 'created', { userId: req.user?.id, userEmail: req.user?.email, summary: newRow?.code || newRow?.name });
     res.status(201).json(formatEquipment(newRow));
   } catch (e) {
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Code equipement deja existant' });
@@ -644,6 +813,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 });
 
 router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+  const db = req.db;
   const id = req.params.id;
   const existing = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Equipement non trouve' });
@@ -668,11 +838,12 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(
   values.push(id);
   db.prepare('UPDATE equipment SET ' + updates.join(', ') + ' WHERE id = ?').run(...values);
   const row = db.prepare('SELECT e.*, c.name as category_name, l.name as ligne_name FROM equipment e LEFT JOIN equipment_categories c ON e.category_id = c.id LEFT JOIN lignes l ON e.ligne_id = l.id WHERE e.id = ?').get(id);
-  auditService.log('equipment', id, 'updated', { userId: req.user?.id, userEmail: req.user?.email, summary: row?.code || row?.name });
+  auditService.log(db, 'equipment', id, 'updated', { userId: req.user?.id, userEmail: req.user?.email, summary: row?.code || row?.name });
   res.json(formatEquipment(row));
 });
 
 router.delete('/:id', authorize(ROLES.ADMIN), param('id').isInt(), (req, res) => {
+  const db = req.db;
   const id = req.params.id;
   const hasRefs = db.prepare('SELECT 1 FROM work_orders WHERE equipment_id = ? LIMIT 1').get(id);
   if (hasRefs) return res.status(400).json({ error: 'Impossible de supprimer : équipement référencé par des ordres de travail' });
@@ -683,7 +854,7 @@ router.delete('/:id', authorize(ROLES.ADMIN), param('id').isInt(), (req, res) =>
     const eq = db.prepare('SELECT code, name FROM equipment WHERE id = ?').get(id);
     const result = db.prepare('DELETE FROM equipment WHERE id = ?').run(id);
     if (result.changes === 0) return res.status(404).json({ error: 'Équipement non trouvé' });
-    auditService.log('equipment', id, 'deleted', { userId: req.user?.id, userEmail: req.user?.email, summary: eq ? `${eq.code} ${eq.name}` : null });
+    auditService.log(db, 'equipment', id, 'deleted', { userId: req.user?.id, userEmail: req.user?.email, summary: eq ? `${eq.code} ${eq.name}` : null });
     res.status(204).send();
   } catch (e) {
     if (e.message && e.message.includes('FOREIGN KEY')) {

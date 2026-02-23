@@ -1,5 +1,6 @@
 /**
  * Middleware d'authentification JWT et gestion des rôles
+ * Multi-tenant : attache req.db (admin ou base client) selon tenantId du JWT.
  */
 
 const jwt = require('jsonwebtoken');
@@ -8,7 +9,7 @@ const db = require('../database/db');
 const JWT_SECRET = process.env.JWT_SECRET || 'xmaint-jwt-secret-change-in-production';
 
 /**
- * Vérifie le token JWT et attache l'utilisateur à req.user
+ * Vérifie le token JWT, détermine la base (admin vs client) et attache req.user et req.db
  */
 function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -18,16 +19,58 @@ function authenticate(req, res, next) {
   const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = db.prepare(`
-      SELECT u.id, u.email, u.first_name, u.last_name, u.role_id, u.is_active, r.name as role_name
-      FROM users u
-      JOIN roles r ON u.role_id = r.id
-      WHERE u.id = ? AND u.is_active = 1
-    `).get(decoded.userId);
+    const mainDb = db.getAdminDb();
+    let user;
+    try {
+      user = mainDb.prepare(`
+        SELECT u.id, u.email, u.first_name, u.last_name, u.role_id, u.is_active, u.tenant_id, r.name as role_name
+        FROM users u
+        JOIN roles r ON u.role_id = r.id
+        WHERE u.id = ? AND u.is_active = 1
+      `).get(decoded.userId);
+    } catch (e) {
+      if (e.message && e.message.includes('no such column')) {
+        user = mainDb.prepare(`
+          SELECT u.id, u.email, u.first_name, u.last_name, u.role_id, u.is_active, r.name as role_name
+          FROM users u
+          JOIN roles r ON u.role_id = r.id
+          WHERE u.id = ? AND u.is_active = 1
+        `).get(decoded.userId);
+        if (user) user.tenant_id = null;
+      } else throw e;
+    }
     if (!user) {
       return res.status(401).json({ error: 'Utilisateur non trouvé ou inactif' });
     }
+    const tenantId = user.tenant_id ?? null;
+    if (decoded.tenantId !== undefined && decoded.tenantId !== tenantId) {
+      return res.status(403).json({ error: 'Token invalide (tenant)' });
+    }
+    if (tenantId != null) {
+      const tenant = mainDb.prepare('SELECT license_start, license_end FROM tenants WHERE id = ?').get(tenantId);
+      if (tenant) {
+        const today = new Date().toISOString().slice(0, 10);
+        if (tenant.license_end && String(tenant.license_end).trim() && today > tenant.license_end) {
+          return res.status(403).json({ error: 'Licence expirée. Contactez l\'administrateur pour une nouvelle activation.', code: 'LICENSE_EXPIRED' });
+        }
+        if (tenant.license_start && String(tenant.license_start).trim() && today < tenant.license_start) {
+          return res.status(403).json({ error: 'Licence pas encore active.', code: 'LICENSE_NOT_ACTIVE' });
+        }
+      }
+    }
     req.user = user;
+    try {
+      req.db = db.getDbForRequest(tenantId);
+    } catch (err) {
+      if (err.message && (err.message.includes('Tenant inconnu') || err.message.includes('inconnu'))) {
+        return res.status(403).json({
+          error: 'Client supprimé ou inaccessible. Reconnectez-vous ou contactez l\'administrateur.',
+          code: 'TENANT_INVALID'
+        });
+      }
+      throw err;
+    }
+    req.tenantId = tenantId;
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Token expiré ou invalide' });
@@ -49,9 +92,6 @@ function authorize(...allowedRoles) {
   };
 }
 
-/**
- * Rôles disponibles
- */
 const ROLES = {
   ADMIN: 'administrateur',
   RESPONSABLE: 'responsable_maintenance',

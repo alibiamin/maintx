@@ -4,15 +4,13 @@
 
 const express = require('express');
 const router = express.Router();
-const db = require('../database/db');
 const { authenticate } = require('../middleware/auth');
 
 router.use(authenticate);
 
-// GET /api/checklists
 router.get('/', (req, res) => {
+  const db = req.db;
   try {
-    // Vérifier si la table existe, sinon retourner un tableau vide
     try {
       db.prepare('SELECT 1 FROM maintenance_checklists LIMIT 1').get();
     } catch (err) {
@@ -46,7 +44,13 @@ router.get('/', (req, res) => {
     const rows = db.prepare(query).all(...params);
     const byId = new Map();
     rows.forEach((r) => { if (!byId.has(r.id)) byId.set(r.id, r); });
-    const checklists = [...byId.values()];
+    // Une seule entrée par (nom + plan) pour éviter doublons d'affichage
+    const byKey = new Map();
+    [...byId.values()].forEach((r) => {
+      const key = `${r.name || ''}|${r.maintenance_plan_id ?? ''}`;
+      if (!byKey.has(key)) byKey.set(key, r);
+    });
+    const checklists = [...byKey.values()];
     // Charger les items pour chaque checklist
     const checklistsWithItems = checklists.map(checklist => {
       const items = db.prepare('SELECT * FROM checklist_items WHERE checklist_id = ? ORDER BY order_index').all(checklist.id);
@@ -59,8 +63,8 @@ router.get('/', (req, res) => {
   }
 });
 
-// GET /api/checklists/:id
 router.get('/:id', (req, res) => {
+  const db = req.db;
   try {
     const checklist = db.prepare('SELECT * FROM maintenance_checklists WHERE id = ?').get(req.params.id);
     if (!checklist) {
@@ -74,11 +78,10 @@ router.get('/:id', (req, res) => {
   }
 });
 
-// POST /api/checklists
 router.post('/', (req, res) => {
+  const db = req.db;
   try {
     const { maintenance_plan_id, name, description, is_template, items } = req.body;
-
     const result = db.prepare(`
       INSERT INTO maintenance_checklists (maintenance_plan_id, name, description, is_template)
       VALUES (?, ?, ?, ?)
@@ -119,11 +122,10 @@ router.post('/', (req, res) => {
   }
 });
 
-// PUT /api/checklists/:id
 router.put('/:id', (req, res) => {
+  const db = req.db;
   try {
     const { name, description, maintenance_plan_id, items } = req.body;
-
     const updates = ['name = ?', 'description = ?', 'updated_at = CURRENT_TIMESTAMP'];
     const values = [name, description || null];
     if (maintenance_plan_id !== undefined) {
@@ -169,8 +171,8 @@ router.put('/:id', (req, res) => {
   }
 });
 
-// POST /api/checklists/:id/execute
 router.post('/:id/execute', (req, res) => {
+  const db = req.db;
   try {
     const { work_order_id, results, notes } = req.body;
     const userId = req.user?.id;
@@ -225,8 +227,8 @@ router.post('/:id/execute', (req, res) => {
   }
 });
 
-// GET /api/checklists/:id/executions
 router.get('/:id/executions', (req, res) => {
+  const db = req.db;
   try {
     const executions = db.prepare(`
       SELECT ce.*, u.first_name || ' ' || u.last_name as executed_by_name, wo.number as work_order_number
@@ -253,8 +255,8 @@ router.get('/:id/executions', (req, res) => {
   }
 });
 
-// DELETE /api/checklists/:id
 router.delete('/:id', (req, res) => {
+  const db = req.db;
   try {
     db.prepare('DELETE FROM checklist_items WHERE checklist_id = ?').run(req.params.id);
     db.prepare('DELETE FROM maintenance_checklists WHERE id = ?').run(req.params.id);

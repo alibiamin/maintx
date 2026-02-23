@@ -1,9 +1,7 @@
 /**
  * Génération des codes automatiques (préfixe + numéro sur N chiffres)
- * Utilisé pour site, département, ligne, etc.
+ * Multi-tenant : db (req.db) doit être passé en premier argument.
  */
-const db = require('../database/db');
-
 const ENTITY_CONFIG_KEYS = {
   site: 'codification_site',
   departement: 'codification_departement',
@@ -37,14 +35,14 @@ const DEFAULT_CONFIG = {
   code_defaut: { prefix: 'CD', length: 3 }
 };
 
-function ensureAppSettingsTable() {
+function ensureAppSettingsTable(db) {
   try {
     db.exec('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)');
   } catch (e) {}
 }
 
-function getConfig(entity) {
-  ensureAppSettingsTable();
+function getConfig(db, entity) {
+  ensureAppSettingsTable(db);
   const key = ENTITY_CONFIG_KEYS[entity];
   if (!key) return null;
   try {
@@ -57,42 +55,43 @@ function getConfig(entity) {
   return DEFAULT_CONFIG[entity] ? { ...DEFAULT_CONFIG[entity] } : null;
 }
 
-function getAllConfig() {
-  ensureAppSettingsTable();
+function getAllConfig(db) {
+  ensureAppSettingsTable(db);
   const result = {};
   for (const entity of Object.keys(ENTITY_CONFIG_KEYS)) {
-    result[entity] = getConfig(entity);
+    result[entity] = getConfig(db, entity);
   }
   return result;
 }
 
-function setConfig(entity, { prefix = '', length = 4 }) {
-  ensureAppSettingsTable();
+function setConfig(db, entity, { prefix = '', length = 4 }) {
+  ensureAppSettingsTable(db);
   const key = ENTITY_CONFIG_KEYS[entity];
   if (!key) return null;
   const value = JSON.stringify({ prefix: String(prefix), length: Math.max(1, parseInt(length, 10) || 4) });
   db.prepare('INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)').run(key, value);
-  return getConfig(entity);
+  return getConfig(db, entity);
 }
 
-function setAllConfig(configByEntity) {
+function setAllConfig(db, configByEntity) {
   if (configByEntity && typeof configByEntity === 'object') {
     for (const [entity, c] of Object.entries(configByEntity)) {
       if (ENTITY_CONFIG_KEYS[entity] && c && (c.prefix !== undefined || c.length !== undefined)) {
-        setConfig(entity, { prefix: c.prefix ?? getConfig(entity)?.prefix ?? '', length: c.length ?? getConfig(entity)?.length ?? 4 });
+        setConfig(db, entity, { prefix: c.prefix ?? getConfig(db, entity)?.prefix ?? '', length: c.length ?? getConfig(db, entity)?.length ?? 4 });
       }
     }
   }
-  return getAllConfig();
+  return getAllConfig(db);
 }
 
 /**
  * Calcule le prochain code pour une entité.
+ * @param {object} db - base (req.db)
  * @param {string} entity - site | departement | ligne | machine | piece | outil | fournisseur | code_defaut
  * @param {number} [siteId] - requis pour departement et ligne (séquence par site)
  */
-function getNextCode(entity, siteId) {
-  const config = getConfig(entity);
+function getNextCode(db, entity, siteId) {
+  const config = getConfig(db, entity);
   if (!config || config.prefix === undefined) return null;
 
   const meta = ENTITY_TABLE[entity];
@@ -138,9 +137,9 @@ function getNextCode(entity, siteId) {
  * Génère et retourne le prochain code si la codification est configurée pour cette entité.
  * À appeler au moment de l'insertion (code non fourni par le client).
  */
-function generateCodeIfNeeded(entity, providedCode, siteId) {
+function generateCodeIfNeeded(db, entity, providedCode, siteId) {
   if (providedCode && String(providedCode).trim() !== '') return String(providedCode).trim();
-  return getNextCode(entity, siteId) || null;
+  return getNextCode(db, entity, siteId) || null;
 }
 
 module.exports = {

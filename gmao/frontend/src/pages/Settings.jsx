@@ -18,7 +18,12 @@ import {
   FormControlLabel,
   Checkbox
 } from '@mui/material';
-import { Save, Backup, Email, Sms } from '@mui/icons-material';
+import { Save, Backup, Email, Sms, Add, Edit, Delete } from '@mui/icons-material';
+import IconButton from '@mui/material/IconButton';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
 import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -53,14 +58,20 @@ export default function Settings() {
   const [auditLog, setAuditLog] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditFilters, setAuditFilters] = useState({ entityType: '', startDate: '', endDate: '' });
+  const [units, setUnits] = useState([]);
+  const [unitsLoading, setUnitsLoading] = useState(false);
+  const [unitDialog, setUnitDialog] = useState({ open: false, id: null, name: '', symbol: '' });
+  const [unitSaving, setUnitSaving] = useState(false);
   const { user } = useAuth();
   const canEditCodification = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEditUnits = ['administrateur', 'responsable_maintenance'].includes(user?.role);
   const isAdmin = user?.role === 'administrateur';
   const canViewAudit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
   const snackbar = useSnackbar();
   const [searchParams, setSearchParams] = useSearchParams();
-  const alertesTabIndex = isAdmin ? 4 : 3;
+  const alertesTabIndex = isAdmin ? 5 : 4;
   const auditTabIndex = alertesTabIndex + 1;
+  const unitsTabIndex = 3;
 
   useEffect(() => {
     if (searchParams.get('tab') === 'alertes') setTab(alertesTabIndex);
@@ -97,6 +108,45 @@ export default function Settings() {
       .catch(() => {})
       .finally(() => setNotifLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (tab !== unitsTabIndex) return;
+    setUnitsLoading(true);
+    api.get('/settings/units')
+      .then((r) => setUnits(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setUnits([]))
+      .finally(() => setUnitsLoading(false));
+  }, [tab, unitsTabIndex]);
+
+  const openUnitDialog = (u = null) => {
+    setUnitDialog({ open: true, id: u?.id ?? null, name: u?.name ?? '', symbol: u?.symbol ?? '' });
+  };
+  const closeUnitDialog = () => setUnitDialog({ open: false, id: null, name: '', symbol: '' });
+  const handleSaveUnit = () => {
+    const { id, name, symbol } = unitDialog;
+    if (!name || !name.trim()) { snackbar.showError('Nom requis'); return; }
+    setUnitSaving(true);
+    const promise = id
+      ? api.put(`/settings/units/${id}`, { name: name.trim(), symbol: (symbol || '').trim() })
+      : api.post('/settings/units', { name: name.trim(), symbol: (symbol || '').trim() });
+    promise
+      .then(() => {
+        snackbar.showSuccess(id ? 'Unité modifiée' : 'Unité ajoutée');
+        closeUnitDialog();
+        api.get('/settings/units').then((r) => setUnits(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+      })
+      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'))
+      .finally(() => setUnitSaving(false));
+  };
+  const handleDeleteUnit = (id) => {
+    if (!window.confirm('Supprimer cette unité ? Les pièces qui l\'utilisent empêcheront la suppression.')) return;
+    api.delete(`/settings/units/${id}`)
+      .then(() => {
+        snackbar.showSuccess('Unité supprimée');
+        setUnits((prev) => prev.filter((u) => u.id !== id));
+      })
+      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'));
+  };
 
   const handleSaveCurrency = () => {
     setCurrencySaving(true);
@@ -180,6 +230,7 @@ export default function Settings() {
         <Tab label="Général" />
         <Tab label="Codes défaut" />
         <Tab label="Codification" />
+        <Tab label="Unités" />
         {isAdmin && <Tab label="Sauvegarde" />}
         <Tab label="Alertes email / SMS" />
         {canViewAudit && <Tab label="Journal d'audit" />}
@@ -305,7 +356,66 @@ export default function Settings() {
         </Card>
       )}
 
-      {isAdmin && tab === 3 && (
+      {tab === unitsTabIndex && (
+        <Card sx={{ borderRadius: 2 }}>
+          <CardContent>
+            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+              Unités (stock)
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Référentiel des unités utilisées lors de la création de pièces (unité, pièce, mètre, kg, etc.).
+            </Typography>
+            {unitsLoading ? (
+              <Box display="flex" justifyContent="center" p={2}><CircularProgress /></Box>
+            ) : (
+              <>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Nom</TableCell>
+                      <TableCell>Symbole</TableCell>
+                      {canEditUnits && <TableCell width={120}>Actions</TableCell>}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {units.map((u) => (
+                      <TableRow key={u.id}>
+                        <TableCell>{u.name}</TableCell>
+                        <TableCell>{u.symbol || '—'}</TableCell>
+                        {canEditUnits && (
+                          <TableCell>
+                            <IconButton size="small" onClick={() => openUnitDialog(u)} title="Modifier"><Edit fontSize="small" /></IconButton>
+                            <IconButton size="small" onClick={() => handleDeleteUnit(u.id)} title="Supprimer" color="error"><Delete fontSize="small" /></IconButton>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {canEditUnits && (
+                  <Button startIcon={<Add />} variant="outlined" sx={{ mt: 2 }} onClick={() => openUnitDialog()}>
+                    Ajouter une unité
+                  </Button>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={unitDialog.open} onClose={closeUnitDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>{unitDialog.id ? 'Modifier l\'unité' : 'Nouvelle unité'}</DialogTitle>
+        <DialogContent>
+          <TextField autoFocus fullWidth label="Nom" value={unitDialog.name} onChange={(e) => setUnitDialog((d) => ({ ...d, name: e.target.value }))} sx={{ mt: 1 }} />
+          <TextField fullWidth label="Symbole" value={unitDialog.symbol} onChange={(e) => setUnitDialog((d) => ({ ...d, symbol: e.target.value }))} placeholder="ex: pce, m, kg" sx={{ mt: 2 }} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeUnitDialog}>Annuler</Button>
+          <Button variant="contained" onClick={handleSaveUnit} disabled={unitSaving}>{unitSaving ? 'Enregistrement…' : 'Enregistrer'}</Button>
+        </DialogActions>
+      </Dialog>
+
+      {isAdmin && tab === 4 && (
         <Card sx={{ borderRadius: 2 }}>
           <CardContent>
             <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>

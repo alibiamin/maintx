@@ -17,7 +17,7 @@ import {
   Tabs,
   Tab
 } from '@mui/material';
-import { Save } from '@mui/icons-material';
+import { Save, Image } from '@mui/icons-material';
 import api from '../services/api';
 import { useCurrency } from '../context/CurrencyContext';
 import { useTranslation } from 'react-i18next';
@@ -76,7 +76,7 @@ const getDefaultForm = (type) => {
     section: { code: '', name: '', parentId: '', categoryId: '', criticite: 'B', status: 'operational' },
     composant: { code: '', name: '', parentId: '', categoryId: '', criticite: 'B', status: 'operational' },
     sous_composant: { code: '', name: '', parentId: '', categoryId: '', criticite: 'B', status: 'operational' },
-    piece: { code: '', name: '', description: '', unit: 'unit', unitPrice: '0', minStock: '0', supplierId: '' },
+    piece: { code: '', name: '', description: '', unitId: '', stockCategory: '', family: '', subFamily1: '', subFamily2: '', subFamily3: '', subFamily4: '', subFamily5: '', unitPrice: '0', minStock: '0', supplierId: '', location: '', manufacturerReference: '', imageData: null },
     entree_stock: { sparePartId: '', quantity: '', reference: '', notes: '' },
     sortie_stock: { sparePartId: '', quantity: '', workOrderId: '', notes: '' },
     transfert_stock: { sparePartId: '', quantity: '', reference: '', notes: '' },
@@ -87,7 +87,7 @@ const getDefaultForm = (type) => {
     contrat: { contract_number: '', name: '', supplier_id: '', equipment_id: '', contract_type: 'preventive', start_date: '', end_date: '', annual_cost: '' },
     plan_maintenance: { equipmentId: '', name: '', description: '', frequencyDays: '30', procedureId: '' },
     checklist: { name: '', description: '', maintenance_plan_id: '', is_template: false, items: [{ item_text: '', item_type: 'check' }] },
-    ordre_travail: { title: '', description: '', equipmentId: '', typeId: '', priority: 'medium' },
+    ordre_travail: { title: '', description: '', equipmentId: '', typeId: '', priority: 'medium', maintenancePlanId: '', procedureIds: [], assignedUserIds: [], checklistIds: [], reservations: [{ sparePartId: '', quantity: 1, notes: '' }], toolIds: [] },
     utilisateur: { email: '', password: '', firstName: '', lastName: '', roleId: '', phone: '', address: '', city: '', postalCode: '', employeeNumber: '', jobTitle: '', department: '', hireDate: '', contractType: '' },
     code_defaut: { code: '', name: '', description: '', category: '' }
   };
@@ -107,12 +107,14 @@ export default function Creation() {
   const [categories, setCategories] = useState([]);
   const [equipment, setEquipment] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [units, setUnits] = useState([]);
   const [parts, setParts] = useState([]);
   const [tools, setTools] = useState([]);
   const [users, setUsers] = useState([]);
   const [workOrderTypes, setWorkOrderTypes] = useState([]);
   const [maintenancePlans, setMaintenancePlans] = useState([]);
   const [procedures, setProcedures] = useState([]);
+  const [checklists, setChecklists] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -160,25 +162,38 @@ export default function Creation() {
       api.get('/equipment/categories').catch(() => ({ data: [] })),
       api.get('/equipment').catch(() => ({ data: [] })),
       api.get('/suppliers').catch(() => ({ data: [] })),
+      api.get('/settings/units').catch(() => ({ data: [] })),
       api.get('/stock/parts').catch(() => ({ data: [] })),
       api.get('/tools').catch(() => ({ data: [] })),
       api.get('/users').catch(() => ({ data: [] })),
       api.get('/failure-codes').catch(() => ({ data: [] }))
-    ]).then(([s, l, c, e, sup, p, t, u]) => {
-      setSites(s.data || []);
-      setLignes(l.data || []);
-      setCategories(c.data || []);
-      setEquipment(e.data || []);
-      setSuppliers(sup.data || []);
-      setParts(p.data || []);
-      setTools(t.data || []);
-      setUsers(u.data || []);
+    ]).then(([s, l, c, e, sup, unitsRes, p, t, u]) => {
+      const dedupeById = (arr) => {
+        if (!Array.isArray(arr)) return [];
+        const seen = new Set();
+        return arr.filter((x) => {
+          if (!x || x.id == null) return true;
+          if (seen.has(x.id)) return false;
+          seen.add(x.id);
+          return true;
+        });
+      };
+      setSites(dedupeById(s.data || []));
+      setLignes(dedupeById(l.data || []));
+      setCategories(dedupeById(c.data || []));
+      setEquipment(dedupeById(e.data || []));
+      setSuppliers(dedupeById(sup.data || []));
+      setUnits(Array.isArray(unitsRes.data) ? unitsRes.data : []);
+      setParts(dedupeById(p.data || []));
+      setTools(dedupeById(t.data || []));
+      setUsers(dedupeById(u.data || []));
     }).catch(console.error);
     api.get('/departements').then(r => setDepartements(r.data || [])).catch(() => setDepartements([]));
     api.get('/users/roles').then(r => setRoles(r.data || [])).catch(() => setRoles([]));
     api.get('/maintenance-plans').then(r => setMaintenancePlans(r.data || [])).catch(() => setMaintenancePlans([]));
     api.get('/procedures').then(r => setProcedures(r.data || [])).catch(() => setProcedures([]));
     api.get('/work-orders/types').then(r => setWorkOrderTypes(r.data || [])).catch(() => setWorkOrderTypes([]));
+    api.get('/checklists').then(r => setChecklists(Array.isArray(r.data) ? r.data : [])).catch(() => setChecklists([]));
   }, []);
 
   useEffect(() => {
@@ -244,9 +259,20 @@ export default function Creation() {
         return api.post('/stock/parts', {
           ...(nextCode ? {} : { code: form.code }),
           name: form.name, description: form.description || undefined,
-          unit: form.unit || 'unit', unitPrice: parseFloat(form.unitPrice) || 0, minStock: parseInt(form.minStock) || 0,
-          supplierId: form.supplierId ? parseInt(form.supplierId) : undefined
-        }).then(r => { setSuccess(r.data?.code ? `Pièce créée avec le code ${r.data.code}.` : 'Pièce créée.'); setForm(getDefaultForm('piece')); });
+          unitId: form.unitId ? parseInt(form.unitId, 10) : undefined,
+          unitPrice: parseFloat(form.unitPrice) || 0, minStock: parseInt(form.minStock) || 0,
+          supplierId: form.supplierId ? parseInt(form.supplierId) : undefined,
+          location: (form.location || '').trim() || undefined,
+          manufacturerReference: (form.manufacturerReference || '').trim() || undefined,
+          imageData: form.imageData || undefined,
+          stockCategory: (form.stockCategory || '').trim() || undefined,
+          family: (form.family || '').trim() || undefined,
+          subFamily1: (form.subFamily1 || '').trim() || undefined,
+          subFamily2: (form.subFamily2 || '').trim() || undefined,
+          subFamily3: (form.subFamily3 || '').trim() || undefined,
+          subFamily4: (form.subFamily4 || '').trim() || undefined,
+          subFamily5: (form.subFamily5 || '').trim() || undefined
+        }).then(r => { setSuccess(r.data?.code ? `Pièce créée avec le code ${r.data.code}.` : 'Pièce créée.'); setForm(getDefaultForm('piece')); if (r.data?.id) navigate(`/app/stock/parts/${r.data.id}`); });
       }
       if (creationType === 'entree_stock') {
         return api.post('/stock/movements', {
@@ -317,10 +343,22 @@ export default function Creation() {
         }).then(() => { setSuccess('Checklist créée.'); setForm(getDefaultForm('checklist')); });
       }
       if (creationType === 'ordre_travail') {
+        const planId = form.maintenancePlanId ? parseInt(form.maintenancePlanId, 10) : undefined;
+        let procedureIds = (form.procedureIds || []).map(id => parseInt(id, 10)).filter(Boolean);
+        if (procedureIds.length === 0 && planId && maintenancePlans.length) {
+          const plan = maintenancePlans.find(p => p.id === planId);
+          if (plan?.procedure_id) procedureIds = [plan.procedure_id];
+        }
+        const reservationsPayload = (form.reservations || []).filter(r => r.sparePartId && Number(r.quantity) > 0).map(r => ({ sparePartId: parseInt(r.sparePartId, 10), quantity: parseInt(r.quantity, 10) || 1, notes: r.notes || undefined }));
         return api.post('/work-orders', {
           title: form.title, description: form.description || undefined,
           equipmentId: form.equipmentId ? parseInt(form.equipmentId) : undefined,
-          typeId: form.typeId ? parseInt(form.typeId) : 2, priority: form.priority || 'medium'
+          typeId: form.typeId ? parseInt(form.typeId) : 2, priority: form.priority || 'medium',
+          maintenancePlanId: planId, procedureIds: procedureIds.length ? procedureIds : undefined,
+          assignedUserIds: (form.assignedUserIds && form.assignedUserIds.length) ? form.assignedUserIds.map(id => parseInt(id, 10)) : undefined,
+          reservations: reservationsPayload.length ? reservationsPayload : undefined,
+          toolIds: (form.toolIds && form.toolIds.length) ? form.toolIds.map(id => parseInt(id, 10)) : undefined,
+          checklistIds: (form.checklistIds && form.checklistIds.length) ? form.checklistIds.map(id => parseInt(id, 10)) : undefined
         }).then(r => {
           setSuccess('Déclaration enregistrée. L\'équipe maintenance a été notifiée.');
           setForm(getDefaultForm('ordre_travail'));
@@ -451,10 +489,42 @@ export default function Creation() {
                 {!nextCode && <Grid item xs={12} sm={6}><TextField fullWidth required label="Code" value={form.code ?? ''} onChange={(e) => handleChange('code', e.target.value)} /></Grid>}
                 <Grid item xs={12} sm={6}><TextField fullWidth required label={nextCode ? 'Désignation (nom)' : 'Nom'} value={form.name ?? ''} onChange={(e) => handleChange('name', e.target.value)} /></Grid>
                 <Grid item xs={12}><TextField fullWidth multiline label="Description" value={form.description ?? ''} onChange={(e) => handleChange('description', e.target.value)} /></Grid>
-                <Grid item xs={12} sm={4}><TextField fullWidth label="Unité" value={form.unit ?? ''} onChange={(e) => handleChange('unit', e.target.value)} /></Grid>
-                <Grid item xs={12} sm={4}><TextField fullWidth type="number" label="Prix unitaire" value={form.unitPrice ?? ''} onChange={(e) => handleChange('unitPrice', e.target.value)} inputProps={{ min: 0, step: 0.01 }} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Catégorie stock" value={form.stockCategory ?? ''} onChange={(e) => handleChange('stockCategory', e.target.value)} placeholder="ex: Consommable, Pièce rechange" /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Famille" value={form.family ?? ''} onChange={(e) => handleChange('family', e.target.value)} placeholder="ex: Transmission" /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Sous-famille 1" value={form.subFamily1 ?? ''} onChange={(e) => handleChange('subFamily1', e.target.value)} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Sous-famille 2" value={form.subFamily2 ?? ''} onChange={(e) => handleChange('subFamily2', e.target.value)} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Sous-famille 3" value={form.subFamily3 ?? ''} onChange={(e) => handleChange('subFamily3', e.target.value)} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Sous-famille 4" value={form.subFamily4 ?? ''} onChange={(e) => handleChange('subFamily4', e.target.value)} /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Sous-famille 5" value={form.subFamily5 ?? ''} onChange={(e) => handleChange('subFamily5', e.target.value)} /></Grid>
+                <Grid item xs={12} sm={4}><FormControl fullWidth><InputLabel>Unité</InputLabel><Select value={form.unitId ?? ''} label="Unité" onChange={(e) => handleChange('unitId', e.target.value)}><MenuItem value="">—</MenuItem>{units.map(u => <MenuItem key={u.id} value={u.id}>{u.symbol ? `${u.name} (${u.symbol})` : u.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={4}><TextField fullWidth type="number" label={`Prix unitaire (${currency})`} value={form.unitPrice ?? ''} onChange={(e) => handleChange('unitPrice', e.target.value)} inputProps={{ min: 0, step: 0.01 }} /></Grid>
                 <Grid item xs={12} sm={4}><TextField fullWidth type="number" label="Stock minimum" value={form.minStock ?? ''} onChange={(e) => handleChange('minStock', e.target.value)} inputProps={{ min: 0 }} /></Grid>
                 <Grid item xs={12}><FormControl fullWidth><InputLabel>Fournisseur</InputLabel><Select value={form.supplierId ?? ''} label="Fournisseur" onChange={(e) => handleChange('supplierId', e.target.value)}><MenuItem value="">—</MenuItem>{suppliers.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Emplacement" value={form.location ?? ''} onChange={(e) => handleChange('location', e.target.value)} placeholder="Rayon, armoire..." /></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Référence constructeur" value={form.manufacturerReference ?? ''} onChange={(e) => handleChange('manufacturerReference', e.target.value)} /></Grid>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>Image de l&apos;article (optionnel, max 500 Ko)</Typography>
+                  {form.imageData ? (
+                    <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+                      <img src={form.imageData} alt="Aperçu" style={{ maxHeight: 120, maxWidth: 160, objectFit: 'contain', borderRadius: 8, border: '1px solid #e0e0e0' }} />
+                      <Button size="small" onClick={() => handleChange('imageData', null)}>Supprimer l&apos;image</Button>
+                    </Box>
+                  ) : (
+                    <Box sx={{ border: '2px dashed', borderColor: 'divider', borderRadius: 2, p: 2, textAlign: 'center' }}>
+                      <Image sx={{ fontSize: 40, color: 'text.secondary', mb: 0.5 }} />
+                      <Button variant="outlined" component="label" size="small">Choisir une image
+                        <input type="file" accept="image/*" hidden onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 500 * 1024) { setError('Image trop volumineuse (max 500 Ko).'); return; }
+                          const reader = new FileReader();
+                          reader.onload = (ev) => { handleChange('imageData', ev.target?.result || null); setError(''); };
+                          reader.readAsDataURL(file);
+                        }} />
+                      </Button>
+                    </Box>
+                  )}
+                </Grid>
               </Grid>
             )}
             {creationType === 'entree_stock' && (
@@ -558,7 +628,13 @@ export default function Creation() {
                 <Grid item xs={12}><TextField fullWidth multiline label="Description" value={form.description ?? ''} onChange={(e) => handleChange('description', e.target.value)} /></Grid>
                 <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Équipement</InputLabel><Select value={form.equipmentId ?? ''} label="Équipement" onChange={(e) => handleChange('equipmentId', e.target.value)}><MenuItem value="">—</MenuItem>{equipment.map(eq => <MenuItem key={eq.id} value={eq.id}>{eq.code} — {eq.name}</MenuItem>)}</Select></FormControl></Grid>
                 <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Type</InputLabel><Select value={form.typeId ?? ''} label="Type" onChange={(e) => handleChange('typeId', e.target.value)}><MenuItem value="">—</MenuItem>{workOrderTypes.map(t => <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Plan de maintenance</InputLabel><Select value={form.maintenancePlanId ?? ''} label="Plan de maintenance" onChange={(e) => { const v = e.target.value; handleChange('maintenancePlanId', v); if (v) { const p = maintenancePlans.find(m => String(m.id) === String(v)); if (p?.procedure_id) handleChange('procedureIds', [String(p.procedure_id)]); } }}><MenuItem value="">—</MenuItem>{maintenancePlans.map(m => <MenuItem key={m.id} value={m.id}>{m.name} ({m.equipment_code})</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Procédures / modes opératoires</InputLabel><Select multiple value={form.procedureIds ?? []} onChange={(e) => handleChange('procedureIds', e.target.value)} label="Procédures / modes opératoires" renderValue={(sel) => (sel || []).map(id => procedures.find(p => p.id === id)?.name).filter(Boolean).join(', ') || '—'}><MenuItem value="">—</MenuItem>{(procedures || []).map(p => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}</Select></FormControl></Grid>
                 <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Priorité</InputLabel><Select value={form.priority ?? 'medium'} label="Priorité" onChange={(e) => handleChange('priority', e.target.value)}><MenuItem value="low">{t('priority.low')}</MenuItem><MenuItem value="medium">{t('priority.medium')}</MenuItem><MenuItem value="high">{t('priority.high')}</MenuItem><MenuItem value="critical">{t('priority.critical')}</MenuItem></Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Opérateurs / Équipe</InputLabel><Select multiple value={form.assignedUserIds ?? []} onChange={(e) => handleChange('assignedUserIds', e.target.value)} label="Opérateurs / Équipe" renderValue={(sel) => (sel || []).map(id => users.find(u => u.id === id) && `${users.find(u => u.id === id).first_name} ${users.find(u => u.id === id).last_name}`).filter(Boolean).join(', ') || '—'}><MenuItem value="">—</MenuItem>{(users || []).map(u => <MenuItem key={u.id} value={u.id}>{u.first_name} {u.last_name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary">Checklists à exécuter</Typography><FormControl fullWidth size="small"><InputLabel>Checklists</InputLabel><Select multiple value={form.checklistIds ?? []} onChange={(e) => handleChange('checklistIds', e.target.value)} label="Checklists" renderValue={(sel) => (sel || []).map(id => checklists.find(c => c.id === id)?.name).filter(Boolean).join(', ') || '—'}><MenuItem value="">—</MenuItem>{checklists.map(c => <MenuItem key={c.id} value={c.id}>{c.name} {c.equipment_code ? `(${c.equipment_code})` : ''}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary">Pièces détachées (réservations)</Typography>{(form.reservations || []).map((r, index) => (<Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}><FormControl size="small" sx={{ minWidth: 200 }}><InputLabel>Pièce</InputLabel><Select value={r.sparePartId ?? ''} label="Pièce" onChange={(e) => setForm(prev => ({ ...prev, reservations: prev.reservations.map((res, i) => i === index ? { ...res, sparePartId: e.target.value } : res) }))}><MenuItem value="">—</MenuItem>{parts.map(p => <MenuItem key={p.id} value={p.id}>{p.code || p.name} — {p.name}</MenuItem>)}</Select></FormControl><TextField type="number" size="small" label="Qté" value={r.quantity ?? 1} onChange={(e) => setForm(prev => ({ ...prev, reservations: prev.reservations.map((res, i) => i === index ? { ...res, quantity: e.target.value } : res) }))} inputProps={{ min: 1 }} sx={{ width: 80 }} /><TextField size="small" label="Notes" value={r.notes ?? ''} onChange={(e) => setForm(prev => ({ ...prev, reservations: prev.reservations.map((res, i) => i === index ? { ...res, notes: e.target.value } : res) }))} sx={{ flex: 1 }} /><Button size="small" onClick={() => setForm(prev => ({ ...prev, reservations: prev.reservations.filter((_, i) => i !== index) }))}>Suppr.</Button></Box>))}<Button size="small" onClick={() => setForm(prev => ({ ...prev, reservations: [...(prev.reservations || []), { sparePartId: '', quantity: 1, notes: '' }] }))}>+ Pièce</Button></Grid>
+                <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary">Outils à affecter</Typography><FormControl fullWidth size="small"><InputLabel>Outils</InputLabel><Select multiple value={form.toolIds ?? []} onChange={(e) => handleChange('toolIds', e.target.value)} label="Outils" renderValue={(sel) => (sel || []).map(id => tools.find(t => t.id === id)?.name).filter(Boolean).join(', ') || '—'}><MenuItem value="">—</MenuItem>{tools.map(t => <MenuItem key={t.id} value={t.id}>{t.code} — {t.name}</MenuItem>)}</Select></FormControl></Grid>
               </Grid>
             )}
 

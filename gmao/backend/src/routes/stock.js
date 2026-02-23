@@ -1,26 +1,173 @@
 /**
  * API Gestion des stocks - Pièces de rechange, mouvements, alertes
+ * Statuts : A = Accepté (utilisable OT/projets), Q = Quarantaine, R = Rejeté
  */
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const db = require('../database/db');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
 const codification = require('../services/codification');
 
 const router = express.Router();
 router.use(authenticate);
 
-/**
- * Mettre à jour le solde de stock
- */
-function updateBalance(sparePartId, quantityDelta) {
+const STOCK_STATUS = { A: 'A', Q: 'Q', R: 'R' };
+
+function hasStatusColumns(db) {
+  try {
+    db.prepare('SELECT quantity_accepted FROM stock_balance LIMIT 1').get();
+    return true;
+  } catch (_) { return false; }
+}
+
+function hasMovementStatusColumn(db) {
+  try {
+    db.prepare('SELECT status FROM stock_movements LIMIT 1').get();
+    return true;
+  } catch (_) { return false; }
+}
+
+function getBalance(db, sparePartId) {
+  const row = db.prepare('SELECT quantity FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
+  const qty = row?.quantity ?? 0;
+  if (!hasStatusColumns(db)) return { quantity: qty, quantity_accepted: qty, quantity_quarantine: 0, quantity_rejected: 0 };
+  const r = db.prepare('SELECT quantity_accepted, quantity_quarantine, quantity_rejected FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
+  return {
+    quantity: qty,
+    quantity_accepted: r?.quantity_accepted ?? qty,
+    quantity_quarantine: r?.quantity_quarantine ?? 0,
+    quantity_rejected: r?.quantity_rejected ?? 0
+  };
+}
+
+function updateBalance(db, sparePartId, quantityDelta) {
   const current = db.prepare('SELECT quantity FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
-  const newQty = (current?.quantity || 0) + quantityDelta;
+  const newQty = Math.max(0, (current?.quantity || 0) + quantityDelta);
+  if (hasStatusColumns(db)) {
+    const r = db.prepare('SELECT quantity_accepted, quantity_quarantine, quantity_rejected FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
+    const acc = (r?.quantity_accepted ?? current?.quantity ?? 0) + quantityDelta;
+    db.prepare(`
+      INSERT INTO stock_balance (spare_part_id, quantity, quantity_accepted, quantity_quarantine, quantity_rejected, updated_at)
+      VALUES (?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+      ON CONFLICT(spare_part_id) DO UPDATE SET quantity = excluded.quantity, quantity_accepted = excluded.quantity_accepted, updated_at = CURRENT_TIMESTAMP
+    `).run(sparePartId, newQty, Math.max(0, acc));
+    return;
+  }
   db.prepare(`
     INSERT INTO stock_balance (spare_part_id, quantity, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(spare_part_id) DO UPDATE SET quantity = excluded.quantity, updated_at = CURRENT_TIMESTAMP
-  `).run(sparePartId, Math.max(0, newQty));
+  `).run(sparePartId, newQty);
+}
+
+function addStockIn(db, sparePartId, quantity, status) {
+  const s = status === STOCK_STATUS.Q ? STOCK_STATUS.Q : STOCK_STATUS.A;
+  if (!hasStatusColumns(db)) {
+    updateBalance(db, sparePartId, quantity);
+    return;
+  }
+  const row = db.prepare('SELECT quantity, quantity_accepted, quantity_quarantine, quantity_rejected FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
+  const cur = row || { quantity: 0, quantity_accepted: 0, quantity_quarantine: 0, quantity_rejected: 0 };
+  let newAcc = cur.quantity_accepted, newQuar = cur.quantity_quarantine;
+  if (s === STOCK_STATUS.A) newAcc += quantity; else newQuar += quantity;
+  const newQty = cur.quantity + quantity;
+  db.prepare(`
+    INSERT INTO stock_balance (spare_part_id, quantity, quantity_accepted, quantity_quarantine, quantity_rejected, updated_at)
+    VALUES (?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+    ON CONFLICT(spare_part_id) DO UPDATE SET quantity = excluded.quantity, quantity_accepted = excluded.quantity_accepted, quantity_quarantine = excluded.quantity_quarantine, updated_at = CURRENT_TIMESTAMP
+  `).run(sparePartId, newQty, newAcc, newQuar);
+}
+
+function deductStockOut(db, sparePartId, quantity) {
+  if (!hasStatusColumns(db)) {
+    updateBalance(db, sparePartId, -quantity);
+    return;
+  }
+  const row = db.prepare('SELECT quantity, quantity_accepted FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
+  const acc = row?.quantity_accepted ?? row?.quantity ?? 0;
+  if (acc < quantity) throw new Error('Stock accepté insuffisant. Seul le stock au statut Accepté (A) peut être utilisé pour les OT et projets.');
+  const newQty = Math.max(0, (row?.quantity ?? 0) - quantity);
+  const newAcc = Math.max(0, acc - quantity);
+  db.prepare(`
+    UPDATE stock_balance SET quantity = ?, quantity_accepted = ?, updated_at = CURRENT_TIMESTAMP WHERE spare_part_id = ?
+  `).run(newQty, newAcc, sparePartId);
+}
+
+function releaseQuarantine(db, sparePartId, quantity) {
+  const row = db.prepare('SELECT quantity_quarantine, quantity_accepted FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
+  const quar = row?.quantity_quarantine ?? 0;
+  if (quar < quantity) throw new Error('Quantité en quarantaine insuffisante');
+  db.prepare(`
+    UPDATE stock_balance SET quantity_quarantine = quantity_quarantine - ?, quantity_accepted = quantity_accepted + ?, updated_at = CURRENT_TIMESTAMP WHERE spare_part_id = ?
+  `).run(quantity, quantity, sparePartId);
+}
+
+function rejectQuarantine(db, sparePartId, quantity) {
+  const row = db.prepare('SELECT quantity, quantity_quarantine, quantity_rejected FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
+  const quar = row?.quantity_quarantine ?? 0;
+  if (quar < quantity) throw new Error('Quantité en quarantaine insuffisante');
+  const newQty = Math.max(0, (row?.quantity ?? 0) - quantity);
+  const newQuar = quar - quantity;
+  const newRej = (row?.quantity_rejected ?? 0) + quantity;
+  db.prepare(`
+    UPDATE stock_balance SET quantity = ?, quantity_quarantine = ?, quantity_rejected = ?, updated_at = CURRENT_TIMESTAMP WHERE spare_part_id = ?
+  `).run(newQty, newQuar, newRej, sparePartId);
+}
+
+/**
+ * Change le statut d'une quantité de stock (total ou partiel). fromStatus/toStatus in ['A','Q','R'].
+ * A↔Q : pas de changement de quantité physique. A→R / Q→R : diminution physique. R→A / R→Q : augmentation physique.
+ */
+function changeStatus(db, sparePartId, fromStatus, toStatus, quantity) {
+  if (fromStatus === toStatus) throw new Error('Statut source et cible identiques');
+  const row = db.prepare('SELECT quantity, quantity_accepted, quantity_quarantine, quantity_rejected FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
+  const cur = row || { quantity: 0, quantity_accepted: 0, quantity_quarantine: 0, quantity_rejected: 0 };
+  const acc = cur.quantity_accepted ?? 0;
+  const quar = cur.quantity_quarantine ?? 0;
+  const rej = cur.quantity_rejected ?? 0;
+  const total = cur.quantity ?? 0;
+  let newQty = total;
+  let newAcc = acc;
+  let newQuar = quar;
+  let newRej = rej;
+
+  const check = (available, label) => { if (available < quantity) throw new Error(`${label} insuffisant (disponible: ${available})`); };
+
+  if (fromStatus === STOCK_STATUS.A) {
+    check(acc, 'Stock accepté');
+    newAcc = acc - quantity;
+    if (toStatus === STOCK_STATUS.Q) {
+      newQuar = quar + quantity;
+    } else {
+      newQty = total - quantity;
+      newRej = rej + quantity;
+    }
+  } else if (fromStatus === STOCK_STATUS.Q) {
+    check(quar, 'Stock en quarantaine');
+    newQuar = quar - quantity;
+    if (toStatus === STOCK_STATUS.A) {
+      newAcc = acc + quantity;
+    } else {
+      newQty = total - quantity;
+      newRej = rej + quantity;
+    }
+  } else if (fromStatus === STOCK_STATUS.R) {
+    check(rej, 'Stock rejeté');
+    newRej = rej - quantity;
+    if (toStatus === STOCK_STATUS.A) {
+      newAcc = acc + quantity;
+      newQty = total + quantity;
+    } else {
+      newQuar = quar + quantity;
+      newQty = total + quantity;
+    }
+  } else {
+    throw new Error('Statut source invalide');
+  }
+
+  if (newAcc < 0 || newQuar < 0 || newRej < 0 || newQty < 0) throw new Error('Quantité invalide après changement');
+  db.prepare(`
+    UPDATE stock_balance SET quantity = ?, quantity_accepted = ?, quantity_quarantine = ?, quantity_rejected = ?, updated_at = CURRENT_TIMESTAMP WHERE spare_part_id = ?
+  `).run(newQty, newAcc, newQuar, newRej, sparePartId);
 }
 
 /**
@@ -29,6 +176,7 @@ function updateBalance(sparePartId, quantityDelta) {
  * If page/limit provided: Response { data: [...], total: N }. Otherwise: array.
  */
 router.get('/parts', (req, res) => {
+  const db = req.db;
   const { belowMin, search, page, limit } = req.query;
   const usePagination = page !== undefined && page !== '';
   const limitNum = usePagination ? Math.min(parseInt(limit, 10) || 20, 100) : 1e6;
@@ -49,15 +197,59 @@ router.get('/parts', (req, res) => {
   }
   const sortBy = req.query.sortBy === 'name' ? 'sp.name' : 'sp.code';
   const order = (req.query.order || 'asc') === 'asc' ? 'ASC' : 'DESC';
-  const sql = `
-    SELECT sp.*, s.name as supplier_name, COALESCE(sb.quantity, 0) as stock_quantity,
+  const joinUnits = ' LEFT JOIN units u ON sp.unit_id = u.id';
+  const unitSelect = ', u.name as unit_name';
+  let whereWithUnits = where.replace('FROM spare_parts sp', 'FROM spare_parts sp' + joinUnits);
+  let sql = `
+    SELECT sp.*, s.name as supplier_name${unitSelect || ''}, COALESCE(sb.quantity, 0) as stock_quantity,
            CASE WHEN COALESCE(sb.quantity, 0) <= sp.min_stock THEN 1 ELSE 0 END as below_minimum
-    ${where}
+    ${whereWithUnits}
     ORDER BY below_minimum DESC, ${sortBy} ${order} LIMIT ? OFFSET ?
   `;
-  const rows = db.prepare(sql).all(...params, limitNum, offset);
+  if (hasStatusColumns(db)) {
+    sql = `
+      SELECT sp.*, s.name as supplier_name${unitSelect || ''}, COALESCE(sb.quantity, 0) as stock_quantity,
+             COALESCE(sb.quantity_accepted, sb.quantity) as quantity_accepted,
+             COALESCE(sb.quantity_quarantine, 0) as quantity_quarantine,
+             COALESCE(sb.quantity_rejected, 0) as quantity_rejected,
+             CASE WHEN COALESCE(sb.quantity, 0) <= sp.min_stock THEN 1 ELSE 0 END as below_minimum
+      ${whereWithUnits}
+      ORDER BY below_minimum DESC, ${sortBy} ${order} LIMIT ? OFFSET ?
+    `;
+  }
+  let rows;
+  try {
+    rows = db.prepare(sql).all(...params, limitNum, offset);
+  } catch (e) {
+    if (e.message && (e.message.includes('no such table') || e.message.includes('no such column'))) {
+      const fallbackWhere = where;
+      sql = `
+        SELECT sp.*, s.name as supplier_name, COALESCE(sb.quantity, 0) as stock_quantity,
+               CASE WHEN COALESCE(sb.quantity, 0) <= sp.min_stock THEN 1 ELSE 0 END as below_minimum
+        ${fallbackWhere}
+        ORDER BY below_minimum DESC, ${sortBy} ${order} LIMIT ? OFFSET ?
+      `;
+      if (hasStatusColumns(db)) {
+        sql = `
+          SELECT sp.*, s.name as supplier_name, COALESCE(sb.quantity, 0) as stock_quantity,
+                 COALESCE(sb.quantity_accepted, sb.quantity) as quantity_accepted,
+                 COALESCE(sb.quantity_quarantine, 0) as quantity_quarantine,
+                 COALESCE(sb.quantity_rejected, 0) as quantity_rejected,
+                 CASE WHEN COALESCE(sb.quantity, 0) <= sp.min_stock THEN 1 ELSE 0 END as below_minimum
+          ${fallbackWhere}
+          ORDER BY below_minimum DESC, ${sortBy} ${order} LIMIT ? OFFSET ?
+        `;
+      }
+      rows = db.prepare(sql).all(...params, limitNum, offset);
+    } else throw e;
+  }
   const byId = new Map();
-  rows.forEach((r) => { if (!byId.has(r.id)) byId.set(r.id, r); });
+  rows.forEach((r) => {
+    if (!byId.has(r.id)) {
+      if (r.quantity_accepted === undefined) { r.quantity_accepted = r.stock_quantity ?? 0; r.quantity_quarantine = 0; r.quantity_rejected = 0; }
+      byId.set(r.id, r);
+    }
+  });
   const data = [...byId.values()];
   if (usePagination) res.json({ data, total });
   else res.json(data);
@@ -68,6 +260,7 @@ router.get('/parts', (req, res) => {
  * Query: work_order_id (optionnel) pour filtrer par OT
  */
 router.get('/movements', (req, res) => {
+  const db = req.db;
   try {
     const { work_order_id } = req.query;
     let sql = `
@@ -95,6 +288,7 @@ router.get('/movements', (req, res) => {
 });
 
 router.get('/entries', (req, res) => {
+  const db = req.db;
   try {
     const rows = db.prepare(`
       SELECT sm.*, sp.name as part_name, s.name as supplier_name,
@@ -123,6 +317,7 @@ router.get('/entries', (req, res) => {
 });
 
 router.get('/exits', (req, res) => {
+  const db = req.db;
   try {
     const rows = db.prepare(`
       SELECT sm.*, sp.name as part_name,
@@ -152,6 +347,7 @@ router.get('/exits', (req, res) => {
 });
 
 router.get('/transfers', (req, res) => {
+  const db = req.db;
   try {
     const rows = db.prepare(`
       SELECT sm.*, sp.name as part_name,
@@ -180,7 +376,7 @@ router.get('/transfers', (req, res) => {
 /**
  * Inventaires physiques
  */
-function getInventoriesTable() {
+function getInventoriesTable(db) {
   try {
     db.prepare('SELECT 1 FROM stock_inventories LIMIT 1').get();
     return true;
@@ -188,7 +384,8 @@ function getInventoriesTable() {
 }
 
 router.get('/inventories', (req, res) => {
-  if (!getInventoriesTable()) return res.json([]);
+  const db = req.db;
+  if (!getInventoriesTable(db)) return res.json([]);
   try {
     const rows = db.prepare(`
       SELECT si.*, u.first_name || ' ' || u.last_name as responsible_name,
@@ -204,7 +401,8 @@ router.get('/inventories', (req, res) => {
 });
 
 router.get('/inventories/:id', param('id').isInt(), (req, res) => {
-  if (!getInventoriesTable()) return res.status(404).json({ error: 'Non disponible' });
+  const db = req.db;
+  if (!getInventoriesTable(db)) return res.status(404).json({ error: 'Non disponible' });
   const inv = db.prepare(`
     SELECT si.*, u.first_name || ' ' || u.last_name as responsible_name
     FROM stock_inventories si
@@ -226,7 +424,8 @@ router.post('/inventories', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECH
   body('inventory_date').notEmpty(),
   body('reference').optional().trim()
 ], (req, res) => {
-  if (!getInventoriesTable()) return res.status(400).json({ error: 'Table inventaires non disponible' });
+  const db = req.db;
+  if (!getInventoriesTable(db)) return res.status(400).json({ error: 'Table inventaires non disponible' });
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const ref = req.body.reference || `INV-${Date.now()}`;
@@ -244,7 +443,8 @@ router.post('/inventories', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECH
 });
 
 router.put('/inventories/:id', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), (req, res) => {
-  if (!getInventoriesTable()) return res.status(400).json({ error: 'Non disponible' });
+  const db = req.db;
+  if (!getInventoriesTable(db)) return res.status(400).json({ error: 'Non disponible' });
   const { status, notes } = req.body;
   const id = parseInt(req.params.id, 10);
   const inv = db.prepare('SELECT * FROM stock_inventories WHERE id = ?').get(id);
@@ -263,7 +463,8 @@ router.post('/inventories/:id/lines', param('id').isInt(), authorize(ROLES.ADMIN
   body('spare_part_id').isInt(),
   body('quantity_counted').isInt({ min: 0 })
 ], (req, res) => {
-  if (!getInventoriesTable()) return res.status(400).json({ error: 'Non disponible' });
+  const db = req.db;
+  if (!getInventoriesTable(db)) return res.status(400).json({ error: 'Non disponible' });
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const inventoryId = parseInt(req.params.id, 10);
@@ -290,7 +491,8 @@ router.post('/inventories/:id/lines', param('id').isInt(), authorize(ROLES.ADMIN
 });
 
 router.post('/inventories/:id/complete', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), (req, res) => {
-  if (!getInventoriesTable()) return res.status(400).json({ error: 'Non disponible' });
+  const db = req.db;
+  if (!getInventoriesTable(db)) return res.status(400).json({ error: 'Non disponible' });
   const id = parseInt(req.params.id, 10);
   const inv = db.prepare('SELECT * FROM stock_inventories WHERE id = ?').get(id);
   if (!inv || inv.status === 'completed') return res.status(400).json({ error: 'Inventaire déjà clôturé ou inexistant' });
@@ -302,7 +504,7 @@ router.post('/inventories/:id/complete', param('id').isInt(), authorize(ROLES.AD
       INSERT INTO stock_movements (spare_part_id, quantity, movement_type, reference, user_id, notes)
       VALUES (?, ?, 'adjustment', ?, ?, ?)
     `).run(line.spare_part_id, delta, inv.reference, req.user?.id || null, 'Ajustement inventaire ' + inv.reference);
-    updateBalance(line.spare_part_id, delta);
+    updateBalance(db, line.spare_part_id, delta);
   }
   db.prepare('UPDATE stock_inventories SET status = ?, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('completed', id);
   const row = db.prepare('SELECT * FROM stock_inventories WHERE id = ?').get(id);
@@ -312,7 +514,7 @@ router.post('/inventories/:id/complete', param('id').isInt(), authorize(ROLES.AD
 /**
  * Demandes de réapprovisionnement
  */
-function getReordersTable() {
+function getReordersTable(db) {
   try {
     db.prepare('SELECT 1 FROM reorder_requests LIMIT 1').get();
     return true;
@@ -320,7 +522,8 @@ function getReordersTable() {
 }
 
 router.get('/reorders', (req, res) => {
-  if (!getReordersTable()) return res.json([]);
+  const db = req.db;
+  if (!getReordersTable(db)) return res.json([]);
   try {
     const rows = db.prepare(`
       SELECT rr.*, sp.code as part_code, sp.name as part_name, sp.min_stock,
@@ -343,7 +546,8 @@ router.post('/reorders', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNIC
   body('spare_part_id').isInt(),
   body('quantity_requested').isInt({ min: 1 })
 ], (req, res) => {
-  if (!getReordersTable()) return res.status(400).json({ error: 'Table réappro non disponible' });
+  const db = req.db;
+  if (!getReordersTable(db)) return res.status(400).json({ error: 'Table réappro non disponible' });
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const { spare_part_id, quantity_requested, notes } = req.body;
@@ -357,7 +561,8 @@ router.post('/reorders', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNIC
 });
 
 router.put('/reorders/:id', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
-  if (!getReordersTable()) return res.status(400).json({ error: 'Non disponible' });
+  const db = req.db;
+  if (!getReordersTable(db)) return res.status(400).json({ error: 'Non disponible' });
   const { status, supplier_order_id, quantity_ordered } = req.body;
   const id = parseInt(req.params.id, 10);
   const updates = []; const vals = [];
@@ -371,16 +576,156 @@ router.put('/reorders/:id', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RE
 
 /**
  * GET /api/stock/parts/:id
+ * Fiche stock complète (détails, image, stock actuel).
  */
 router.get('/parts/:id', param('id').isInt(), (req, res) => {
+  const db = req.db;
+  let row;
+  try {
+    row = db.prepare(`
+      SELECT sp.*, s.name as supplier_name, u.name as unit_name, COALESCE(sb.quantity, 0) as stock_quantity
+      FROM spare_parts sp
+      LEFT JOIN suppliers s ON sp.supplier_id = s.id
+      LEFT JOIN units u ON sp.unit_id = u.id
+      LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
+      WHERE sp.id = ?
+    `).get(req.params.id);
+  } catch (e) {
+    if (e.message && (e.message.includes('no such column') || e.message.includes('no such table'))) {
+      try {
+        row = db.prepare(`
+          SELECT sp.*, s.name as supplier_name, COALESCE(sb.quantity, 0) as stock_quantity
+          FROM spare_parts sp
+          LEFT JOIN suppliers s ON sp.supplier_id = s.id
+          LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
+          WHERE sp.id = ?
+        `).get(req.params.id);
+      } catch (e2) {
+        if (e2.message && e2.message.includes('no such column')) {
+          row = db.prepare(`
+            SELECT sp.id, sp.code, sp.name, sp.description, sp.unit, sp.unit_price, sp.min_stock, sp.supplier_id, sp.created_at, sp.updated_at,
+                   s.name as supplier_name, COALESCE(sb.quantity, 0) as stock_quantity
+            FROM spare_parts sp
+            LEFT JOIN suppliers s ON sp.supplier_id = s.id
+            LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
+            WHERE sp.id = ?
+          `).get(req.params.id);
+          if (row) {
+            row.image_data = null;
+            row.location = null;
+            row.manufacturer_reference = null;
+          }
+        } else throw e2;
+      }
+      if (row && !row.unit_name) row.unit_name = row.unit || null;
+    } else throw e;
+  }
+  if (!row) return res.status(404).json({ error: 'Pièce non trouvée' });
+  if (hasStatusColumns(db)) {
+    const bal = db.prepare('SELECT quantity_accepted, quantity_quarantine, quantity_rejected FROM stock_balance WHERE spare_part_id = ?').get(req.params.id);
+    row.quantity_accepted = bal?.quantity_accepted ?? row.stock_quantity ?? 0;
+    row.quantity_quarantine = bal?.quantity_quarantine ?? 0;
+    row.quantity_rejected = bal?.quantity_rejected ?? 0;
+  } else {
+    row.quantity_accepted = row.stock_quantity ?? 0;
+    row.quantity_quarantine = 0;
+    row.quantity_rejected = 0;
+  }
+  res.json(row);
+});
+
+/**
+ * PUT /api/stock/parts/:id
+ * Mise à jour de la fiche stock (détails, image, etc.).
+ */
+router.put('/parts/:id', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+  body('name').optional().trim(),
+  body('description').optional().trim(),
+  body('unit').optional().trim(),
+  body('unitId').optional({ nullable: true }).isInt(),
+  body('unitPrice').optional().isFloat({ min: 0 }),
+  body('minStock').optional().isInt({ min: 0 }),
+  body('supplierId').optional({ nullable: true }).isInt(),
+  body('location').optional().trim(),
+  body('manufacturerReference').optional().trim(),
+  body('imageData').optional(),
+  body('stockCategory').optional().trim(),
+  body('family').optional().trim(),
+  body('subFamily1').optional().trim(),
+  body('subFamily2').optional().trim(),
+  body('subFamily3').optional().trim(),
+  body('subFamily4').optional().trim(),
+  body('subFamily5').optional().trim()
+], (req, res) => {
+  const db = req.db;
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const id = parseInt(req.params.id, 10);
+  const existing = db.prepare('SELECT id FROM spare_parts WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'Pièce non trouvée' });
+  const {
+    name, description, unit, unitId, unitPrice, minStock, supplierId,
+    location, manufacturerReference, imageData,
+    stockCategory, family, subFamily1, subFamily2, subFamily3, subFamily4, subFamily5
+  } = req.body;
+  let unitVal = unit;
+  if (unitId !== undefined && unitId !== null) {
+    try {
+      const u = db.prepare('SELECT name FROM units WHERE id = ?').get(unitId);
+      unitVal = u ? u.name : (unit || 'unit');
+    } catch (_) { unitVal = unit || 'unit'; }
+  }
+  const updates = [];
+  const values = [];
+  if (name !== undefined) { updates.push('name = ?'); values.push(name); }
+  if (description !== undefined) { updates.push('description = ?'); values.push(description || null); }
+  if (unitId !== undefined) {
+    updates.push('unit_id = ?'); values.push(unitId || null);
+    updates.push('unit = ?'); values.push(unitVal || 'unit');
+  } else if (unit !== undefined) {
+    updates.push('unit = ?'); values.push(unit || 'unit');
+  }
+  if (unitPrice !== undefined) { updates.push('unit_price = ?'); values.push(unitPrice); }
+  if (minStock !== undefined) { updates.push('min_stock = ?'); values.push(minStock); }
+  if (supplierId !== undefined) { updates.push('supplier_id = ?'); values.push(supplierId || null); }
+  if (location !== undefined) { updates.push('location = ?'); values.push(location || null); }
+  if (manufacturerReference !== undefined) { updates.push('manufacturer_reference = ?'); values.push(manufacturerReference || null); }
+  if (imageData !== undefined) { updates.push('image_data = ?'); values.push(imageData && String(imageData).trim() ? String(imageData).trim() : null); }
+  if (stockCategory !== undefined) { updates.push('stock_category = ?'); values.push(stockCategory || null); }
+  if (family !== undefined) { updates.push('family = ?'); values.push(family || null); }
+  if (subFamily1 !== undefined) { updates.push('sub_family_1 = ?'); values.push(subFamily1 || null); }
+  if (subFamily2 !== undefined) { updates.push('sub_family_2 = ?'); values.push(subFamily2 || null); }
+  if (subFamily3 !== undefined) { updates.push('sub_family_3 = ?'); values.push(subFamily3 || null); }
+  if (subFamily4 !== undefined) { updates.push('sub_family_4 = ?'); values.push(subFamily4 || null); }
+  if (subFamily5 !== undefined) { updates.push('sub_family_5 = ?'); values.push(subFamily5 || null); }
+  if (updates.length === 0) return res.status(400).json({ error: 'Aucune donnée à mettre à jour' });
+  updates.push('updated_at = CURRENT_TIMESTAMP');
+  values.push(id);
+  try {
+    db.prepare('UPDATE spare_parts SET ' + updates.join(', ') + ' WHERE id = ?').run(...values);
+  } catch (e) {
+    if (e.message && e.message.includes('no such column')) {
+      const optionalCols = ['image_data', 'location', 'manufacturer_reference', 'stock_category', 'family', 'sub_family_1', 'sub_family_2', 'sub_family_3', 'sub_family_4', 'sub_family_5', 'unit_id'];
+      const safeUpdates = [];
+      const safeValues = [];
+      updates.forEach((u, i) => {
+        const col = u.split(' ')[0];
+        if (!optionalCols.includes(col)) {
+          safeUpdates.push(u);
+          safeValues.push(values[i]);
+        }
+      });
+      if (safeUpdates.length > 0) db.prepare('UPDATE spare_parts SET ' + safeUpdates.join(', ') + ' WHERE id = ?').run(...safeValues);
+    } else throw e;
+  }
+  if (db._save) db._save();
   const row = db.prepare(`
     SELECT sp.*, s.name as supplier_name, COALESCE(sb.quantity, 0) as stock_quantity
     FROM spare_parts sp
     LEFT JOIN suppliers s ON sp.supplier_id = s.id
     LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
     WHERE sp.id = ?
-  `).get(req.params.id);
-  if (!row) return res.status(404).json({ error: 'Piece non trouvee' });
+  `).get(id);
   res.json(row);
 });
 
@@ -388,6 +733,7 @@ router.get('/parts/:id', param('id').isInt(), (req, res) => {
  * GET /api/stock/parts/:id/movements
  */
 router.get('/parts/:id/movements', param('id').isInt(), (req, res) => {
+  const db = req.db;
   const rows = db.prepare(`
     SELECT sm.*, u.first_name || ' ' || u.last_name as user_name
     FROM stock_movements sm
@@ -403,6 +749,7 @@ router.get('/parts/:id/movements', param('id').isInt(), (req, res) => {
  * GET /api/stock/alerts
  */
 router.get('/alerts', (req, res) => {
+  const db = req.db;
   const rows = db.prepare(`
     SELECT sp.*, COALESCE(sb.quantity, 0) as stock_quantity, sp.min_stock
     FROM spare_parts sp
@@ -414,26 +761,184 @@ router.get('/alerts', (req, res) => {
 });
 
 /**
- * POST /api/stock/parts
+ * GET /api/stock/quarantine — Pièces avec stock en quarantaine (contrôle qualité)
  */
-router.post('/parts', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
-  body('name').notEmpty().trim()
+router.get('/quarantine', (req, res) => {
+  const db = req.db;
+  if (!hasStatusColumns(db)) return res.json([]);
+  try {
+    const rows = db.prepare(`
+      SELECT sp.id, sp.code, sp.name, sp.unit, s.name as supplier_name,
+             COALESCE(sb.quantity_quarantine, 0) as quantity_quarantine,
+             COALESCE(sb.quantity_accepted, 0) as quantity_accepted,
+             COALESCE(sb.quantity_rejected, 0) as quantity_rejected
+      FROM spare_parts sp
+      LEFT JOIN suppliers s ON sp.supplier_id = s.id
+      LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
+      WHERE COALESCE(sb.quantity_quarantine, 0) > 0
+      ORDER BY sp.code
+    `).all();
+    res.json(rows);
+  } catch (_) { res.json([]); }
+});
+
+/**
+ * POST /api/stock/quality/release — Libération (Q→A) ou rejet (Q→R) après contrôle qualité
+ * Body: sparePartId, quantity, action ('release' | 'reject'), notes?
+ */
+router.post('/quality/release', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), [
+  body('sparePartId').isInt(),
+  body('quantity').isInt({ min: 1 }),
+  body('action').isIn(['release', 'reject']),
+  body('notes').optional().trim()
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-  const { code: codeProvided, name, description, unit, unitPrice, minStock, supplierId } = req.body;
-  const code = codification.generateCodeIfNeeded('piece', codeProvided);
-  if (!code || !code.trim()) return res.status(400).json({ error: 'Code requis ou configurer la codification dans Paramétrage' });
+  if (!hasStatusColumns(db)) return res.status(400).json({ error: 'Statuts de stock non disponibles. Exécutez les migrations.' });
+  const { sparePartId, quantity, action, notes } = req.body;
   try {
-    const result = db.prepare(`
-      INSERT INTO spare_parts (code, name, description, unit, unit_price, min_stock, supplier_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(code.trim(), name, description || null, unit || 'unit', unitPrice || 0, minStock || 0, supplierId || null);
-    db.prepare('INSERT INTO stock_balance (spare_part_id, quantity) VALUES (?, 0)').run(result.lastInsertRowid);
-    const row = db.prepare(`
-      SELECT sp.*, s.name as supplier_name, 0 as stock_quantity
-      FROM spare_parts sp LEFT JOIN suppliers s ON sp.supplier_id = s.id WHERE sp.id = ?
-    `).get(result.lastInsertRowid);
+    if (action === 'release') {
+      releaseQuarantine(db, sparePartId, quantity);
+      try {
+        db.prepare('INSERT INTO quality_control_log (spare_part_id, quantity, action, user_id, notes) VALUES (?, ?, ?, ?, ?)').run(sparePartId, quantity, 'release', req.user?.id || null, notes || null);
+      } catch (_) {}
+    } else {
+      rejectQuarantine(db, sparePartId, quantity);
+      try {
+        db.prepare('INSERT INTO quality_control_log (spare_part_id, quantity, action, user_id, notes) VALUES (?, ?, ?, ?, ?)').run(sparePartId, quantity, 'reject', req.user?.id || null, notes || null);
+      } catch (_) {}
+    }
+  } catch (e) {
+    return res.status(400).json({ error: e.message || 'Quantité en quarantaine insuffisante' });
+  }
+  if (db._save) db._save();
+  const bal = getBalance(db, sparePartId);
+  const part = db.prepare('SELECT id, code, name FROM spare_parts WHERE id = ?').get(sparePartId);
+  res.json({ sparePartId, quantity, action, balance: bal, part });
+});
+
+/**
+ * POST /api/stock/quality/change-status — Changement de statut (total ou partiel) : A, Q, R
+ * Body: sparePartId, fromStatus ('A'|'Q'|'R'), toStatus ('A'|'Q'|'R'), quantity, notes?
+ */
+router.post('/quality/change-status', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), [
+  body('sparePartId').isInt(),
+  body('fromStatus').isIn(['A', 'Q', 'R']),
+  body('toStatus').isIn(['A', 'Q', 'R']),
+  body('quantity').isInt({ min: 1 }),
+  body('notes').optional().trim()
+], (req, res) => {
+  const db = req.db;
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  if (!hasStatusColumns(db)) return res.status(400).json({ error: 'Statuts de stock non disponibles. Exécutez les migrations.' });
+  const { sparePartId, fromStatus, toStatus, quantity, notes } = req.body;
+  try {
+    changeStatus(db, sparePartId, fromStatus, toStatus, quantity);
+    try {
+      db.prepare('INSERT INTO quality_control_log (spare_part_id, quantity, action, user_id, notes) VALUES (?, ?, ?, ?, ?)')
+        .run(sparePartId, quantity, `change_${fromStatus}_${toStatus}`, req.user?.id || null, notes || null);
+    } catch (_) {}
+  } catch (e) {
+    return res.status(400).json({ error: e.message || 'Changement de statut impossible' });
+  }
+  if (db._save) db._save();
+  const bal = getBalance(db, sparePartId);
+  const part = db.prepare('SELECT id, code, name FROM spare_parts WHERE id = ?').get(sparePartId);
+  res.json({ sparePartId, quantity, fromStatus, toStatus, balance: bal, part });
+});
+
+/**
+ * POST /api/stock/parts
+ * Création d'une pièce avec fiche complète (image, emplacement, référence constructeur optionnels).
+ */
+router.post('/parts', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+  body('name').notEmpty().trim(),
+  body('description').optional().trim(),
+  body('unit').optional().trim(),
+  body('unitId').optional({ nullable: true }).isInt(),
+  body('unitPrice').optional().isFloat({ min: 0 }),
+  body('minStock').optional().isInt({ min: 0 }),
+  body('supplierId').optional({ nullable: true }).isInt(),
+  body('location').optional().trim(),
+  body('manufacturerReference').optional().trim(),
+  body('imageData').optional(),
+  body('stockCategory').optional().trim(),
+  body('family').optional().trim(),
+  body('subFamily1').optional().trim(),
+  body('subFamily2').optional().trim(),
+  body('subFamily3').optional().trim(),
+  body('subFamily4').optional().trim(),
+  body('subFamily5').optional().trim()
+], (req, res) => {
+  const db = req.db;
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const {
+    code: codeProvided, name, description, unit, unitId, unitPrice, minStock, supplierId,
+    location, manufacturerReference, imageData,
+    stockCategory, family, subFamily1, subFamily2, subFamily3, subFamily4, subFamily5
+  } = req.body;
+  const code = codification.generateCodeIfNeeded(db, 'piece', codeProvided);
+  if (!code || !code.trim()) return res.status(400).json({ error: 'Code requis ou configurer la codification dans Paramétrage' });
+  let unitVal = unit || 'unit';
+  if (unitId) {
+    try {
+      const u = db.prepare('SELECT name FROM units WHERE id = ?').get(unitId);
+      if (u) unitVal = u.name;
+    } catch (_) {}
+  }
+  try {
+    let result;
+    try {
+      result = db.prepare(`
+        INSERT INTO spare_parts (code, name, description, unit, unit_id, unit_price, min_stock, supplier_id, location, manufacturer_reference, image_data,
+          stock_category, family, sub_family_1, sub_family_2, sub_family_3, sub_family_4, sub_family_5)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        code.trim(), name, description || null, unitVal, unitId || null, unitPrice || 0, minStock || 0, supplierId || null,
+        location || null, manufacturerReference || null, imageData && String(imageData).trim() ? String(imageData).trim() : null,
+        stockCategory || null, family || null, subFamily1 || null, subFamily2 || null, subFamily3 || null, subFamily4 || null, subFamily5 || null
+      );
+    } catch (e) {
+      if (e.message && e.message.includes('no such column')) {
+        try {
+          result = db.prepare(`
+            INSERT INTO spare_parts (code, name, description, unit, unit_price, min_stock, supplier_id, location, manufacturer_reference, image_data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            code.trim(), name, description || null, unitVal, unitPrice || 0, minStock || 0, supplierId || null,
+            location || null, manufacturerReference || null, imageData && String(imageData).trim() ? String(imageData).trim() : null
+          );
+        } catch (e2) {
+          if (e2.message && e2.message.includes('no such column')) {
+            result = db.prepare(`
+              INSERT INTO spare_parts (code, name, description, unit, unit_price, min_stock, supplier_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
+            `).run(code.trim(), name, description || null, unitVal, unitPrice || 0, minStock || 0, supplierId || null);
+          } else throw e2;
+        }
+      } else throw e;
+    }
+    if (hasStatusColumns(db)) {
+      db.prepare('INSERT INTO stock_balance (spare_part_id, quantity, quantity_accepted, quantity_quarantine, quantity_rejected) VALUES (?, 0, 0, 0, 0)').run(result.lastInsertRowid);
+    } else {
+      db.prepare('INSERT INTO stock_balance (spare_part_id, quantity) VALUES (?, 0)').run(result.lastInsertRowid);
+    }
+    let row;
+    try {
+      row = db.prepare(`
+        SELECT sp.*, s.name as supplier_name, u.name as unit_name, 0 as stock_quantity
+        FROM spare_parts sp LEFT JOIN suppliers s ON sp.supplier_id = s.id LEFT JOIN units u ON sp.unit_id = u.id WHERE sp.id = ?
+      `).get(result.lastInsertRowid);
+    } catch (_) {
+      row = db.prepare(`
+        SELECT sp.*, s.name as supplier_name, 0 as stock_quantity
+        FROM spare_parts sp LEFT JOIN suppliers s ON sp.supplier_id = s.id WHERE sp.id = ?
+      `).get(result.lastInsertRowid);
+    }
+    if (db._save) db._save();
     res.status(201).json(row);
   } catch (e) {
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Code piece deja existant' });
@@ -443,26 +948,50 @@ router.post('/parts', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 
 /**
  * POST /api/stock/movements
+ * Entrée (in) : option status 'A' (accepté) ou 'Q' (quarantaine). Sortie (out/transfer) : uniquement depuis stock Accepté.
  */
 router.post('/movements', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), [
   body('sparePartId').isInt(),
   body('quantity').isInt(),
-  body('movementType').isIn(['in', 'out', 'adjustment', 'transfer'])
+  body('movementType').isIn(['in', 'out', 'adjustment', 'transfer']),
+  body('status').optional().isIn(['A', 'Q'])
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-  const { sparePartId, quantity, movementType, reference, workOrderId, notes } = req.body;
-  const current = db.prepare('SELECT quantity FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
-  const curQty = current?.quantity || 0;
-  let delta = quantity;
-  if (movementType === 'out' || movementType === 'transfer') delta = -Math.abs(quantity);
-  if (movementType === 'adjustment') delta = quantity - curQty; // quantity = nouveau niveau desire
-  if (curQty + delta < 0) return res.status(400).json({ error: 'Stock insuffisant' });
-  db.prepare(`
-    INSERT INTO stock_movements (spare_part_id, quantity, movement_type, reference, work_order_id, user_id, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(sparePartId, delta, movementType, reference || null, workOrderId || null, req.user.id, notes || null);
-  updateBalance(sparePartId, delta);
+  const { sparePartId, quantity, movementType, reference, workOrderId, notes, status } = req.body;
+  const entryStatus = (status === STOCK_STATUS.Q ? STOCK_STATUS.Q : STOCK_STATUS.A);
+  try {
+    if (movementType === 'in') {
+      addStockIn(db, sparePartId, quantity, entryStatus);
+      const withStatus = hasMovementStatusColumn(db);
+      if (withStatus) {
+        db.prepare(`INSERT INTO stock_movements (spare_part_id, quantity, movement_type, reference, work_order_id, user_id, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(sparePartId, quantity, movementType, reference || null, workOrderId || null, req.user.id, notes || null, entryStatus);
+      } else {
+        db.prepare(`INSERT INTO stock_movements (spare_part_id, quantity, movement_type, reference, work_order_id, user_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(sparePartId, quantity, movementType, reference || null, workOrderId || null, req.user.id, notes || null);
+      }
+    } else if (movementType === 'out' || movementType === 'transfer') {
+      deductStockOut(db, sparePartId, Math.abs(quantity));
+      const delta = -Math.abs(quantity);
+      if (hasMovementStatusColumn(db)) {
+        db.prepare(`INSERT INTO stock_movements (spare_part_id, quantity, movement_type, reference, work_order_id, user_id, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(sparePartId, delta, movementType, reference || null, workOrderId || null, req.user.id, notes || null, STOCK_STATUS.A);
+      } else {
+        db.prepare(`INSERT INTO stock_movements (spare_part_id, quantity, movement_type, reference, work_order_id, user_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(sparePartId, delta, movementType, reference || null, workOrderId || null, req.user.id, notes || null);
+      }
+    } else {
+      const cur = getBalance(db, sparePartId);
+      const delta = quantity - cur.quantity;
+      updateBalance(db, sparePartId, delta);
+      if (hasMovementStatusColumn(db)) {
+        db.prepare(`INSERT INTO stock_movements (spare_part_id, quantity, movement_type, reference, work_order_id, user_id, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(sparePartId, delta, movementType, reference || null, workOrderId || null, req.user.id, notes || null, STOCK_STATUS.A);
+      } else {
+        db.prepare(`INSERT INTO stock_movements (spare_part_id, quantity, movement_type, reference, work_order_id, user_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(sparePartId, delta, movementType, reference || null, workOrderId || null, req.user.id, notes || null);
+      }
+    }
+  } catch (e) {
+    return res.status(400).json({ error: e.message || 'Stock insuffisant' });
+  }
+  if (db._save) db._save();
   const row = db.prepare('SELECT * FROM stock_movements ORDER BY id DESC LIMIT 1').get();
   res.status(201).json(row);
 });

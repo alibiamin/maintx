@@ -5,12 +5,37 @@
 
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
-const db = require('../database/db');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
+const dbModule = require('../database/db');
 
 const router = express.Router();
 router.use(authenticate);
+
+function getResponsibles(db, tenantId) {
+  const roleNames = ['responsable_maintenance', 'administrateur'];
+  const placeholders = roleNames.map(() => '?').join(',');
+  if (tenantId != null) {
+    try {
+      return dbModule.getAdminDb().prepare(`
+        SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id
+        WHERE u.is_active = 1 AND u.tenant_id = ? AND r.name IN (${placeholders})
+      `).all(tenantId, ...roleNames).map((u) => u.id);
+    } catch (e) {
+      if (e.message && e.message.includes('no such column')) {
+        return dbModule.getAdminDb().prepare(`
+          SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id
+          WHERE u.is_active = 1 AND r.name IN (${placeholders})
+        `).all(...roleNames).map((u) => u.id);
+      }
+      throw e;
+    }
+  }
+  return db.prepare(`
+    SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id
+    WHERE u.is_active = 1 AND r.name IN (${placeholders})
+  `).all(...roleNames).map((u) => u.id);
+}
 
 function formatRequest(row) {
   if (!row) return null;
@@ -43,6 +68,7 @@ router.get('/', [
   query('status').optional().isIn(['pending', 'validated', 'rejected']),
   query('requestedBy').optional().isInt()
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   let where = ' WHERE 1=1';
@@ -75,6 +101,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROL
   body('equipmentId').optional().isInt(),
   body('priority').optional().isIn(['low', 'medium', 'high', 'critical'])
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const { title, description, equipmentId, priority } = req.body;
@@ -91,16 +118,13 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROL
     LEFT JOIN users u ON ir.requested_by = u.id
     WHERE ir.id = ?
   `).get(id);
-  const responsibles = db.prepare(`
-    SELECT u.id FROM users u JOIN roles r ON u.role_id = r.id
-    WHERE u.is_active = 1 AND r.name IN ('responsable_maintenance', 'administrateur')
-  `).all().map((u) => u.id).filter((id) => id !== req.user.id);
-  notificationService.notify('work_order_created', responsibles, {
+  const responsibles = getResponsibles(db, req.tenantId).filter((id) => id !== req.user.id);
+  notificationService.notify(db, 'work_order_created', responsibles, {
     number: `Demande #${id}`,
     title: `Nouvelle demande d'intervention : ${title}`,
     equipment_name: row.equipment_name ? `${row.equipment_code || ''} ${row.equipment_name}`.trim() : null,
     priority: row.priority
-  }).catch(() => {});
+  }, req.tenantId).catch(() => {});
   res.status(201).json(formatRequest(row));
 });
 
@@ -108,6 +132,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROL
  * GET /api/intervention-requests/:id
  */
 router.get('/:id', param('id').isInt(), (req, res) => {
+  const db = req.db;
   const row = db.prepare(`
     SELECT ir.*, e.name as equipment_name, e.code as equipment_code,
            u.first_name || ' ' || u.last_name as requested_by_name,
@@ -131,6 +156,7 @@ router.put('/:id/validate', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('priority').optional().isIn(['low', 'medium', 'high', 'critical']),
   body('title').optional().trim()
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const id = req.params.id;
@@ -169,7 +195,7 @@ router.put('/:id/validate', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
     LEFT JOIN users u ON ir.requested_by = u.id
     WHERE ir.id = ?
   `).get(number, id);
-  notificationService.notify('work_order_created', [], { number: wo.number, title: wo.title, equipment_name: wo.equipment_name, priority: wo.priority }).catch(() => {});
+  notificationService.notify(db, 'work_order_created', [], { number: wo.number, title: wo.title, equipment_name: wo.equipment_name, priority: wo.priority }, req.tenantId).catch(() => {});
   res.json({ request: formatRequest(updated), workOrder: { id: woId, number: wo.number, title: wo.title } });
 });
 
@@ -181,6 +207,7 @@ router.put('/:id/reject', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('rejectionReason').optional().trim()
 ], (req, res) => {
+  const db = req.db;
   const id = req.params.id;
   const reqRow = db.prepare('SELECT * FROM intervention_requests WHERE id = ?').get(id);
   if (!reqRow) return res.status(404).json({ error: 'Demande non trouvée' });

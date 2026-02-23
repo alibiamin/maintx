@@ -4,15 +4,13 @@
 
 const express = require('express');
 const router = express.Router();
-const db = require('../database/db');
 const { authenticate } = require('../middleware/auth');
 
 router.use(authenticate);
 
-// GET /api/alerts
 router.get('/', (req, res) => {
+  const db = req.db;
   try {
-    // Vérifier si la table existe, sinon retourner un tableau vide
     try {
       db.prepare('SELECT 1 FROM alerts LIMIT 1').get();
     } catch (err) {
@@ -70,8 +68,8 @@ router.get('/', (req, res) => {
   }
 });
 
-// GET /api/alerts/unread-count (dédupliqué par entity_type + entity_id)
 router.get('/unread-count', (req, res) => {
+  const db = req.db;
   try {
     const userId = req.user?.id;
     const rows = db.prepare(`
@@ -93,8 +91,8 @@ router.get('/unread-count', (req, res) => {
   }
 });
 
-// POST /api/alerts
 router.post('/', (req, res) => {
+  const db = req.db;
   try {
     const {
       alert_type,
@@ -130,8 +128,8 @@ router.post('/', (req, res) => {
   }
 });
 
-// PUT /api/alerts/:id/read (marque aussi les autres alertes même entité pour cohérence du compteur)
 router.put('/:id/read', (req, res) => {
+  const db = req.db;
   try {
     const userId = req.user?.id;
     const alert = db.prepare('SELECT * FROM alerts WHERE id = ?').get(req.params.id);
@@ -154,8 +152,8 @@ router.put('/:id/read', (req, res) => {
   }
 });
 
-// PUT /api/alerts/read-all
 router.put('/read-all', (req, res) => {
+  const db = req.db;
   try {
     const userId = req.user?.id;
     db.prepare(`
@@ -170,8 +168,8 @@ router.put('/read-all', (req, res) => {
   }
 });
 
-// DELETE /api/alerts/:id
 router.delete('/:id', (req, res) => {
+  const db = req.db;
   try {
     db.prepare('DELETE FROM alerts WHERE id = ?').run(req.params.id);
     res.json({ message: 'Alerte supprimée' });

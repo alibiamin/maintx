@@ -31,7 +31,19 @@ export default function MaintenancePlans() {
 
   const load = () => {
     setLoading(true);
-    api.get('/maintenance-plans').then(r => setPlans(r.data)).catch(() => snackbar.showError('Erreur chargement')).finally(() => setLoading(false));
+    api.get('/maintenance-plans')
+      .then((r) => {
+        const raw = Array.isArray(r.data) ? r.data : (r.data?.data ?? []);
+        const byKey = new Map();
+        raw.forEach((p) => {
+          if (!p) return;
+          const key = `${p.equipment_id ?? ''}|${(p.name || '').trim()}`;
+          if (!byKey.has(key)) byKey.set(key, p);
+        });
+        setPlans([...byKey.values()]);
+      })
+      .catch(() => snackbar.showError('Erreur chargement'))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, []);

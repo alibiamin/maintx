@@ -4,15 +4,13 @@
 
 const express = require('express');
 const router = express.Router();
-const db = require('../database/db');
 const { authenticate } = require('../middleware/auth');
 
 router.use(authenticate);
 
-// GET /api/contracts
 router.get('/', (req, res) => {
+  const db = req.db;
   try {
-    // Vérifier si la table existe, sinon retourner un tableau vide
     try {
       db.prepare('SELECT 1 FROM maintenance_contracts LIMIT 1').get();
     } catch (err) {
@@ -56,8 +54,8 @@ router.get('/', (req, res) => {
   }
 });
 
-// GET /api/contracts/expiring
 router.get('/expiring', (req, res) => {
+  const db = req.db;
   try {
     const days = parseInt(req.query.days || 30);
     const contracts = db.prepare(`
@@ -76,8 +74,8 @@ router.get('/expiring', (req, res) => {
   }
 });
 
-// GET /api/contracts/:id
 router.get('/:id', (req, res) => {
+  const db = req.db;
   try {
     const contract = db.prepare(`
       SELECT c.*, s.name as supplier_name, s.email as supplier_email, s.phone as supplier_phone,
@@ -100,8 +98,8 @@ router.get('/:id', (req, res) => {
   }
 });
 
-// POST /api/contracts
 router.post('/', (req, res) => {
+  const db = req.db;
   try {
     const {
       contract_number,
@@ -150,8 +148,8 @@ router.post('/', (req, res) => {
   }
 });
 
-// PUT /api/contracts/:id
 router.put('/:id', (req, res) => {
+  const db = req.db;
   try {
     const {
       name,
@@ -191,8 +189,8 @@ router.put('/:id', (req, res) => {
   }
 });
 
-// DELETE /api/contracts/:id
 router.delete('/:id', (req, res) => {
+  const db = req.db;
   try {
     db.prepare('DELETE FROM maintenance_contracts WHERE id = ?').run(req.params.id);
     res.json({ message: 'Contrat supprimé' });

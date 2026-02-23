@@ -3,7 +3,6 @@
  */
 
 const express = require('express');
-const db = require('../database/db');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -16,6 +15,7 @@ const LIMIT_PER_TYPE = 8;
  * Returns { equipment: [], workOrders: [], parts: [], technicians: [] }
  */
 router.get('/', (req, res) => {
+  const db = req.db;
   const q = (req.query.q || '').trim();
   if (q.length < 2) {
     return res.json({ equipment: [], workOrders: [], parts: [], technicians: [] });

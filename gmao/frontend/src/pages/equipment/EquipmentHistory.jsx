@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -13,17 +13,34 @@ import {
   Chip,
   CircularProgress,
   TextField,
-  InputAdornment
+  InputAdornment,
+  Alert,
+  IconButton
 } from '@mui/material';
-import { Search, Build, Assignment } from '@mui/icons-material';
+import { Search, Build, Assignment, OpenInNew } from '@mui/icons-material';
 import api from '../../services/api';
 import { useTranslation } from 'react-i18next';
+
+function formatHistoryItem(row) {
+  return {
+    id: row.id,
+    date: row.created_at,
+    type: row.type_name || row.type || '—',
+    workOrderNumber: row.number || row.workOrderNumber || '—',
+    description: row.title || row.description || '—',
+    technicianName: row.assigned_name || row.technicianName || '—',
+    duration: row.total_hours != null && row.total_hours > 0 ? row.total_hours : null,
+    status: row.status
+  };
+}
 
 export default function EquipmentHistory() {
   const { t } = useTranslation();
   const { id } = useParams();
+  const navigate = useNavigate();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -31,35 +48,42 @@ export default function EquipmentHistory() {
   }, [id]);
 
   const loadHistory = async () => {
+    setError(null);
+    setLoading(true);
     try {
       const res = await api.get(`/equipment/${id}/history`);
-      setHistory(res.data || []);
-    } catch (error) {
-      console.error(error);
+      const data = res.data?.data ?? res.data ?? [];
+      setHistory(Array.isArray(data) ? data.map(formatHistoryItem) : []);
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.error || err.message || 'Erreur lors du chargement de l\'historique.');
+      setHistory([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredHistory = history.filter(h =>
-    !search || h.description?.toLowerCase().includes(search.toLowerCase()) ||
-    h.workOrderNumber?.toLowerCase().includes(search.toLowerCase())
+  const filteredHistory = history.filter(
+    (h) =>
+      !search ||
+      (h.description && h.description.toLowerCase().includes(search.toLowerCase())) ||
+      (h.workOrderNumber && h.workOrderNumber.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={3}>
         <Box>
           <Typography variant="h5" fontWeight={700}>
-            Historique des interventions
+            {t('equipmentManagement.historyTitle')}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Toutes les interventions sur cet équipement
+            {t('equipmentManagement.historySubtitle')}
           </Typography>
         </Box>
         <TextField
           size="small"
-          placeholder="Rechercher..."
+          placeholder={t('common.searchPlaceholder') || 'Rechercher...'}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           InputProps={{
@@ -69,8 +93,15 @@ export default function EquipmentHistory() {
               </InputAdornment>
             )
           }}
+          sx={{ minWidth: 220 }}
         />
       </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
 
       <Card sx={{ borderRadius: 2 }}>
         <CardContent>
@@ -80,34 +111,52 @@ export default function EquipmentHistory() {
             </Box>
           ) : filteredHistory.length === 0 ? (
             <Typography color="text.secondary" textAlign="center" py={4}>
-              Aucun historique disponible
+              {t('equipmentManagement.noHistory')}
             </Typography>
           ) : (
-            <Table>
+            <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Date</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Ordre de travail</TableCell>
-                  <TableCell>Description</TableCell>
-                  <TableCell>Technicien</TableCell>
-                  <TableCell>Durée</TableCell>
-                  <TableCell>Statut</TableCell>
+                  <TableCell>{t('equipmentManagement.historyDate')}</TableCell>
+                  <TableCell>{t('equipmentManagement.historyType')}</TableCell>
+                  <TableCell>{t('equipmentManagement.historyWorkOrder')}</TableCell>
+                  <TableCell>{t('equipmentManagement.historyDescription')}</TableCell>
+                  <TableCell>{t('equipmentManagement.historyTechnician')}</TableCell>
+                  <TableCell>{t('equipmentManagement.historyDuration')}</TableCell>
+                  <TableCell>{t('common.actions')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filteredHistory.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>{new Date(item.date).toLocaleDateString('fr-FR')}</TableCell>
+                  <TableRow key={item.id} hover>
                     <TableCell>
-                      <Chip icon={item.type === 'maintenance' ? <Build /> : <Assignment />} label={item.type} size="small" />
+                      {item.date ? new Date(item.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                     </TableCell>
-                    <TableCell>{item.workOrderNumber || '-'}</TableCell>
-                    <TableCell>{item.description || '-'}</TableCell>
-                    <TableCell>{item.technicianName || '-'}</TableCell>
-                    <TableCell>{item.duration || '-'}</TableCell>
                     <TableCell>
-                      <Chip label={t(`status.${item.status}`, item.status)} size="small" color={item.status === 'completed' ? 'success' : 'default'} />
+                      <Chip
+                        icon={item.type && item.type.toLowerCase().includes('prévent') ? <Build /> : <Assignment />}
+                        label={item.type}
+                        size="small"
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell>{item.workOrderNumber}</TableCell>
+                    <TableCell sx={{ maxWidth: 280 }}>{item.description}</TableCell>
+                    <TableCell>{item.technicianName}</TableCell>
+                    <TableCell>
+                      {item.duration != null ? t('equipmentManagement.historyDurationHours', { value: Number(item.duration).toFixed(1) }) : '—'}
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Chip
+                          label={t(`status.${item.status}`, item.status)}
+                          size="small"
+                          color={item.status === 'completed' ? 'success' : 'default'}
+                        />
+                        <IconButton size="small" onClick={() => navigate(`/app/work-orders/${item.id}`)} title="Voir l'OT">
+                          <OpenInNew fontSize="small" />
+                        </IconButton>
+                      </Box>
                     </TableCell>
                   </TableRow>
                 ))}

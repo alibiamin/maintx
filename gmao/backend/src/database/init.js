@@ -202,18 +202,22 @@ CREATE INDEX IF NOT EXISTS idx_maintenance_plans_equipment ON maintenance_plans(
 `;
 
 async function run() {
-  const dbPath = process.env.DATABASE_PATH || path.join(dataDir, 'xmaint.db');
   const db = require('./db');
   await db.init();
-  db.exec(schema);
-  db._save();
+  const adminDb = db.getAdminDb();
+  adminDb.exec(schema);
+  adminDb._save();
   console.log('✅ Base de données xmaint initialisée avec succès');
-  console.log('   Fichier:', dbPath);
+  console.log('   Fichier:', adminDb.getPath());
   db.close();
   process.exit(0);
 }
 
-run().catch(err => {
-  console.error('❌ Erreur:', err);
-  process.exit(1);
-});
+module.exports = { schema };
+
+if (require.main === module) {
+  run().catch(err => {
+    console.error('❌ Erreur:', err);
+    process.exit(1);
+  });
+}

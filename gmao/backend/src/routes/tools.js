@@ -4,16 +4,14 @@
 
 const express = require('express');
 const router = express.Router();
-const db = require('../database/db');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
 const codification = require('../services/codification');
 
 router.use(authenticate);
 
-// GET /api/tools
 router.get('/', (req, res) => {
+  const db = req.db;
   try {
-    // Vérifier si la table existe, sinon retourner un tableau vide
     try {
       db.prepare('SELECT 1 FROM tools LIMIT 1').get();
     } catch (err) {
@@ -45,8 +43,8 @@ router.get('/', (req, res) => {
   }
 });
 
-// GET /api/tools/assignments - doit être avant /:id
 router.get('/assignments', (req, res) => {
+  const db = req.db;
   try {
     try {
       db.prepare('SELECT 1 FROM tool_assignments LIMIT 1').get();
@@ -76,8 +74,8 @@ router.get('/assignments', (req, res) => {
   }
 });
 
-// GET /api/tools/calibrations - doit être avant /:id (liste des outils avec dates de calibration)
 router.get('/calibrations', (req, res) => {
+  const db = req.db;
   try {
     const rows = db.prepare(`
       SELECT id, code, name, calibration_date, calibration_due_date,
@@ -95,8 +93,8 @@ router.get('/calibrations', (req, res) => {
   }
 });
 
-// GET /api/tools/:id
 router.get('/:id', (req, res) => {
+  const db = req.db;
   try {
     const tool = db.prepare('SELECT * FROM tools WHERE id = ?').get(req.params.id);
     if (!tool) {
@@ -119,8 +117,8 @@ router.get('/:id', (req, res) => {
   }
 });
 
-// POST /api/tools
 router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
   try {
     const {
       code: codeProvided,
@@ -138,7 +136,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
     } = req.body;
 
     if (!name || !String(name).trim()) return res.status(400).json({ error: 'Nom requis' });
-    let code = codification.generateCodeIfNeeded('outil', codeProvided);
+    let code = codification.generateCodeIfNeeded(db, 'outil', codeProvided);
     if (!code || !code.trim()) {
       try {
         const last = db.prepare('SELECT code FROM tools WHERE code LIKE ? ORDER BY code DESC LIMIT 1').get('OUT-%');
@@ -180,8 +178,8 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   }
 });
 
-// PUT /api/tools/:id
 router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
   try {
     const current = db.prepare('SELECT * FROM tools WHERE id = ?').get(req.params.id);
     if (!current) return res.status(404).json({ error: 'Outil non trouvé' });
@@ -244,12 +242,10 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   }
 });
 
-// POST /api/tools/:id/assign
 router.post('/:id/assign', (req, res) => {
+  const db = req.db;
   try {
     const { work_order_id, assigned_to, notes } = req.body;
-
-    // Vérifier que l'outil est disponible
     const tool = db.prepare('SELECT * FROM tools WHERE id = ?').get(req.params.id);
     if (!tool) {
       return res.status(404).json({ error: 'Outil non trouvé' });
@@ -282,11 +278,10 @@ router.post('/:id/assign', (req, res) => {
   }
 });
 
-// POST /api/tools/:id/return
 router.post('/:id/return', (req, res) => {
+  const db = req.db;
   try {
     const { assignment_id, notes } = req.body;
-
     const assignment = db.prepare('SELECT * FROM tool_assignments WHERE id = ? AND returned_at IS NULL').get(assignment_id);
     if (!assignment) {
       return res.status(404).json({ error: 'Assignation non trouvée ou déjà retournée' });
@@ -307,8 +302,8 @@ router.post('/:id/return', (req, res) => {
   }
 });
 
-// DELETE /api/tools/:id
 router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
   try {
     const tool = db.prepare('SELECT id FROM tools WHERE id = ?').get(req.params.id);
     if (!tool) return res.status(404).json({ error: 'Outil non trouvé' });

@@ -1,10 +1,11 @@
 /**
  * Service d'alertes par email et SMS — xmaint
  * Déclenchement : création OT, affectation, clôture, plans en retard, stock
+ * Multi-tenant : les users sont dans gmao.db ; passer tenantId pour filtrer les destinataires.
  */
 
 require('dotenv').config();
-const db = require('../database/db');
+const dbModule = require('../database/db');
 
 let nodemailer = null;
 let twilioClient = null;
@@ -76,17 +77,44 @@ async function sendSMS(to, message) {
 }
 
 /**
- * Récupère les utilisateurs à notifier pour un événement (ceux qui ont la préférence activée)
+ * Récupère les utilisateurs à notifier (users dans gmao.db ; filtrer par tenant si fourni)
+ * @param {object} db - base (req.db) ou base admin pour résoudre les users
+ * @param {string} eventType
+ * @param {string} channel
+ * @param {number|null} tenantId - si défini, on utilise la base admin et on filtre u.tenant_id = ?
  */
-function getRecipients(eventType, channel) {
+function getRecipients(db, eventType, channel, tenantId) {
+  const useDb = tenantId != null ? (dbModule.getAdminDb && dbModule.getAdminDb()) : db;
+  if (!useDb) return [];
   try {
-    const rows = db.prepare(`
-      SELECT u.id, u.email, u.phone, u.first_name, u.last_name
-      FROM users u
-      JOIN notification_preferences np ON np.user_id = u.id AND np.enabled = 1
-      WHERE np.event_type = ? AND np.channel = ?
-      AND u.is_active = 1
-    `).all(eventType, channel);
+    let rows;
+    if (tenantId != null) {
+      try {
+        rows = useDb.prepare(`
+          SELECT u.id, u.email, u.phone, u.first_name, u.last_name
+          FROM users u
+          JOIN notification_preferences np ON np.user_id = u.id AND np.enabled = 1
+          WHERE np.event_type = ? AND np.channel = ? AND u.is_active = 1 AND u.tenant_id = ?
+        `).all(eventType, channel, tenantId);
+      } catch (e) {
+        if (e.message && e.message.includes('no such column')) {
+          rows = useDb.prepare(`
+            SELECT u.id, u.email, u.phone, u.first_name, u.last_name
+            FROM users u
+            JOIN notification_preferences np ON np.user_id = u.id AND np.enabled = 1
+            WHERE np.event_type = ? AND np.channel = ? AND u.is_active = 1
+          `).all(eventType, channel);
+        } else throw e;
+      }
+    } else {
+      rows = useDb.prepare(`
+        SELECT u.id, u.email, u.phone, u.first_name, u.last_name
+        FROM users u
+        JOIN notification_preferences np ON np.user_id = u.id AND np.enabled = 1
+        WHERE np.event_type = ? AND np.channel = ?
+        AND u.is_active = 1
+      `).all(eventType, channel);
+    }
     return rows;
   } catch (e) {
     if (e.message && e.message.includes('no such table')) return [];
@@ -138,17 +166,22 @@ function buildSubject(eventType, data) {
 
 /**
  * Envoie les notifications (email + SMS) pour un événement aux utilisateurs concernés
+ * @param {object} db - base (req.db) pour contexte
  * @param {string} eventType - work_order_created | work_order_assigned | work_order_closed | plan_overdue | stock_alert
  * @param {number[]} [userIds] - si fourni, on ne notifie que ces utilisateurs (et on respecte leurs préférences)
  * @param {object} data - données pour le message (number, title, equipment_name, etc.)
+ * @param {number|null} [tenantId] - si client, passer req.tenantId pour résoudre les users depuis gmao.db
  */
-async function notify(eventType, userIds, data = {}) {
+async function notify(db, eventType, userIds, data = {}, tenantId = null) {
+  const adminDb = db && dbModule.getAdminDb ? dbModule.getAdminDb() : null;
+  const userDb = tenantId != null ? adminDb : db;
+  if (!userDb && (!userIds || userIds.length === 0)) return;
   const run = (channel) => {
     let recipients;
     if (userIds && userIds.length > 0) {
       try {
         const placeholders = userIds.map(() => '?').join(',');
-        const prefs = db.prepare(`
+        const prefs = userDb.prepare(`
           SELECT u.id, u.email, u.phone, u.first_name, u.last_name
           FROM users u
           JOIN notification_preferences np ON np.user_id = u.id AND np.enabled = 1
@@ -160,7 +193,7 @@ async function notify(eventType, userIds, data = {}) {
         else throw e;
       }
     } else {
-      recipients = getRecipients(eventType, channel);
+      recipients = getRecipients(userDb, eventType, channel, tenantId);
     }
     const text = buildMessage(eventType, data);
     const subject = buildSubject(eventType, data);

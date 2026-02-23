@@ -4,7 +4,6 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const db = require('../database/db');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
@@ -29,6 +28,7 @@ function formatModel(row) {
  * GET /api/equipment-models
  */
 router.get('/', (req, res) => {
+  const db = req.db;
   const rows = db.prepare(`
     SELECT m.*, c.name as category_name
     FROM equipment_models m
@@ -42,6 +42,7 @@ router.get('/', (req, res) => {
  * GET /api/equipment-models/:id
  */
 router.get('/:id', param('id').isInt(), (req, res) => {
+  const db = req.db;
   const row = db.prepare(`
     SELECT m.*, c.name as category_name
     FROM equipment_models m
@@ -58,6 +59,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
 router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').notEmpty().trim()
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const { name, description, categoryId, manufacturer, model, technicalSpecs } = req.body;
@@ -87,6 +89,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('name').optional().notEmpty().trim()
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const id = req.params.id;
@@ -116,6 +119,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
  * DELETE /api/equipment-models/:id
  */
 router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+  const db = req.db;
   const result = db.prepare('DELETE FROM equipment_models WHERE id = ?').run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Modèle non trouvé' });
   res.status(204).send();

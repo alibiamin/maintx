@@ -3,13 +3,13 @@
  */
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const db = require('../database/db');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
 
 router.get('/', (req, res) => {
+  const db = req.db;
   const rows = db.prepare(`
     SELECT id, code, name, description, created_at
     FROM competencies
@@ -19,6 +19,7 @@ router.get('/', (req, res) => {
 });
 
 router.get('/:id', param('id').isInt(), (req, res) => {
+  const db = req.db;
   const row = db.prepare('SELECT id, code, name, description, created_at FROM competencies WHERE id = ?').get(parseInt(req.params.id));
   if (!row) return res.status(404).json({ error: 'Compétence introuvable' });
   res.json(row);
@@ -31,6 +32,7 @@ router.post('/', [
   body('name').notEmpty().trim(),
   body('description').optional().trim()
 ], (req, res) => {
+  const db = req.db;
   const err = validationResult(req);
   if (!err.isEmpty()) return res.status(400).json({ errors: err.array() });
   const { code, name, description } = req.body;
@@ -52,6 +54,7 @@ router.put('/:id', [
   body('name').optional().notEmpty().trim(),
   body('description').optional().trim()
 ], (req, res) => {
+  const db = req.db;
   const err = validationResult(req);
   if (!err.isEmpty()) return res.status(400).json({ errors: err.array() });
   const id = parseInt(req.params.id);
@@ -75,6 +78,7 @@ router.put('/:id', [
 });
 
 router.delete('/:id', param('id').isInt(), (req, res) => {
+  const db = req.db;
   const id = parseInt(req.params.id);
   db.prepare('DELETE FROM competencies WHERE id = ?').run(id);
   res.status(204).send();

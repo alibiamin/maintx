@@ -138,7 +138,8 @@ export default function EquipmentMap() {
     isCritical = false,
     onClick,
     expandIcon,
-    childNodes
+    childNodes,
+    workOrdersInProgress = []
   }) => (
     <Box sx={{ mb: 1 }}>
       <Box
@@ -195,6 +196,29 @@ export default function EquipmentMap() {
           )}
         </Box>
       </Box>
+      {workOrdersInProgress && workOrdersInProgress.length > 0 && (
+        <Box sx={{ ml: 5, mt: 0.5, pl: 1.5, borderLeft: '2px solid', borderColor: alpha('#f59e0b', 0.5) }}>
+          <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ display: 'block', mb: 0.5 }}>OT en cours</Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+            {workOrdersInProgress.map((wo) => (
+              <Tooltip key={wo.id} title={wo.title || wo.number}>
+                <Chip
+                  size="small"
+                  label={wo.number}
+                  onClick={(e) => { e.stopPropagation(); navigate(`/app/work-orders/${wo.id}`); }}
+                  sx={{
+                    fontSize: '0.7rem',
+                    cursor: 'pointer',
+                    bgcolor: wo.priority === 'critical' ? alpha('#ef4444', 0.15) : alpha('#f59e0b', 0.15),
+                    color: wo.priority === 'critical' ? '#dc2626' : '#b45309',
+                    '&:hover': { bgcolor: wo.priority === 'critical' ? alpha('#ef4444', 0.25) : alpha('#f59e0b', 0.25) }
+                  }}
+                />
+              </Tooltip>
+            ))}
+          </Box>
+        </Box>
+      )}
       {childNodes && childNodes.length > 0 && (
         <Box sx={{ ml: 3, pl: 2, borderLeft: '2px dashed', borderColor: 'divider' }}>
           {childNodes}
@@ -207,9 +231,8 @@ export default function EquipmentMap() {
   const EquipmentTreeBranch = ({ eq, depth }) => {
     const children = getChildrenForEquipment(eq.id, data?.equipments);
     const cfg = STATUS_CONFIG[eq.status] || STATUS_CONFIG.operational;
-    const StatusIcon = cfg.icon;
     const typeLabel = typeInfo(eq).label;
-    const hasAlert = (eq.alertPending || eq.alertInProgress || 0) > 0;
+    const workOrdersInProgress = eq.workOrdersInProgress || [];
     return (
       <TreeRow
         depth={depth}
@@ -222,6 +245,7 @@ export default function EquipmentMap() {
         alertCount={(eq.alertPending || 0) + (eq.alertInProgress || 0)}
         isCritical={(eq.alertCritical || 0) > 0}
         onClick={(e) => { e?.stopPropagation?.(); navigate(`/app/equipment/${eq.id}`); }}
+        workOrdersInProgress={workOrdersInProgress}
         childNodes={children.length > 0 ? children.map(child => <EquipmentTreeBranch key={child.id} eq={child} depth={depth + 1} />) : null}
       />
     );

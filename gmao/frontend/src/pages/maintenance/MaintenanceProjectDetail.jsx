@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -28,19 +28,24 @@ import api from '../../services/api';
 import { useSnackbar } from '../../context/SnackbarContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
-import projectNav, { navigateTo } from './projectNavigation';
 
+const APP_BASE = '/app';
 const STATUS_LABELS = { draft: 'Brouillon', active: 'Actif', completed: 'Terminé', cancelled: 'Annulé' };
 const CAN_EDIT_ROLES = ['administrateur', 'responsable_maintenance'];
 
 export default function MaintenanceProjectDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [linkOpen, setLinkOpen] = useState(false);
   const [availableWOs, setAvailableWOs] = useState([]);
   const [linkWoId, setLinkWoId] = useState('');
   const [linkSubmitting, setLinkSubmitting] = useState(false);
+  const [linkPlanOpen, setLinkPlanOpen] = useState(false);
+  const [availablePlans, setAvailablePlans] = useState([]);
+  const [linkPlanId, setLinkPlanId] = useState('');
+  const [linkPlanSubmitting, setLinkPlanSubmitting] = useState(false);
   const { user } = useAuth();
   const snackbar = useSnackbar();
   const currency = useCurrency();
@@ -58,11 +63,16 @@ export default function MaintenanceProjectDetail() {
 
   useEffect(() => {
     if (id === 'undefined' || id === 'new') {
-      projectNav.list();
+      navigate(`${APP_BASE}/maintenance-projects`);
+      return;
+    }
+    const numId = parseInt(id, 10);
+    if (Number.isNaN(numId) || numId < 1) {
+      navigate(`${APP_BASE}/maintenance-projects`);
       return;
     }
     load();
-  }, [id]);
+  }, [id, navigate]);
 
   const openLinkDialog = () => {
     setLinkWoId('');
@@ -102,6 +112,43 @@ export default function MaintenanceProjectDetail() {
       .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'));
   };
 
+  const openLinkPlanDialog = () => {
+    setLinkPlanId('');
+    api
+      .get('/maintenance-plans')
+      .then((r) => {
+        const list = Array.isArray(r.data) ? r.data : (r.data?.data ?? []);
+        const linkedIds = (project?.maintenancePlans ?? []).map((p) => p.id);
+        setAvailablePlans(list.filter((p) => !linkedIds.includes(p.id)));
+      })
+      .catch(() => setAvailablePlans([]));
+    setLinkPlanOpen(true);
+  };
+
+  const handleLinkPlan = () => {
+    if (!linkPlanId) return;
+    setLinkPlanSubmitting(true);
+    api
+      .post(`/maintenance-projects/${id}/link-plan`, { planId: parseInt(linkPlanId, 10) })
+      .then(() => {
+        snackbar.showSuccess('Plan rattaché');
+        setLinkPlanOpen(false);
+        load();
+      })
+      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'))
+      .finally(() => setLinkPlanSubmitting(false));
+  };
+
+  const handleUnlinkPlan = (planId) => {
+    api
+      .post(`/maintenance-projects/${id}/unlink-plan`, { planId })
+      .then(() => {
+        snackbar.showSuccess('Plan détaché');
+        load();
+      })
+      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'));
+  };
+
   if (loading && !project) {
     return (
       <Box display="flex" justifyContent="center" p={4}>
@@ -112,7 +159,7 @@ export default function MaintenanceProjectDetail() {
   if (!project) {
     return (
       <Box>
-        <Button startIcon={<ArrowBack />} onClick={() => projectNav.list()}>
+        <Button startIcon={<ArrowBack />} onClick={() => navigate(`${APP_BASE}/maintenance-projects`)}>
           Retour
         </Button>
         <Alert severity="error" sx={{ mt: 2 }}>
@@ -126,15 +173,16 @@ export default function MaintenanceProjectDetail() {
   const totalCost = Number(project.totalCost) || 0;
   const overBudget = budget > 0 && totalCost > budget;
   const workOrders = project.workOrders ?? [];
+  const maintenancePlans = project.maintenancePlans ?? [];
 
   return (
     <Box>
       <Box display="flex" alignItems="center" gap={2} mb={2}>
-        <Button startIcon={<ArrowBack />} onClick={() => projectNav.list()}>
+        <Button startIcon={<ArrowBack />} onClick={() => navigate(`${APP_BASE}/maintenance-projects`)}>
           Retour
         </Button>
         {canEdit && (
-          <Button startIcon={<Edit />} variant="outlined" onClick={() => projectNav.edit(id)}>
+          <Button startIcon={<Edit />} variant="outlined" onClick={() => navigate(`${APP_BASE}/maintenance-projects/${id}/edit`)}>
             Modifier
           </Button>
         )}
@@ -214,7 +262,7 @@ export default function MaintenanceProjectDetail() {
                 workOrders.map((wo) => (
                   <TableRow key={wo.id}>
                     <TableCell>
-                      <Button size="small" onClick={() => navigateTo(`/work-orders/${wo.id}`)}>
+                      <Button size="small" onClick={() => navigate(`${APP_BASE}/work-orders/${wo.id}`)}>
                         {wo.number}
                       </Button>
                     </TableCell>
@@ -254,6 +302,68 @@ export default function MaintenanceProjectDetail() {
         </CardContent>
       </Card>
 
+      <Card sx={{ mt: 2 }}>
+        <CardContent>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h6">Plans de maintenance du projet</Typography>
+            {canEdit && (
+              <Button size="small" startIcon={<Add />} onClick={openLinkPlanDialog}>
+                Rattacher un plan
+              </Button>
+            )}
+          </Box>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Plan</TableCell>
+                <TableCell>Équipement</TableCell>
+                <TableCell>Prochaine échéance</TableCell>
+                <TableCell>Statut</TableCell>
+                {canEdit && <TableCell align="right">Actions</TableCell>}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {maintenancePlans.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={canEdit ? 5 : 4}>
+                    Aucun plan rattaché. Utilisez « Rattacher un plan » pour en ajouter.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                maintenancePlans.map((plan) => (
+                  <TableRow key={plan.id}>
+                    <TableCell>{plan.name}</TableCell>
+                    <TableCell>
+                      {plan.equipmentCode ? `${plan.equipmentCode} ${plan.equipmentName || ''}`.trim() : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {plan.nextDueDate
+                        ? new Date(plan.nextDueDate).toLocaleDateString('fr-FR')
+                        : '—'}
+                    </TableCell>
+                    <TableCell>
+                      <Chip label={plan.isActive ? 'Actif' : 'Inactif'} size="small" color={plan.isActive ? 'success' : 'default'} />
+                    </TableCell>
+                    {canEdit && (
+                      <TableCell align="right">
+                        <Button
+                          size="small"
+                          color="error"
+                          startIcon={<LinkOff />}
+                          onClick={() => handleUnlinkPlan(plan.id)}
+                        >
+                          Détacher
+                        </Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
       <Dialog open={linkOpen} onClose={() => setLinkOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Rattacher un ordre de travail</DialogTitle>
         <DialogContent>
@@ -276,6 +386,33 @@ export default function MaintenanceProjectDetail() {
         <DialogActions>
           <Button onClick={() => setLinkOpen(false)}>Annuler</Button>
           <Button variant="contained" onClick={handleLink} disabled={!linkWoId || linkSubmitting}>
+            Rattacher
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={linkPlanOpen} onClose={() => setLinkPlanOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Rattacher un plan de maintenance</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+            <InputLabel>Plan</InputLabel>
+            <Select value={linkPlanId} label="Plan" onChange={(e) => setLinkPlanId(e.target.value)}>
+              {availablePlans.map((p) => (
+                <MenuItem key={p.id} value={String(p.id)}>
+                  {p.name} — {p.equipment_code || p.equipmentCode || '—'}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          {availablePlans.length === 0 && (
+            <Typography color="text.secondary" sx={{ mt: 1 }}>
+              Aucun plan disponible (tous rattachés ou liste vide).
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setLinkPlanOpen(false)}>Annuler</Button>
+          <Button variant="contained" onClick={handleLinkPlan} disabled={!linkPlanId || linkPlanSubmitting}>
             Rattacher
           </Button>
         </DialogActions>

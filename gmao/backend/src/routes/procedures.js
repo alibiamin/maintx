@@ -4,7 +4,6 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const db = require('../database/db');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
@@ -30,6 +29,7 @@ function formatProcedure(row) {
  * Query: equipmentModelId
  */
 router.get('/', (req, res) => {
+  const db = req.db;
   const { equipmentModelId } = req.query;
   let sql = `
     SELECT p.*, m.name as equipment_model_name
@@ -48,6 +48,7 @@ router.get('/', (req, res) => {
  * GET /api/procedures/:id
  */
 router.get('/:id', param('id').isInt(), (req, res) => {
+  const db = req.db;
   const row = db.prepare(`
     SELECT p.*, m.name as equipment_model_name
     FROM procedures p
@@ -64,6 +65,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
 router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').notEmpty().trim()
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const { name, description, steps, safetyNotes, equipmentModelId } = req.body;
@@ -86,6 +88,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('name').optional().notEmpty().trim()
 ], (req, res) => {
+  const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const id = req.params.id;
@@ -115,6 +118,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
  * DELETE /api/procedures/:id
  */
 router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+  const db = req.db;
   const id = req.params.id;
   try {
     db.prepare('UPDATE maintenance_plans SET procedure_id = NULL WHERE procedure_id = ?').run(id);

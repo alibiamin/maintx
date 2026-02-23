@@ -15,7 +15,7 @@ import {
   InputAdornment,
   IconButton
 } from '@mui/material';
-import { Search, Visibility } from '@mui/icons-material';
+import { Search, Visibility, Edit } from '@mui/icons-material';
 import api from '../../services/api';
 
 export default function EquipmentTechnicalList() {
@@ -52,7 +52,7 @@ export default function EquipmentTechnicalList() {
             Fiches techniques
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Consultation des fiches techniques des équipements
+            Consultation et modification des fiches techniques des équipements
           </Typography>
         </Box>
         <TextField
@@ -101,8 +101,11 @@ export default function EquipmentTechnicalList() {
                     <TableCell>{eq.model || '-'}</TableCell>
                     <TableCell>{eq.serialNumber || '-'}</TableCell>
                     <TableCell align="right">
-                      <IconButton size="small" onClick={() => navigate(`/app/equipment/${eq.id}/technical`)}>
+                      <IconButton size="small" onClick={() => navigate(`/app/equipment/${eq.id}/technical`)} title="Voir">
                         <Visibility />
+                      </IconButton>
+                      <IconButton size="small" onClick={() => navigate(`/app/equipment/${eq.id}/technical`)} title="Modifier la fiche technique">
+                        <Edit />
                       </IconButton>
                     </TableCell>
                   </TableRow>

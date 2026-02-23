@@ -16,7 +16,7 @@ import {
   TextField,
   TablePagination
 } from '@mui/material';
-import { PersonAdd, Star } from '@mui/icons-material';
+import { PersonAdd, Star, StarBorder, RateReview } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useSnackbar } from '../../context/SnackbarContext';
@@ -38,6 +38,8 @@ function TechnicianList() {
     jobTitle: '', department: '', hireDate: '', contractType: ''
   });
   const [saving, setSaving] = useState(false);
+  const [evalDialog, setEvalDialog] = useState({ open: false, tech: null, score: 3, comment: '' });
+  const [savingEval, setSavingEval] = useState(false);
   const { user } = useAuth();
   const snackbar = useSnackbar();
   const currency = useCurrency();
@@ -65,6 +67,34 @@ function TechnicianList() {
   const handleChangePage = (_, newPage) => setPage(newPage);
   const handleChangeRowsPerPage = (e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); };
 
+  const openEvalDialog = (tech, e) => {
+    if (e) e.stopPropagation();
+    setEvalDialog({ open: true, tech, score: 3, comment: '' });
+  };
+  const closeEvalDialog = () => setEvalDialog({ open: false, tech: null, score: 3, comment: '' });
+  const handleSubmitEval = () => {
+    if (!evalDialog.tech) return;
+    setSavingEval(true);
+    api.post(`/technicians/${evalDialog.tech.id}/evaluations`, { score: evalDialog.score, comment: evalDialog.comment || undefined })
+      .then(() => {
+        snackbar.showSuccess('Évaluation enregistrée');
+        closeEvalDialog();
+        load();
+      })
+      .catch(() => snackbar.showError('Erreur'))
+      .finally(() => setSavingEval(false));
+  };
+
+  const renderStars = (avgScore) => {
+    if (avgScore == null) return null;
+    const n = Math.min(5, Math.max(0, Math.round(avgScore)));
+    return (
+      <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.25 }}>
+        {[1, 2, 3, 4, 5].map((i) => (i <= n ? <Star key={i} sx={{ fontSize: 16, color: 'warning.main' }} /> : <StarBorder key={i} sx={{ fontSize: 16, color: 'action.disabled' }} />))}
+      </Box>
+    );
+  };
+
   const handleOpenDialog = () => {
     setForm({
       email: '', password: '', firstName: '', lastName: '', hourlyRate: '',
@@ -83,7 +113,7 @@ function TechnicianList() {
       return;
     }
     setSaving(true);
-    api.post('/technicians', {
+    const payload = {
       email: form.email.trim(),
       password: form.password,
       firstName: form.firstName.trim(),
@@ -98,7 +128,8 @@ function TechnicianList() {
       department: form.department.trim() || undefined,
       hireDate: form.hireDate || undefined,
       contractType: form.contractType.trim() || undefined
-    })
+    };
+    api.post('/technicians', payload)
       .then((r) => {
         setDialogOpen(false);
         setPage(0);
@@ -119,12 +150,31 @@ function TechnicianList() {
           <Typography variant="h5" fontWeight={700}>Techniciens</Typography>
           <Typography variant="body2" color="text.secondary">Compétences, notation et suggestions d'affectation</Typography>
         </Box>
-        {canAdd && (
-          <Button variant="contained" startIcon={<PersonAdd />} onClick={handleOpenDialog}>
-            Ajouter un technicien
-          </Button>
-        )}
+        <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+          {canAdd && (
+            <Button variant="contained" startIcon={<PersonAdd />} onClick={handleOpenDialog}>
+              Ajouter un technicien
+            </Button>
+          )}
+        </Box>
       </Box>
+
+      <Dialog open={evalDialog.open} onClose={closeEvalDialog} maxWidth="xs" fullWidth>
+        <DialogTitle>Évaluer {evalDialog.tech ? `${evalDialog.tech.first_name} ${evalDialog.tech.last_name}` : ''}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>Note de 1 à 5 (qualité du travail, réactivité…)</Typography>
+          <Box sx={{ display: 'flex', gap: 0.5, mb: 2 }}>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Button key={i} variant={evalDialog.score === i ? 'contained' : 'outlined'} size="small" onClick={() => setEvalDialog((d) => ({ ...d, score: i }))}>{i}</Button>
+            ))}
+          </Box>
+          <TextField fullWidth label="Commentaire (optionnel)" multiline rows={2} value={evalDialog.comment} onChange={(e) => setEvalDialog((d) => ({ ...d, comment: e.target.value }))} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeEvalDialog}>Annuler</Button>
+          <Button variant="contained" onClick={handleSubmitEval} disabled={savingEval}>{savingEval ? 'Enregistrement…' : 'Enregistrer'}</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth component="form" onSubmit={handleSubmit}>
         <DialogTitle>Nouveau technicien</DialogTitle>
@@ -179,15 +229,25 @@ function TechnicianList() {
                     <Chip label={roleLabels[t.role_name] || t.role_name} size="small" color="primary" variant="outlined" />
                   </Box>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t.email}</Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
-                    <Star sx={{ fontSize: 18, color: 'warning.main' }} />
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+                    {renderStars(t.avg_score)}
                     <Typography variant="body2" fontWeight={600}>
                       {t.avg_score != null ? `${t.avg_score}/5` : '—'} ({t.evaluation_count} éval.)
                     </Typography>
+                    {canAdd && (
+                      <Button size="small" startIcon={<RateReview />} onClick={(e) => openEvalDialog(t, e)} sx={{ ml: 0.5 }}>
+                        Noter
+                      </Button>
+                    )}
                   </Box>
                   <Typography variant="body2" color="text.secondary">
                     Taux : {t.hourly_rate != null ? `${Number(t.hourly_rate).toFixed(2)} ${currency}/h` : 'défaut'}
                   </Typography>
+                  {(t.workload_count != null && t.workload_count > 0) && (
+                    <Typography variant="caption" color="info.main" display="block" sx={{ mt: 0.5 }}>
+                      {t.workload_count} OT en cours
+                    </Typography>
+                  )}
                   {(t.phone || t.job_title || t.department || t.city) && (
                     <Box sx={{ mt: 1, pt: 1, borderTop: 1, borderColor: 'divider' }}>
                       {t.phone && <Typography variant="caption" display="block" color="text.secondary">Tél. {t.phone}</Typography>}

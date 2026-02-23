@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -15,14 +16,16 @@ import {
   CircularProgress,
   FormControl,
   Select,
-  MenuItem
+  MenuItem,
+  IconButton
 } from '@mui/material';
-import { Search, Warning } from '@mui/icons-material';
+import { Search, Warning, Visibility } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
 
 export default function StockList() {
+  const navigate = useNavigate();
   const currency = useCurrency();
   const [parts, setParts] = useState([]);
   const [total, setTotal] = useState(0);
@@ -114,18 +117,33 @@ export default function StockList() {
                 <TableCell>Designation</TableCell>
                 <TableCell>Fournisseur</TableCell>
                 <TableCell align="right">Stock</TableCell>
+                {(parts[0] && (parts[0].quantity_accepted != null || parts[0].quantity_quarantine != null)) && (
+                  <>
+                    <TableCell align="right">A</TableCell>
+                    <TableCell align="right">Q</TableCell>
+                    <TableCell align="right">R</TableCell>
+                  </>
+                )}
                 <TableCell align="right">Seuil min</TableCell>
                 <TableCell align="right">Prix unit.</TableCell>
                 <TableCell>Alerte</TableCell>
+                <TableCell width={56}></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {parts.map((p) => (
-                <TableRow key={p.id} hover>
+                <TableRow key={p.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/app/stock/parts/${p.id}`)}>
                   <TableCell>{p.code}</TableCell>
                   <TableCell>{p.name}</TableCell>
                   <TableCell>{p.supplier_name || '-'}</TableCell>
                   <TableCell align="right">{p.stock_quantity ?? 0}</TableCell>
+                  {(parts[0] && (parts[0].quantity_accepted != null || parts[0].quantity_quarantine != null)) && (
+                    <>
+                      <TableCell align="right"><Chip size="small" label={p.quantity_accepted ?? 0} color="success" variant="outlined" title="Accepté" /></TableCell>
+                      <TableCell align="right"><Chip size="small" label={p.quantity_quarantine ?? 0} color="warning" variant="outlined" title="Quarantaine" /></TableCell>
+                      <TableCell align="right"><Chip size="small" label={p.quantity_rejected ?? 0} color="error" variant="outlined" title="Rejeté" /></TableCell>
+                    </>
+                  )}
                   <TableCell align="right">{p.min_stock}</TableCell>
                   <TableCell align="right">{p.unit_price ? `${p.unit_price.toFixed(2)} ${currency}` : '-'}</TableCell>
                   <TableCell>
@@ -134,6 +152,11 @@ export default function StockList() {
                     ) : (
                       '-'
                     )}
+                  </TableCell>
+                  <TableCell padding="none" onClick={(e) => e.stopPropagation()}>
+                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); navigate(`/app/stock/parts/${p.id}`); }} title="Voir la fiche">
+                      <Visibility />
+                    </IconButton>
                   </TableCell>
                 </TableRow>
               ))}

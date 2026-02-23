@@ -44,9 +44,20 @@ export default function Sites() {
       api.get('/lignes')
     ])
       .then(([s, d, l]) => {
-        setSites(s.data || []);
-        setDepartements(d.data || []);
-        setLignes(l.data || []);
+        const dedupeById = (arr) => {
+          if (!Array.isArray(arr)) return [];
+          const seen = new Set();
+          return arr.filter((x) => x && x.id != null && !seen.has(x.id) && (seen.add(x.id), true));
+        };
+        const depRaw = d.data || [];
+        const depByKey = new Map();
+        depRaw.forEach((x) => {
+          const key = `${x.site_id ?? ''}|${(x.code || '').trim()}`;
+          if (!depByKey.has(key)) depByKey.set(key, x);
+        });
+        setSites(dedupeById(s.data || []));
+        setDepartements([...depByKey.values()]);
+        setLignes(dedupeById(l.data || []));
       })
       .catch(console.error)
       .finally(() => setLoading(false));

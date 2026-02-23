@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useLocation } from 'react-router-dom';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -17,7 +17,8 @@ import { Save, ArrowBack } from '@mui/icons-material';
 import api from '../../services/api';
 import { useSnackbar } from '../../context/SnackbarContext';
 import { useCurrency } from '../../context/CurrencyContext';
-import projectNav from './projectNavigation';
+
+const APP_BASE = '/app';
 
 const STATUS_OPTIONS = [
   { value: 'draft', label: 'Brouillon' },
@@ -39,7 +40,7 @@ const initialForm = {
 export default function MaintenanceProjectForm() {
   const { id } = useParams();
   const location = useLocation();
-  // Route "maintenance-projects/new" n'a pas de param :id, donc on détecte "new" via le pathname
+  const navigate = useNavigate();
   const isNew = location.pathname.endsWith('/new') || id === 'new';
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
@@ -59,7 +60,7 @@ export default function MaintenanceProjectForm() {
     }
     if (!id || id === 'undefined') {
       setLoading(false);
-      projectNav.list();
+      navigate(`${APP_BASE}/maintenance-projects`);
       return;
     }
     setLoading(true);
@@ -79,10 +80,10 @@ export default function MaintenanceProjectForm() {
       })
       .catch(() => {
         snackbar.showError('Projet non trouvé');
-        projectNav.list();
+        navigate(`${APP_BASE}/maintenance-projects`);
       })
       .finally(() => setLoading(false));
-  }, [id, isNew]);
+  }, [id, isNew, navigate]);
 
   const setField = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -112,8 +113,8 @@ export default function MaintenanceProjectForm() {
         .then((r) => {
           const newId = r.data?.id;
           snackbar.showSuccess('Projet créé');
-          if (newId != null) projectNav.detail(newId);
-          else projectNav.list();
+          if (newId != null) navigate(`${APP_BASE}/maintenance-projects/${newId}`);
+          else navigate(`${APP_BASE}/maintenance-projects`);
         })
         .catch((err) => {
           const msg = err.response?.data?.error || err.message || 'Erreur lors de la création';
@@ -125,7 +126,7 @@ export default function MaintenanceProjectForm() {
         .put(`/maintenance-projects/${id}`, payload)
         .then(() => {
           snackbar.showSuccess('Projet enregistré');
-          projectNav.detail(id);
+          navigate(`${APP_BASE}/maintenance-projects/${id}`);
         })
         .catch((err) => {
           const msg = err.response?.data?.error || err.message || 'Erreur enregistrement';
@@ -145,7 +146,7 @@ export default function MaintenanceProjectForm() {
 
   return (
     <Box>
-      <Button startIcon={<ArrowBack />} onClick={() => (isNew ? projectNav.list() : projectNav.detail(id))} sx={{ mb: 2 }}>
+      <Button startIcon={<ArrowBack />} onClick={() => (isNew ? navigate(`${APP_BASE}/maintenance-projects`) : navigate(`${APP_BASE}/maintenance-projects/${id}`))} sx={{ mb: 2 }}>
         Retour
       </Button>
       <Card>

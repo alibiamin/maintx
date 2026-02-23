@@ -49,6 +49,7 @@
     "stock/transfers": "Umlagerungen",
     "stock/inventories": "Inventuren",
     "stock/reorders": "Meldebestände",
+    "stock/quality": "Qualitätskontrolle",
     "suppliers": "Lieferanten",
     "reports": "Berichte",
     "reports/exports": "Exporte",
@@ -125,6 +126,7 @@
     "stock_exits": "Ausgänge",
     "stock_transfers": "Umlagerungen",
     "stock_reorders": "Meldebestände",
+    "stock_quality": "Qualitätskontrolle",
     "suppliers_list": "Lieferantenliste",
     "contracts": "Verträge",
     "suppliers_orders": "Bestellungen",
@@ -143,7 +145,8 @@
     "settings_config": "Konfiguration",
     "settings_alerts": "E-Mail-/SMS-Benachrichtigungen",
     "settings_users": "Benutzer",
-    "settings_roles": "Rollen und Berechtigungen"
+    "settings_roles": "Rollen und Berechtigungen",
+    "settings_tenants": "Kunden (Tenants)"
   },
   "login": {
     "title": "Anmelden",

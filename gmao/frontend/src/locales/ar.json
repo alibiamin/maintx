@@ -49,6 +49,7 @@
     "stock/transfers": "التحويلات",
     "stock/inventories": "الجرد",
     "stock/reorders": "إعادة الطلب",
+    "stock/quality": "مراقبة الجودة",
     "suppliers": "الموردون",
     "reports": "التقارير",
     "reports/exports": "التصدير",
@@ -125,6 +126,7 @@
     "stock_exits": "الخروج",
     "stock_transfers": "التحويلات",
     "stock_reorders": "إعادة الطلب",
+    "stock_quality": "مراقبة الجودة",
     "suppliers_list": "قائمة الموردين",
     "contracts": "العقود",
     "suppliers_orders": "الطلبات",
@@ -143,7 +145,8 @@
     "settings_config": "التكوين",
     "settings_alerts": "تنبيهات البريد / الرسائل",
     "settings_users": "المستخدمون",
-    "settings_roles": "الأدوار والصلاحيات"
+    "settings_roles": "الأدوار والصلاحيات",
+    "settings_tenants": "العملاء (المستأجرون)"
   },
   "login": {
     "title": "تسجيل الدخول",

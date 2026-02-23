@@ -19,7 +19,15 @@ import {
   DialogContent,
   DialogActions,
   FormControlLabel,
-  Checkbox
+  Checkbox,
+  Tabs,
+  Tab,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TableContainer
 } from '@mui/material';
 import {
   TrendingUp,
@@ -41,7 +49,11 @@ import {
   Assessment,
   ArrowForward,
   NotificationsActive,
-  DashboardCustomize
+  DashboardCustomize,
+  LocationOn,
+  Category,
+  ViewList,
+  PrecisionManufacturing
 } from '@mui/icons-material';
 import ReactApexChart from 'react-apexcharts';
 import api from '../services/api';
@@ -81,11 +93,12 @@ function formatWeekLabel(weekStr) {
   return weekStr.length > 8 ? weekStr.slice(-5) : weekStr;
 }
 
-const DEFAULT_DASHBOARD_LAYOUT = ['alerts', 'kpis', 'summary', 'charts', 'analytics', 'technicianPerformance', 'recent', 'topFailures'];
+const DEFAULT_DASHBOARD_LAYOUT = ['alerts', 'kpis', 'summary', 'woByEntity', 'charts', 'analytics', 'technicianPerformance', 'recent', 'topFailures'];
 const WIDGET_LABELS = {
   alerts: 'Alertes (stock, SLA, plans)',
   kpis: 'Indicateurs clés (dispo, coût, MTTR, préventif)',
   summary: 'Résumé période et accès rapide',
+  woByEntity: 'Répartition OT par Site / Département / Ligne / Équipement',
   charts: 'Graphiques (statuts, priorités, évolution)',
   analytics: 'BI : Coûts par équipement et MTTR',
   technicianPerformance: 'Performance des techniciens',
@@ -102,11 +115,13 @@ export default function Dashboard() {
   const [technicianPerformance, setTechnicianPerformance] = useState([]);
   const [summary, setSummary] = useState(null);
   const [analytics, setAnalytics] = useState(null);
+  const [woByEntity, setWoByEntity] = useState(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState(30);
   const [profile, setProfile] = useState(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [customLayout, setCustomLayout] = useState([...DEFAULT_DASHBOARD_LAYOUT]);
+  const [woByEntityTab, setWoByEntityTab] = useState(0);
   const navigate = useNavigate();
   const { t } = useTranslation();
   const muiTheme = useTheme();
@@ -128,8 +143,9 @@ export default function Dashboard() {
       api.get('/dashboard/top-failures', { params: { limit: 5 } }).catch(() => ({ data: [] })),
       api.get('/dashboard/technician-performance', { params: { period, limit: 8 } }).catch(() => ({ data: [] })),
       api.get('/dashboard/summary', { params: { period } }).catch(() => ({ data: null })),
-      api.get('/dashboard/analytics', { params: { period } }).catch(() => ({ data: null }))
-    ]).then(([k, c, r, a, t, perf, s, ax]) => {
+      api.get('/dashboard/analytics', { params: { period } }).catch(() => ({ data: null })),
+      api.get('/dashboard/wo-by-entity').catch(() => ({ data: null }))
+    ]).then(([k, c, r, a, t, perf, s, ax, wo]) => {
       setKpis(k.data);
       setCharts(c.data);
       setRecent(r.data);
@@ -138,6 +154,7 @@ export default function Dashboard() {
       setTechnicianPerformance(perf.data || []);
       setSummary(s.data);
       setAnalytics(ax?.data || null);
+      setWoByEntity(wo?.data || null);
     }).catch(console.error).finally(() => setLoading(false));
   }, [period]);
 
@@ -567,6 +584,119 @@ export default function Dashboard() {
                 </Grid>
               ))}
             </Grid>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Répartition OT par Site / Département / Ligne / Équipement */}
+      {visibleOrder.includes('woByEntity') && woByEntity && (
+        <Card sx={{ borderRadius: 2, mb: 3, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden' }}>
+          <CardContent>
+            <Typography variant="h6" fontWeight={700} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Assignment sx={{ color: 'primary.main' }} />
+              Répartition des OT par statut
+            </Typography>
+            <Tabs value={woByEntityTab} onChange={(_, v) => setWoByEntityTab(v)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+              <Tab icon={<LocationOn />} iconPosition="start" label="Par site" />
+              <Tab icon={<Category />} iconPosition="start" label="Par département" />
+              <Tab icon={<ViewList />} iconPosition="start" label="Par ligne" />
+              <Tab icon={<PrecisionManufacturing />} iconPosition="start" label="Par équipement" />
+            </Tabs>
+            <TableContainer sx={{ maxHeight: 380 }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 700 }}>{woByEntityTab === 0 ? 'Site' : woByEntityTab === 1 ? 'Département' : woByEntityTab === 2 ? 'Ligne' : 'Équipement'}</TableCell>
+                    {woByEntityTab === 1 && <TableCell sx={{ fontWeight: 600 }}>Site</TableCell>}
+                    {woByEntityTab === 2 && <TableCell sx={{ fontWeight: 600 }}>Site</TableCell>}
+                    {woByEntityTab === 3 && <TableCell sx={{ fontWeight: 600 }}>Ligne / Départ.</TableCell>}
+                    <TableCell align="center" sx={{ fontWeight: 600 }}>{t('status.pending', 'En attente')}</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600 }}>{t('status.in_progress', 'En cours')}</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600 }}>{t('status.completed', 'Terminé')}</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600 }}>{t('status.cancelled', 'Annulé')}</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 600 }}>{t('status.deferred', 'Reporté')}</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 700 }}>Total</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {woByEntityTab === 0 && (woByEntity.bySite || []).map((row) => (
+                    <TableRow key={row.siteId ?? 'na'} hover>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={600}>{row.siteName}</Typography>
+                        {row.siteCode && <Typography variant="caption" color="text.secondary"> {row.siteCode}</Typography>}
+                      </TableCell>
+                      <TableCell align="center">{row.pending}</TableCell>
+                      <TableCell align="center">{row.in_progress}</TableCell>
+                      <TableCell align="center">{row.completed}</TableCell>
+                      <TableCell align="center">{row.cancelled}</TableCell>
+                      <TableCell align="center">{row.deferred}</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700 }}>{row.total}</TableCell>
+                    </TableRow>
+                  ))}
+                  {woByEntityTab === 1 && (woByEntity.byDepartment || []).map((row) => (
+                    <TableRow key={row.departmentId} hover>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={600}>{row.departmentName}</Typography>
+                        {row.departmentCode && <Typography variant="caption" color="text.secondary"> {row.departmentCode}</Typography>}
+                      </TableCell>
+                      <TableCell>{row.siteName || '—'}</TableCell>
+                      <TableCell align="center">{row.pending}</TableCell>
+                      <TableCell align="center">{row.in_progress}</TableCell>
+                      <TableCell align="center">{row.completed}</TableCell>
+                      <TableCell align="center">{row.cancelled}</TableCell>
+                      <TableCell align="center">{row.deferred}</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700 }}>{row.total}</TableCell>
+                    </TableRow>
+                  ))}
+                  {woByEntityTab === 2 && (woByEntity.byLigne || []).map((row) => (
+                    <TableRow key={row.ligneId} hover>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={600}>{row.ligneName}</Typography>
+                        {row.ligneCode && <Typography variant="caption" color="text.secondary"> {row.ligneCode}</Typography>}
+                      </TableCell>
+                      <TableCell>{row.siteName || '—'}</TableCell>
+                      <TableCell align="center">{row.pending}</TableCell>
+                      <TableCell align="center">{row.in_progress}</TableCell>
+                      <TableCell align="center">{row.completed}</TableCell>
+                      <TableCell align="center">{row.cancelled}</TableCell>
+                      <TableCell align="center">{row.deferred}</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700 }}>{row.total}</TableCell>
+                    </TableRow>
+                  ))}
+                  {woByEntityTab === 3 && (woByEntity.byEquipment || []).map((row) => (
+                    <TableRow key={row.equipmentId} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/app/equipment/${row.equipmentId}`)}>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={600}>{row.equipmentCode} {row.equipmentName}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="caption" color="text.secondary">{[row.ligneName, row.departmentName].filter(Boolean).join(' / ') || '—'}</Typography>
+                      </TableCell>
+                      <TableCell align="center">{row.pending}</TableCell>
+                      <TableCell align="center">{row.in_progress}</TableCell>
+                      <TableCell align="center">{row.completed}</TableCell>
+                      <TableCell align="center">{row.cancelled}</TableCell>
+                      <TableCell align="center">{row.deferred}</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700 }}>{row.total}</TableCell>
+                    </TableRow>
+                  ))}
+                  {woByEntityTab === 0 && (woByEntity.bySite || []).length === 0 && (
+                    <TableRow><TableCell colSpan={7} align="center" sx={{ color: 'text.secondary' }}>Aucune donnée</TableCell></TableRow>
+                  )}
+                  {woByEntityTab === 1 && (woByEntity.byDepartment || []).length === 0 && (
+                    <TableRow><TableCell colSpan={8} align="center" sx={{ color: 'text.secondary' }}>Aucune donnée (ou table départements absente)</TableCell></TableRow>
+                  )}
+                  {woByEntityTab === 2 && (woByEntity.byLigne || []).length === 0 && (
+                    <TableRow><TableCell colSpan={8} align="center" sx={{ color: 'text.secondary' }}>Aucune donnée</TableCell></TableRow>
+                  )}
+                  {woByEntityTab === 3 && (woByEntity.byEquipment || []).length === 0 && (
+                    <TableRow><TableCell colSpan={8} align="center" sx={{ color: 'text.secondary' }}>Aucune donnée</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            {(woByEntity.byEquipment || []).length >= 50 && woByEntityTab === 3 && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>Top 50 équipements par nombre d'OT. Voir la liste complète dans Ordres de travail.</Typography>
+            )}
           </CardContent>
         </Card>
       )}

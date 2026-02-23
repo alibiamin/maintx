@@ -40,11 +40,17 @@ api.interceptors.response.use(
           d[key] = deduplicateList(d[key]);
         }
       }
+      // Réponses paginées ou listes dans .data (catégories, lignes, etc.) : dédupliquer pour éviter doublons d'affichage
+      if (Array.isArray(d.data) && d.data.length > 0 && d.data[0] && typeof d.data[0] === 'object' && 'id' in d.data[0]) {
+        d.data = deduplicateList(d.data);
+      }
     }
     return res;
   },
   (err) => {
-    if (err.response?.status === 401) {
+    const status = err.response?.status;
+    const data = err.response?.data;
+    if (status === 401) {
       localStorage.removeItem('xmaint-token');
       delete api.defaults.headers.common['Authorization'];
       const currentPath = getPathFromHash();
@@ -53,6 +59,12 @@ api.interceptors.response.use(
         const enc = encodePath('/login', '');
         window.location.href = window.location.pathname + window.location.search + (enc ? `#/${enc}` : '#/');
       }
+    } else if (status === 403 && (data?.code === 'LICENSE_EXPIRED' || data?.code === 'LICENSE_NOT_ACTIVE' || data?.code === 'TENANT_INVALID')) {
+      localStorage.removeItem('xmaint-token');
+      delete api.defaults.headers.common['Authorization'];
+      if (data?.error) sessionStorage.setItem('loginError', data.error);
+      const enc = encodePath('/login', '');
+      window.location.href = window.location.pathname + window.location.search + (enc ? `#/${enc}` : '#/');
     }
     return Promise.reject(err);
   }

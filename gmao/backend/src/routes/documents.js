@@ -4,7 +4,6 @@
 
 const express = require('express');
 const router = express.Router();
-const db = require('../database/db');
 const { authenticate } = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
@@ -53,8 +52,9 @@ router.use((req, res, next) => {
   next();
 });
 
-// GET /api/documents?entity_type=equipment&entity_id=1
 router.get('/', (req, res) => {
+  const db = req.db;
+  if (!db) return res.status(401).json({ error: 'Authentification requise' });
   try {
     const { entity_type, entity_id } = req.query;
     let query = 'SELECT d.*, u.first_name, u.last_name FROM documents d LEFT JOIN users u ON d.uploaded_by = u.id WHERE 1=1';
@@ -78,8 +78,9 @@ router.get('/', (req, res) => {
   }
 });
 
-// GET /api/documents/:id
 router.get('/:id', (req, res) => {
+  const db = req.db;
+  if (!db) return res.status(401).json({ error: 'Authentification requise' });
   try {
     const doc = db.prepare('SELECT d.*, u.first_name, u.last_name FROM documents d LEFT JOIN users u ON d.uploaded_by = u.id WHERE d.id = ?').get(req.params.id);
     if (!doc) {
@@ -93,6 +94,8 @@ router.get('/:id', (req, res) => {
 
 // POST /api/documents
 router.post('/', upload.single('file'), (req, res) => {
+  const db = req.db;
+  if (!db) return res.status(401).json({ error: 'Authentification requise' });
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Aucun fichier fourni' });
@@ -126,6 +129,8 @@ router.post('/', upload.single('file'), (req, res) => {
 
 // GET /api/documents/:id/download
 router.get('/:id/download', (req, res) => {
+  const db = req.db;
+  if (!db) return res.status(401).json({ error: 'Authentification requise' });
   try {
     const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(req.params.id);
     if (!doc) {
@@ -144,6 +149,8 @@ router.get('/:id/download', (req, res) => {
 
 // DELETE /api/documents/:id
 router.delete('/:id', (req, res) => {
+  const db = req.db;
+  if (!db) return res.status(401).json({ error: 'Authentification requise' });
   try {
     const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(req.params.id);
     if (!doc) {

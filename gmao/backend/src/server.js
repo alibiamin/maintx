@@ -6,6 +6,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const bcrypt = require('bcryptjs');
 const db = require('./database/db');
 
 const authRoutes = require('./routes/auth');
@@ -35,6 +36,7 @@ const auditRoutes = require('./routes/audit');
 const maintenanceProjectsRoutes = require('./routes/maintenanceProjects');
 const equipmentModelsRoutes = require('./routes/equipmentModels');
 const proceduresRoutes = require('./routes/procedures');
+const tenantsRoutes = require('./routes/tenants');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -83,6 +85,7 @@ app.use('/api/audit', auditRoutes);
 app.use('/api/maintenance-projects', maintenanceProjectsRoutes);
 app.use('/api/equipment-models', equipmentModelsRoutes);
 app.use('/api/procedures', proceduresRoutes);
+app.use('/api/tenants', tenantsRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -92,40 +95,101 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Schéma minimal pour la base admin (xmaint.db) : roles + users (requis pour le login)
+const ADMIN_BASE_SCHEMA = `
+PRAGMA foreign_keys = ON;
+CREATE TABLE IF NOT EXISTS roles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE NOT NULL,
+  description TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  role_id INTEGER NOT NULL REFERENCES roles(id),
+  is_active INTEGER DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+`;
+
+function ensureDefaultAdmin(adminDb) {
+  const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'Admin123!';
+  const hash = bcrypt.hashSync(defaultPassword, 10);
+  const adminRoleId = adminDb.prepare("SELECT id FROM roles WHERE name = 'administrateur'").get().id;
+  adminDb.prepare(`
+    INSERT INTO users (email, password_hash, first_name, last_name, role_id, is_active)
+    VALUES (?, ?, 'Admin', 'xmaint', ?, 1)
+  `).run('admin@xmaint.org', hash, adminRoleId);
+  adminDb._save();
+  console.log('✅ Compte admin par défaut créé : admin@xmaint.org / ' + (process.env.DEFAULT_ADMIN_PASSWORD ? '***' : 'Admin123!'));
+}
+
+function ensureAdminBaseSchema(adminDb) {
+  let tablesCreated = false;
+  try {
+    adminDb.prepare('SELECT 1 FROM users LIMIT 1').get();
+  } catch (e) {
+    if (!e.message || !e.message.includes('no such table')) throw e;
+    adminDb.exec(ADMIN_BASE_SCHEMA);
+    tablesCreated = true;
+  }
+  const roleCount = adminDb.prepare('SELECT COUNT(*) as c FROM roles').get();
+  if (roleCount && roleCount.c === 0) {
+    adminDb.prepare("INSERT INTO roles (name, description) VALUES ('administrateur', 'Administrateur système')").run();
+    adminDb.prepare("INSERT INTO roles (name, description) VALUES ('responsable_maintenance', 'Responsable maintenance')").run();
+    adminDb.prepare("INSERT INTO roles (name, description) VALUES ('technicien', 'Technicien')").run();
+    adminDb.prepare("INSERT INTO roles (name, description) VALUES ('utilisateur', 'Utilisateur')").run();
+    adminDb._save();
+    if (tablesCreated) console.log('✅ Schéma admin (roles, users) créé sur xmaint.db');
+    ensureDefaultAdmin(adminDb);
+    return;
+  }
+  const userCount = adminDb.prepare('SELECT COUNT(*) as c FROM users').get();
+  if (userCount && userCount.c === 0) {
+    ensureDefaultAdmin(adminDb);
+  }
+}
+
 async function start() {
   await db.init();
-  
-  // Exécuter automatiquement les migrations si nécessaire
+  const adminDb = db.getAdminDb();
+  ensureAdminBaseSchema(adminDb);
+
+  // Migrations sur gmao.db (tenants, users.tenant_id, etc.)
   try {
     const path = require('path');
     const fs = require('fs');
     const migrationsDir = path.join(__dirname, 'database/migrations');
-    
+
     if (fs.existsSync(migrationsDir)) {
       const files = fs.readdirSync(migrationsDir)
         .filter(f => f.endsWith('.js'))
         .sort();
-      
+
       for (const f of files) {
         try {
           const m = require(path.join(migrationsDir, f));
           if (m.up) {
-            m.up(db);
+            m.up(adminDb);
             console.log(`✅ Migration appliquée: ${f}`);
           }
         } catch (err) {
-          // Ignorer les erreurs de table déjà existante
           if (!err.message.includes('already exists') && !err.message.includes('duplicate')) {
             console.warn(`⚠️  Migration ${f}: ${err.message}`);
           }
         }
       }
-      db._save();
+      adminDb._save();
     }
   } catch (err) {
     console.warn('⚠️  Erreur lors de l\'exécution automatique des migrations:', err.message);
   }
-  
+
   function listen(port) {
     const server = app.listen(port, () => {
       console.log(`\n🚀 xmaint API démarrée sur http://localhost:${server.address().port}`);

@@ -1,0 +1,386 @@
+import React, { useEffect, useState } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Button,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControlLabel,
+  Checkbox,
+  IconButton
+} from '@mui/material';
+import Add from '@mui/icons-material/Add';
+import DeleteOutline from '@mui/icons-material/DeleteOutline';
+import EditOutlined from '@mui/icons-material/EditOutlined';
+import Chip from '@mui/material/Chip';
+import api from '../services/api';
+
+function formatDate(s) {
+  if (!s) return '—';
+  return s.slice(0, 10);
+}
+
+export default function SettingsTenants() {
+  const [tenants, setTenants] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingTenant, setEditingTenant] = useState(null);
+  const [form, setForm] = useState({
+    name: '', emailDomain: '', dbFilename: '', initSchema: true, licenseStart: '', licenseEnd: '',
+    adminEmail: '', adminPassword: '', adminFirstName: '', adminLastName: ''
+  });
+  const [editForm, setEditForm] = useState({ name: '', licenseStart: '', licenseEnd: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    loadTenants();
+  }, []);
+
+  const loadTenants = async () => {
+    try {
+      const res = await api.get('/tenants');
+      setTenants(Array.isArray(res.data) ? res.data : []);
+    } catch (e) {
+      console.error(e);
+      setTenants([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreate = () => {
+    setError('');
+    setForm({
+      name: '', emailDomain: '', dbFilename: '', initSchema: true, licenseStart: '', licenseEnd: '',
+      adminEmail: '', adminPassword: '', adminFirstName: '', adminLastName: ''
+    });
+    setDialogOpen(true);
+  };
+
+  const handleEdit = (t) => {
+    setEditingTenant(t);
+    setEditForm({
+      name: t.name || '',
+      licenseStart: t.licenseStart ? t.licenseStart.slice(0, 10) : '',
+      licenseEnd: t.licenseEnd ? t.licenseEnd.slice(0, 10) : ''
+    });
+    setError('');
+    setEditDialogOpen(true);
+  };
+
+  const handleEditSubmit = async () => {
+    if (!editingTenant) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.put(`/tenants/${editingTenant.id}`, {
+        name: (editForm.name || '').trim() || undefined,
+        licenseStart: (editForm.licenseStart || '').trim() || undefined,
+        licenseEnd: (editForm.licenseEnd || '').trim() || undefined
+      });
+      setEditDialogOpen(false);
+      setEditingTenant(null);
+      loadTenants();
+    } catch (e) {
+      setError(e.response?.data?.error || e.message || 'Erreur lors de la mise à jour.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    const name = (form.name || '').trim();
+    const emailDomain = (form.emailDomain || '').trim().replace(/^@/, '');
+    const adminEmail = (form.adminEmail || '').trim();
+    const adminPassword = (form.adminPassword || '').trim();
+    const adminFirstName = (form.adminFirstName || '').trim();
+    const adminLastName = (form.adminLastName || '').trim();
+    if (!name || !emailDomain) {
+      setError('Nom et domaine email du client sont requis.');
+      return;
+    }
+    if (!adminEmail || !adminPassword || !adminFirstName || !adminLastName) {
+      setError('Tous les champs du compte administrateur sont requis.');
+      return;
+    }
+    if (adminPassword.length < 8) {
+      setError('Le mot de passe de l\'admin doit contenir au moins 8 caractères.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.post('/tenants', {
+        name,
+        emailDomain: emailDomain || undefined,
+        dbFilename: (form.dbFilename || '').trim() || undefined,
+        initSchema: !!form.initSchema,
+        licenseStart: (form.licenseStart || '').trim() || undefined,
+        licenseEnd: (form.licenseEnd || '').trim() || undefined,
+        adminEmail,
+        adminPassword,
+        adminFirstName,
+        adminLastName
+      });
+      setDialogOpen(false);
+      loadTenants();
+    } catch (e) {
+      setError(e.response?.data?.error || e.message || 'Erreur lors de la création.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Supprimer ce client ? Les utilisateurs associés restent dans gmao.db ; la base de données du client n\'est pas supprimée.')) return;
+    try {
+      await api.delete(`/tenants/${id}`);
+      loadTenants();
+    } catch (e) {
+      console.error(e);
+      alert(e.response?.data?.error || 'Erreur lors de la suppression.');
+    }
+  };
+
+  return (
+    <Box>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Box>
+          <Typography variant="h5" fontWeight={700}>
+            Clients (tenants)
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Gestion des clients et de leur licence (période d&apos;utilisation). Après la date de fin, les utilisateurs du client ne peuvent plus se connecter jusqu&apos;à une nouvelle activation.
+          </Typography>
+        </Box>
+        <Button variant="contained" startIcon={<Add />} onClick={handleCreate}>
+          Nouveau client
+        </Button>
+      </Box>
+
+      <Card sx={{ borderRadius: 2 }}>
+        <CardContent>
+          {loading ? (
+            <Box display="flex" justifyContent="center" p={4}>
+              <CircularProgress />
+            </Box>
+          ) : tenants.length === 0 ? (
+            <Typography color="text.secondary" textAlign="center" py={4}>
+              Aucun client. Cliquez sur « Nouveau client » pour en ajouter un.
+            </Typography>
+          ) : (
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Nom</TableCell>
+                  <TableCell>Domaine email</TableCell>
+                  <TableCell>Début licence</TableCell>
+                  <TableCell>Fin licence</TableCell>
+                  <TableCell>Statut</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {tenants.map((t) => (
+                  <TableRow key={t.id}>
+                    <TableCell>
+                      <Typography fontWeight={600}>{t.name}</Typography>
+                    </TableCell>
+                    <TableCell>{t.emailDomain || '-'}</TableCell>
+                    <TableCell>{formatDate(t.licenseStart)}</TableCell>
+                    <TableCell>{formatDate(t.licenseEnd)}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={t.isActive ? 'Actif' : 'Expiré'}
+                        size="small"
+                        color={t.isActive ? 'success' : 'default'}
+                        variant={t.isActive ? 'filled' : 'outlined'}
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <IconButton size="small" onClick={() => handleEdit(t)} title="Modifier licence">
+                        <EditOutlined />
+                      </IconButton>
+                      <IconButton size="small" color="error" onClick={() => handleDelete(t.id)} title="Supprimer">
+                        <DeleteOutline />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogOpen} onClose={() => !submitting && setDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nouveau client</DialogTitle>
+        <DialogContent>
+          <Box display="flex" flexDirection="column" gap={2} pt={1}>
+            {error && (
+              <Typography color="error" variant="body2">
+                {error}
+              </Typography>
+            )}
+            <TextField
+              label="Nom du client"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              fullWidth
+              required
+            />
+            <TextField
+              label="Domaine email (ex: entreprise.com)"
+              value={form.emailDomain}
+              onChange={(e) => setForm((f) => ({ ...f, emailDomain: e.target.value }))}
+              fullWidth
+              required
+              placeholder="entreprise.com"
+              helperText="Les utilisateurs @ce-domaine se connecteront à la base de ce client."
+            />
+            <TextField
+              label="Fichier base (optionnel)"
+              value={form.dbFilename}
+              onChange={(e) => setForm((f) => ({ ...f, dbFilename: e.target.value }))}
+              fullWidth
+              placeholder="client_entreprise.db"
+              helperText="Par défaut : client_<domaine>.db"
+            />
+            <TextField
+              label="Début licence (optionnel)"
+              type="date"
+              value={form.licenseStart || ''}
+              onChange={(e) => setForm((f) => ({ ...f, licenseStart: e.target.value }))}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              helperText="Date à partir de laquelle les utilisateurs peuvent se connecter"
+            />
+            <TextField
+              label="Fin licence (optionnel)"
+              type="date"
+              value={form.licenseEnd || ''}
+              onChange={(e) => setForm((f) => ({ ...f, licenseEnd: e.target.value }))}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              helperText="Après cette date, les utilisateurs du client ne pourront plus se connecter"
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={!!form.initSchema}
+                  onChange={(e) => setForm((f) => ({ ...f, initSchema: e.target.checked }))}
+                />
+              }
+              label="Créer la base vide dès maintenant (schéma GMAO)"
+            />
+            <Typography variant="subtitle2" sx={{ mt: 2, mb: 1, fontWeight: 600 }}>
+              Compte administrateur du client
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Cet utilisateur pourra se connecter et gérer la GMAO de ce client. L&apos;email doit être du domaine du client (ex: admin@domaine.com).
+            </Typography>
+            <TextField
+              label="Email de l'admin"
+              type="email"
+              value={form.adminEmail}
+              onChange={(e) => setForm((f) => ({ ...f, adminEmail: e.target.value }))}
+              fullWidth
+              required
+              placeholder={`admin@${(form.emailDomain || '').replace(/^@/, '') || 'domaine.com'}`}
+            />
+            <TextField
+              label="Mot de passe (min. 8 caractères)"
+              type="password"
+              value={form.adminPassword}
+              onChange={(e) => setForm((f) => ({ ...f, adminPassword: e.target.value }))}
+              fullWidth
+              required
+              inputProps={{ minLength: 8 }}
+            />
+            <Box display="flex" gap={2}>
+              <TextField
+                label="Prénom"
+                value={form.adminFirstName}
+                onChange={(e) => setForm((f) => ({ ...f, adminFirstName: e.target.value }))}
+                fullWidth
+                required
+              />
+              <TextField
+                label="Nom"
+                value={form.adminLastName}
+                onChange={(e) => setForm((f) => ({ ...f, adminLastName: e.target.value }))}
+                fullWidth
+                required
+              />
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDialogOpen(false)} disabled={submitting}>
+            Annuler
+          </Button>
+          <Button variant="contained" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? 'Création...' : 'Créer'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={editDialogOpen} onClose={() => !submitting && setEditDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Modifier le client — Période de licence</DialogTitle>
+        <DialogContent>
+          <Box display="flex" flexDirection="column" gap={2} pt={1}>
+            {error && (
+              <Typography color="error" variant="body2">
+                {error}
+              </Typography>
+            )}
+            <TextField
+              label="Nom du client"
+              value={editForm.name}
+              onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Début licence"
+              type="date"
+              value={editForm.licenseStart || ''}
+              onChange={(e) => setEditForm((f) => ({ ...f, licenseStart: e.target.value }))}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="Fin licence"
+              type="date"
+              value={editForm.licenseEnd || ''}
+              onChange={(e) => setEditForm((f) => ({ ...f, licenseEnd: e.target.value }))}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              helperText="Après cette date, les utilisateurs ne pourront plus se connecter jusqu'à une nouvelle activation"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditDialogOpen(false)} disabled={submitting}>
+            Annuler
+          </Button>
+          <Button variant="contained" onClick={handleEditSubmit} disabled={submitting}>
+            {submitting ? 'Enregistrement...' : 'Enregistrer'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}

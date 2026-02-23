@@ -5,7 +5,6 @@
 const express = require('express');
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
-const db = require('../database/db');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
 
 function writePdfTable(doc, headers, rows, colWidths) {
@@ -31,6 +30,7 @@ router.use(authenticate);
  * Filtres optionnels: siteId, equipmentId
  */
 router.get('/maintenance-costs', (req, res) => {
+  const db = req.db;
   const { startDate, endDate, siteId, equipmentId } = req.query;
   const start = startDate || '2020-01-01';
   const end = endDate || '2100-12-31';
@@ -64,6 +64,7 @@ router.get('/maintenance-costs', (req, res) => {
  * MTTR (Mean Time To Repair) en heures - temps moyen de réparation par équipement ou global.
  */
 router.get('/mttr', (req, res) => {
+  const db = req.db;
   const { startDate, endDate, siteId, equipmentId } = req.query;
   const start = startDate || '2020-01-01';
   const end = endDate || '2100-12-31';
@@ -102,6 +103,7 @@ router.get('/mttr', (req, res) => {
  * Coût de maintenance par heure de fonctionnement (utilise les compteurs équipement si présents).
  */
 router.get('/cost-per-operating-hour', (req, res) => {
+  const db = req.db;
   const { startDate, endDate, siteId, equipmentId } = req.query;
   const start = startDate || '2020-01-01';
   const end = endDate || '2100-12-31';
@@ -152,6 +154,7 @@ router.get('/cost-per-operating-hour', (req, res) => {
  * Disponibilité par équipement / période (filtres optionnels: siteId, equipmentId)
  */
 router.get('/availability', (req, res) => {
+  const db = req.db;
   const { startDate, endDate, siteId, equipmentId } = req.query;
   const start = startDate || '2020-01-01';
   const end = endDate || '2100-12-31';
@@ -184,6 +187,7 @@ router.get('/availability', (req, res) => {
  * Heures passées par technicien sur la période
  */
 router.get('/time-by-technician', (req, res) => {
+  const db = req.db;
   const { startDate, endDate } = req.query;
   const start = startDate || '2020-01-01';
   const end = endDate || '2100-12-31';
@@ -205,6 +209,7 @@ router.get('/time-by-technician', (req, res) => {
  * Pièces les plus utilisées sur la période
  */
 router.get('/parts-most-used', (req, res) => {
+  const db = req.db;
   const { startDate, endDate, limit } = req.query;
   const start = startDate || '2020-01-01';
   const end = endDate || '2100-12-31';
@@ -229,6 +234,7 @@ router.get('/parts-most-used', (req, res) => {
  * Export Excel détaillé (coûts, pièces, temps)
  */
 router.get('/export/detailed', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), async (req, res) => {
+  const db = req.db;
   const { startDate, endDate } = req.query;
   const start = startDate || '2020-01-01';
   const end = endDate || '2100-12-31';
@@ -271,6 +277,7 @@ router.get('/export/detailed', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), async 
  * GET /api/reports/work-orders
  */
 router.get('/work-orders', (req, res) => {
+  const db = req.db;
   const { startDate, endDate, status } = req.query;
   let sql = `
     SELECT wo.*, e.name as equipment_name, t.name as type_name
@@ -291,6 +298,7 @@ router.get('/work-orders', (req, res) => {
  * Export Excel des OT
  */
 router.get('/export/excel', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), async (req, res) => {
+  const db = req.db;
   const rows = db.prepare(`
     SELECT wo.number, wo.title, wo.status, wo.priority, wo.created_at, wo.actual_end,
            e.name as equipment_name, t.name as type_name
@@ -322,6 +330,7 @@ router.get('/export/excel', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), async (re
  * GET /api/reports/export/pdf/equipment - Liste des équipements en PDF
  */
 router.get('/export/pdf/equipment', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
   const rows = db.prepare(`
     SELECT e.code, e.name, e.status, s.name as site_name
     FROM equipment e
@@ -344,6 +353,7 @@ router.get('/export/pdf/equipment', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (
  * GET /api/reports/export/pdf/maintenance - Plans de maintenance en PDF
  */
 router.get('/export/pdf/maintenance', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
   let rows = [];
   try {
     rows = db.prepare(`
@@ -388,6 +398,7 @@ router.get('/export/pdf/maintenance', authorize(ROLES.ADMIN, ROLES.RESPONSABLE),
  * GET /api/reports/export/pdf/stock - État des stocks en PDF
  */
 router.get('/export/pdf/stock', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
   const rows = db.prepare(`
     SELECT sp.code, sp.name, COALESCE(sb.quantity, 0) as quantity, sp.min_stock, sp.unit
     FROM spare_parts sp
@@ -409,6 +420,7 @@ router.get('/export/pdf/stock', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req,
  * GET /api/reports/export/pdf/work-order/:id - Bon de travail (OT) en PDF
  */
 router.get('/export/pdf/work-order/:id', (req, res) => {
+  const db = req.db;
   const woId = req.params.id;
   const wo = db.prepare(`
     SELECT wo.*, e.name as equipment_name, e.code as equipment_code, t.name as type_name,
@@ -495,6 +507,7 @@ router.get('/export/pdf/work-order/:id', (req, res) => {
  * GET /api/reports/export/pdf/kpis - Indicateurs de performance en PDF
  */
 router.get('/export/pdf/kpis', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
   const { startDate, endDate } = req.query;
   const start = startDate || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const end = endDate || new Date().toISOString().slice(0, 10);

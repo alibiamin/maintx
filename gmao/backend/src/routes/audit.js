@@ -2,17 +2,13 @@
  * API Journal d'audit — consultation des créations / modifications / suppressions
  */
 const express = require('express');
-const db = require('../database/db');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
 
-/**
- * GET /api/audit
- * Query: entityType, entityId, startDate, endDate, limit (default 100)
- */
 router.get('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
   const { entityType, entityId, startDate, endDate, limit } = req.query;
   let where = ' WHERE 1=1';
   const params = [];
