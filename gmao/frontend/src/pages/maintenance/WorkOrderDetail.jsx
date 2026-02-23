@@ -71,6 +71,15 @@ export default function WorkOrderDetail() {
   const [toolAssigning, setToolAssigning] = useState(false);
   const [selectedOperatorId, setSelectedOperatorId] = useState('');
   const [operatorAdding, setOperatorAdding] = useState(false);
+  const [woAttachments, setWoAttachments] = useState([]);
+  const [phaseTimes, setPhaseTimes] = useState([]);
+  const [rootCauses, setRootCauses] = useState([]);
+  const [satisfactionSurvey, setSatisfactionSurvey] = useState(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [phaseForm, setPhaseForm] = useState({ phaseName: 'diagnostic', hoursSpent: '', notes: '' });
+  const [phaseSaving, setPhaseSaving] = useState(false);
+  const [extraFeeForm, setExtraFeeForm] = useState({ description: '', amount: '' });
+  const [extraFeeSaving, setExtraFeeSaving] = useState(false);
   const { user } = useAuth();
   const snackbar = useSnackbar();
   const canEdit = ['administrateur', 'responsable_maintenance', 'technicien'].includes(user?.role);
@@ -89,6 +98,23 @@ export default function WorkOrderDetail() {
   const loadToolAssignments = () => {
     if (!id || id === 'new') return;
     api.get(`/work-orders/${id}/tool-assignments`).then(r => setToolAssignments(Array.isArray(r.data) ? r.data : [])).catch(() => setToolAssignments([]));
+  };
+
+  const handleAddExtraFee = () => {
+    const amount = parseFloat(extraFeeForm.amount);
+    if (amount < 0 || !id || id === 'new') return;
+    setExtraFeeSaving(true);
+    api.post(`/work-orders/${id}/extra-fees`, { description: extraFeeForm.description.trim(), amount })
+      .then(() => { snackbar.showSuccess('Frais ajouté'); setExtraFeeForm({ description: '', amount: '' }); loadOrder(); })
+      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'))
+      .finally(() => setExtraFeeSaving(false));
+  };
+
+  const handleDeleteExtraFee = (feeId) => {
+    if (!id || id === 'new' || !window.confirm('Supprimer ce frais ?')) return;
+    api.delete(`/work-orders/${id}/extra-fees/${feeId}`)
+      .then(() => { snackbar.showSuccess('Frais supprimé'); loadOrder(); })
+      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'));
   };
 
   useEffect(() => {
@@ -137,6 +163,26 @@ export default function WorkOrderDetail() {
     api.get(`/work-orders/${order.id}/checklist-executions`)
       .then(r => setWoChecklistExecutions(Array.isArray(r.data) ? r.data : []))
       .catch(() => setWoChecklistExecutions([]));
+  }, [order?.id]);
+
+  useEffect(() => {
+    if (!order?.id) return;
+    api.get(`/work-orders/${order.id}/attachments`).then(r => setWoAttachments(Array.isArray(r.data) ? r.data : [])).catch(() => setWoAttachments([]));
+  }, [order?.id]);
+
+  useEffect(() => {
+    if (!order?.id) return;
+    api.get(`/work-orders/${order.id}/phase-times`).then(r => setPhaseTimes(Array.isArray(r.data) ? r.data : [])).catch(() => setPhaseTimes([]));
+  }, [order?.id]);
+
+  useEffect(() => {
+    if (!order?.id) return;
+    api.get('/root-causes', { params: { workOrderId: order.id } }).then(r => setRootCauses(Array.isArray(r.data) ? r.data : [])).catch(() => setRootCauses([]));
+  }, [order?.id]);
+
+  useEffect(() => {
+    if (!order?.id) return;
+    api.get(`/satisfaction/by-work-order/${order.id}`).then(r => setSatisfactionSurvey(r.data ?? null)).catch(() => setSatisfactionSurvey(null));
   }, [order?.id]);
 
   // Dédupliquer par id pour éviter affichages en double (API ou intercepteur peuvent renvoyer des doublons)
@@ -201,6 +247,37 @@ export default function WorkOrderDetail() {
     api.delete(`/documents/${docId}`)
       .then(() => setWoDocuments(prev => prev.filter(d => d.id !== docId)))
       .catch(() => snackbar.showError('Erreur'));
+  };
+
+  const handleUploadAttachment = (e) => {
+    const file = e.target?.files?.[0];
+    if (!file || !order?.id) return;
+    setUploadingAttachment(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('attachmentType', (file.type || '').startsWith('image/') ? 'photo_after' : 'document');
+    api.post(`/work-orders/${order.id}/attachments`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      .then(() => api.get(`/work-orders/${order.id}/attachments`))
+      .then(r => { setWoAttachments(Array.isArray(r.data) ? r.data : []); snackbar.showSuccess('Fichier ajouté'); e.target.value = ''; })
+      .catch(err => snackbar.showError(err.response?.data?.error || 'Erreur'))
+      .finally(() => setUploadingAttachment(false));
+  };
+
+  const handleDeleteAttachment = (attId) => {
+    if (!window.confirm('Supprimer cette pièce jointe ?')) return;
+    api.delete(`/work-orders/${order.id}/attachments/${attId}`)
+      .then(() => setWoAttachments(prev => prev.filter(a => a.id !== attId)))
+      .catch(() => snackbar.showError('Erreur'));
+  };
+
+  const handleSavePhaseTime = () => {
+    if (!order?.id || !phaseForm.phaseName) return;
+    setPhaseSaving(true);
+    api.post(`/work-orders/${order.id}/phase-times`, { phaseName: phaseForm.phaseName, hoursSpent: phaseForm.hoursSpent ? parseFloat(phaseForm.hoursSpent) : 0, notes: phaseForm.notes })
+      .then(() => api.get(`/work-orders/${order.id}/phase-times`))
+      .then(r => { setPhaseTimes(Array.isArray(r.data) ? r.data : []); setPhaseForm({ phaseName: 'diagnostic', hoursSpent: '', notes: '' }); snackbar.showSuccess('Temps enregistré'); })
+      .catch(err => snackbar.showError(err.response?.data?.error || 'Erreur'))
+      .finally(() => setPhaseSaving(false));
   };
 
   const handleStatusChange = (newStatus) => {
@@ -445,16 +522,26 @@ export default function WorkOrderDetail() {
                 </Grid>
               </>
             )}
-            {(order.laborCost != null || order.partsCost != null || order.totalCost != null) && (
+            {(order.laborCost != null || order.partsCost != null || order.reservationsCost != null || order.extraFeesCost != null || order.totalCost != null) && (
               <>
                 <Grid item xs={12} md={4}>
                   <Typography variant="subtitle2" color="text.secondary">Coût main-d'œuvre</Typography>
                   <Typography>{order.laborCost != null ? `${Number(order.laborCost).toFixed(2)} ${currency}` : '—'}</Typography>
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <Typography variant="subtitle2" color="text.secondary">Coût pièces</Typography>
+                  <Typography variant="subtitle2" color="text.secondary">{t('workOrder.costPartsConsumed')}</Typography>
                   <Typography>{order.partsCost != null ? `${Number(order.partsCost).toFixed(2)} ${currency}` : '—'}</Typography>
                 </Grid>
+                <Grid item xs={12} md={4}>
+                  <Typography variant="subtitle2" color="text.secondary">{t('workOrder.totalReservationsForecast')}</Typography>
+                  <Typography>{order.reservationsCost != null ? `${Number(order.reservationsCost).toFixed(2)} ${currency}` : '—'}</Typography>
+                </Grid>
+                {(order.extraFeesCost != null && Number(order.extraFeesCost) > 0) && (
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="subtitle2" color="text.secondary">Frais supplémentaires</Typography>
+                    <Typography>{Number(order.extraFeesCost).toFixed(2)} {currency}</Typography>
+                  </Grid>
+                )}
                 <Grid item xs={12} md={4}>
                   <Typography variant="subtitle2" color="text.secondary">Coût total</Typography>
                   <Typography fontWeight={600}>{order.totalCost != null ? `${Number(order.totalCost).toFixed(2)} ${currency}` : '—'}</Typography>
@@ -462,6 +549,56 @@ export default function WorkOrderDetail() {
               </>
             )}
           </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Frais supplémentaires — rattachés à l'OT, inclus dans le coût total */}
+      <Card sx={{ mt: 2 }}>
+        <CardContent>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <Build /> Frais supplémentaires
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Frais rattachés à cet OT (déplacement, fournitures, etc.). Ils sont ajoutés au coût total de l&apos;OT.
+          </Typography>
+          {(order.extraFees && order.extraFees.length > 0) ? (
+            <>
+              <Table size="small" sx={{ mb: 2 }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Description</TableCell>
+                    <TableCell align="right">Montant</TableCell>
+                    {canEdit && <TableCell align="right" width={80}>Actions</TableCell>}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {order.extraFees.map((fee) => (
+                    <TableRow key={fee.id}>
+                      <TableCell>{fee.description || '—'}</TableCell>
+                      <TableCell align="right">{Number(fee.amount).toFixed(2)} {currency}</TableCell>
+                      {canEdit && (
+                        <TableCell align="right">
+                          <IconButton size="small" color="error" onClick={() => handleDeleteExtraFee(fee.id)} title="Supprimer"><Delete /></IconButton>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <Typography variant="body2" fontWeight={600}>Total frais supplémentaires : {(order.extraFees || []).reduce((s, f) => s + (Number(f.amount) || 0), 0).toFixed(2)} {currency}</Typography>
+            </>
+          ) : (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>Aucun frais supplémentaire.</Typography>
+          )}
+          {canEdit && (
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', flexWrap: 'wrap', mt: 2 }}>
+              <TextField size="small" label="Description" value={extraFeeForm.description} onChange={(e) => setExtraFeeForm((f) => ({ ...f, description: e.target.value }))} placeholder="ex. Déplacement, fourniture…" sx={{ minWidth: 220 }} />
+              <TextField size="small" type="number" label="Montant" value={extraFeeForm.amount} onChange={(e) => setExtraFeeForm((f) => ({ ...f, amount: e.target.value }))} inputProps={{ min: 0, step: 0.01 }} sx={{ width: 120 }} />
+              <Button size="small" variant="contained" startIcon={<Add />} disabled={extraFeeSaving || (extraFeeForm.amount === '' || Number(extraFeeForm.amount) < 0)} onClick={handleAddExtraFee}>
+                {extraFeeSaving ? 'Ajout…' : 'Ajouter'}
+              </Button>
+            </Box>
+          )}
         </CardContent>
       </Card>
 
@@ -620,34 +757,45 @@ export default function WorkOrderDetail() {
             {reservations.length === 0 ? (
               <Typography color="text.secondary" variant="body2">Aucune réservation. Réservez des pièces pour préparer l'intervention.</Typography>
             ) : (
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Code</TableCell>
-                    <TableCell>Désignation</TableCell>
-                    <TableCell align="right">Quantité</TableCell>
-                    <TableCell align="right">Stock dispo</TableCell>
-                    <TableCell align="right">Action</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {reservations.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell>{r.partCode}</TableCell>
-                      <TableCell>{r.partName}</TableCell>
-                      <TableCell align="right">{r.quantity}</TableCell>
-                      <TableCell align="right">{r.stockQuantity ?? '—'}</TableCell>
-                      <TableCell align="right">
-                        <IconButton size="small" color="error" onClick={() => {
-                          api.delete(`/work-orders/${order.id}/reservations/${r.id}`)
-                            .then(() => { snackbar.showSuccess('Réservation supprimée'); loadReservations(); })
-                            .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'));
-                        }}><Delete /></IconButton>
-                      </TableCell>
+              <>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Code</TableCell>
+                      <TableCell>Désignation</TableCell>
+                      <TableCell align="right">Quantité</TableCell>
+                      <TableCell align="right">Prix unit.</TableCell>
+                      <TableCell align="right">Coût ligne</TableCell>
+                      <TableCell align="right">Stock dispo</TableCell>
+                      <TableCell align="right">Action</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHead>
+                  <TableBody>
+                    {reservations.map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell>{r.partCode}</TableCell>
+                        <TableCell>{r.partName}</TableCell>
+                        <TableCell align="right">{r.quantity}</TableCell>
+                        <TableCell align="right">{r.unitPrice != null ? `${Number(r.unitPrice).toFixed(2)} ${currency}` : '—'}</TableCell>
+                        <TableCell align="right">{r.lineCost != null ? `${Number(r.lineCost).toFixed(2)} ${currency}` : '—'}</TableCell>
+                        <TableCell align="right">{r.stockQuantity ?? '—'}</TableCell>
+                        <TableCell align="right">
+                          <IconButton size="small" color="error" onClick={() => {
+                            api.delete(`/work-orders/${order.id}/reservations/${r.id}`)
+                              .then(() => { snackbar.showSuccess('Réservation supprimée'); loadReservations(); })
+                              .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'));
+                          }}><Delete /></IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {reservations.some((r) => r.lineCost != null) && (
+                  <Typography variant="body2" sx={{ mt: 1, fontWeight: 600 }}>
+                    {t('workOrder.totalReservationsForecast')} : {currency} {reservations.reduce((sum, r) => sum + (Number(r.lineCost) || 0), 0).toFixed(2)}
+                  </Typography>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -809,6 +957,110 @@ export default function WorkOrderDetail() {
           )}
         </CardContent>
       </Card>
+
+      {/* Photos / Fichiers OT (API pièces jointes OT) */}
+      <Card sx={{ mt: 2 }}>
+        <CardContent>
+          <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
+            <Typography variant="subtitle1" fontWeight={600}>Photos / Fichiers OT</Typography>
+            {canEdit && (
+              <Button size="small" variant="outlined" component="label" startIcon={<Upload />} disabled={uploadingAttachment}>
+                {uploadingAttachment ? 'Envoi...' : 'Ajouter fichier ou photo'}
+                <input type="file" hidden accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" onChange={handleUploadAttachment} />
+              </Button>
+            )}
+          </Box>
+          {woAttachments.length === 0 ? (
+            <Typography color="text.secondary" variant="body2">Aucun fichier. Ajoutez des photos avant/après ou des documents.</Typography>
+          ) : (
+            <List dense disablePadding>
+              {woAttachments.map((a) => (
+                <ListItem key={a.id} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, mb: 0.5 }}
+                  secondaryAction={canEdit && <IconButton size="small" onClick={() => handleDeleteAttachment(a.id)}><Delete /></IconButton>}>
+                  <ListItemText primary={a.file_name} secondary={`${a.attachment_type || 'document'} · ${a.uploaded_by_name || ''} · ${a.created_at ? new Date(a.created_at).toLocaleDateString('fr-FR') : ''}`} />
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Temps par phase */}
+      <Card sx={{ mt: 2 }}>
+        <CardContent>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>Temps par phase</Typography>
+          {canEdit && (
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap', mb: 2 }}>
+              <FormControl size="small" sx={{ minWidth: 160 }}>
+                <InputLabel>Phase</InputLabel>
+                <Select value={phaseForm.phaseName} label="Phase" onChange={(e) => setPhaseForm(f => ({ ...f, phaseName: e.target.value }))}>
+                  <MenuItem value="diagnostic">Diagnostic</MenuItem>
+                  <MenuItem value="reparation">Réparation</MenuItem>
+                  <MenuItem value="essai">Essai / Mise en service</MenuItem>
+                  <MenuItem value="autre">Autre</MenuItem>
+                </Select>
+              </FormControl>
+              <TextField type="number" size="small" label="Heures" value={phaseForm.hoursSpent} onChange={(e) => setPhaseForm(f => ({ ...f, hoursSpent: e.target.value }))} inputProps={{ min: 0, step: 0.25 }} sx={{ width: 100 }} />
+              <TextField size="small" label="Notes" value={phaseForm.notes} onChange={(e) => setPhaseForm(f => ({ ...f, notes: e.target.value }))} sx={{ minWidth: 180 }} />
+              <Button size="small" variant="outlined" onClick={handleSavePhaseTime} disabled={phaseSaving}>{phaseSaving ? 'Enregistrement...' : 'Enregistrer'}</Button>
+            </Box>
+          )}
+          {phaseTimes.length === 0 ? (
+            <Typography color="text.secondary" variant="body2">Aucun temps par phase enregistré.</Typography>
+          ) : (
+            <Table size="small">
+              <TableHead><TableRow><TableCell>Phase</TableCell><TableCell align="right">Heures</TableCell><TableCell>Notes</TableCell></TableRow></TableHead>
+              <TableBody>
+                {phaseTimes.map((p) => (
+                  <TableRow key={p.id}><TableCell>{p.phase_name}</TableCell><TableCell align="right">{p.hours_spent}</TableCell><TableCell>{p.notes || '—'}</TableCell></TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Cause racine */}
+      <Card sx={{ mt: 2 }}>
+        <CardContent>
+          <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
+            <Typography variant="subtitle1" fontWeight={600}>Cause racine</Typography>
+            <Button size="small" variant="outlined" onClick={() => navigate('/app/maintenance/root-causes', { state: { workOrderId: order?.id } })}>Voir / Ajouter</Button>
+          </Box>
+          {rootCauses.length === 0 ? (
+            <Typography color="text.secondary" variant="body2">Aucune cause racine. Enregistrez une analyse (menu Maintenance → Causes racines).</Typography>
+          ) : (
+            rootCauses.map((rc) => (
+              <Box key={rc.id} sx={{ mb: 1, p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
+                <Typography variant="body2"><strong>Code :</strong> {rc.root_cause_code || '—'} · <strong>Méthode :</strong> {rc.analysis_method || '—'}</Typography>
+                <Typography variant="body2" color="text.secondary">{rc.root_cause_description || ''}</Typography>
+              </Box>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Satisfaction (si OT clôturé) */}
+      {order?.status === 'completed' && (
+        <Card sx={{ mt: 2 }}>
+          <CardContent>
+            <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
+              <Typography variant="subtitle1" fontWeight={600}>Satisfaction client</Typography>
+              {!satisfactionSurvey && (
+                <Button size="small" variant="outlined" onClick={() => navigate('/app/maintenance/satisfaction', { state: { workOrderId: order?.id } })}>Enquête satisfaction</Button>
+              )}
+            </Box>
+            {satisfactionSurvey ? (
+              <Box>
+                <Typography variant="body2">Note : {satisfactionSurvey.rating != null ? `${satisfactionSurvey.rating}/5` : '—'}</Typography>
+                {satisfactionSurvey.comment && <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{satisfactionSurvey.comment}</Typography>}
+              </Box>
+            ) : (
+              <Typography color="text.secondary" variant="body2">Aucune enquête. Les demandeurs peuvent noter l&apos;intervention (menu Maintenance → Satisfaction).</Typography>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {stockMovements.length > 0 && (
         <Card sx={{ mt: 2 }}>

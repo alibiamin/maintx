@@ -27,6 +27,17 @@ function hasMovementStatusColumn(db) {
   } catch (_) { return false; }
 }
 
+/** Joins et colonnes optionnels : familles de pièces + emplacements stock (migration 039) */
+function getFamilyLocationJoin(db) {
+  try {
+    db.prepare('SELECT part_family_id, location_id FROM spare_parts LIMIT 1').get();
+    return {
+      join: ' LEFT JOIN part_families pf ON sp.part_family_id = pf.id LEFT JOIN stock_locations sl ON sp.location_id = sl.id',
+      select: ', pf.code as part_family_code, pf.name as part_family_name, sl.code as location_code, sl.name as location_name'
+    };
+  } catch (_) { return { join: '', select: '' }; }
+}
+
 function getBalance(db, sparePartId) {
   const row = db.prepare('SELECT quantity FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
   const qty = row?.quantity ?? 0;
@@ -177,6 +188,7 @@ function changeStatus(db, sparePartId, fromStatus, toStatus, quantity) {
  */
 router.get('/parts', (req, res) => {
   const db = req.db;
+  const fl = getFamilyLocationJoin(db);
   const { belowMin, search, page, limit } = req.query;
   const usePagination = page !== undefined && page !== '';
   const limitNum = usePagination ? Math.min(parseInt(limit, 10) || 20, 100) : 1e6;
@@ -185,6 +197,7 @@ router.get('/parts', (req, res) => {
     FROM spare_parts sp
     LEFT JOIN suppliers s ON sp.supplier_id = s.id
     LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
+    ${fl.join}
     WHERE 1=1
   `;
   const params = [];
@@ -201,14 +214,14 @@ router.get('/parts', (req, res) => {
   const unitSelect = ', u.name as unit_name';
   let whereWithUnits = where.replace('FROM spare_parts sp', 'FROM spare_parts sp' + joinUnits);
   let sql = `
-    SELECT sp.*, s.name as supplier_name${unitSelect || ''}, COALESCE(sb.quantity, 0) as stock_quantity,
+    SELECT sp.*, s.name as supplier_name${unitSelect || ''}${fl.select || ''}, COALESCE(sb.quantity, 0) as stock_quantity,
            CASE WHEN COALESCE(sb.quantity, 0) <= sp.min_stock THEN 1 ELSE 0 END as below_minimum
     ${whereWithUnits}
     ORDER BY below_minimum DESC, ${sortBy} ${order} LIMIT ? OFFSET ?
   `;
   if (hasStatusColumns(db)) {
     sql = `
-      SELECT sp.*, s.name as supplier_name${unitSelect || ''}, COALESCE(sb.quantity, 0) as stock_quantity,
+      SELECT sp.*, s.name as supplier_name${unitSelect || ''}${fl.select || ''}, COALESCE(sb.quantity, 0) as stock_quantity,
              COALESCE(sb.quantity_accepted, sb.quantity) as quantity_accepted,
              COALESCE(sb.quantity_quarantine, 0) as quantity_quarantine,
              COALESCE(sb.quantity_rejected, 0) as quantity_rejected,
@@ -222,7 +235,15 @@ router.get('/parts', (req, res) => {
     rows = db.prepare(sql).all(...params, limitNum, offset);
   } catch (e) {
     if (e.message && (e.message.includes('no such table') || e.message.includes('no such column'))) {
-      const fallbackWhere = where;
+      let fallbackWhere = `
+    FROM spare_parts sp
+    LEFT JOIN suppliers s ON sp.supplier_id = s.id
+    LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
+    WHERE 1=1
+  `;
+      if (belowMin === 'true') fallbackWhere += ' AND COALESCE(sb.quantity, 0) <= sp.min_stock';
+      if (search) { fallbackWhere += ' AND (sp.code LIKE ? OR sp.name LIKE ?)'; }
+      const fallbackParams = search ? [...params] : [];
       sql = `
         SELECT sp.*, s.name as supplier_name, COALESCE(sb.quantity, 0) as stock_quantity,
                CASE WHEN COALESCE(sb.quantity, 0) <= sp.min_stock THEN 1 ELSE 0 END as below_minimum
@@ -240,7 +261,7 @@ router.get('/parts', (req, res) => {
           ORDER BY below_minimum DESC, ${sortBy} ${order} LIMIT ? OFFSET ?
         `;
       }
-      rows = db.prepare(sql).all(...params, limitNum, offset);
+      rows = db.prepare(sql).all(...fallbackParams, limitNum, offset);
     } else throw e;
   }
   const byId = new Map();
@@ -264,7 +285,7 @@ router.get('/movements', (req, res) => {
   try {
     const { work_order_id } = req.query;
     let sql = `
-      SELECT sm.*, sp.name as part_name, sp.code as part_code,
+      SELECT sm.*, sp.name as part_name, sp.code as part_code, sp.unit_price,
              u.first_name || ' ' || u.last_name as user_name,
              wo.number as work_order_number
       FROM stock_movements sm
@@ -279,8 +300,30 @@ router.get('/movements', (req, res) => {
       params.push(parseInt(work_order_id, 10));
     }
     sql += ' ORDER BY sm.created_at DESC LIMIT 200';
-    const rows = db.prepare(sql).all(...params);
-    res.json(rows.map(r => ({ ...r, partName: r.part_name, userName: r.user_name, workOrderNumber: r.work_order_number })));
+    let rows;
+    try {
+      rows = db.prepare(sql).all(...params);
+    } catch (err) {
+      if (err.message && err.message.includes('no such column')) {
+        sql = `
+          SELECT sm.*, sp.name as part_name, sp.code as part_code,
+                 u.first_name || ' ' || u.last_name as user_name,
+                 wo.number as work_order_number
+          FROM stock_movements sm
+          LEFT JOIN spare_parts sp ON sm.spare_part_id = sp.id
+          LEFT JOIN users u ON sm.user_id = u.id
+          LEFT JOIN work_orders wo ON sm.work_order_id = wo.id
+          WHERE 1=1
+        ` + (work_order_id ? ' AND sm.work_order_id = ?' : '') + ' ORDER BY sm.created_at DESC LIMIT 200';
+        rows = db.prepare(sql).all(...(work_order_id ? [...params] : []));
+      } else throw err;
+    }
+    res.json(rows.map(r => {
+      const up = r.unit_price != null ? Number(r.unit_price) : 0;
+      const qty = Math.abs(Number(r.quantity) || 0);
+      const line_cost = Math.round(qty * up * 100) / 100;
+      return { ...r, partName: r.part_name, userName: r.user_name, workOrderNumber: r.work_order_number, unit_price: up, line_cost };
+    }));
   } catch (err) {
     if (err.message && err.message.includes('no such table')) return res.json([]);
     res.status(500).json({ error: err.message });
@@ -580,14 +623,16 @@ router.put('/reorders/:id', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RE
  */
 router.get('/parts/:id', param('id').isInt(), (req, res) => {
   const db = req.db;
+  const fl = getFamilyLocationJoin(db);
   let row;
   try {
     row = db.prepare(`
-      SELECT sp.*, s.name as supplier_name, u.name as unit_name, COALESCE(sb.quantity, 0) as stock_quantity
+      SELECT sp.*, s.name as supplier_name, u.name as unit_name${fl.select || ''}, COALESCE(sb.quantity, 0) as stock_quantity
       FROM spare_parts sp
       LEFT JOIN suppliers s ON sp.supplier_id = s.id
       LEFT JOIN units u ON sp.unit_id = u.id
       LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
+      ${fl.join}
       WHERE sp.id = ?
     `).get(req.params.id);
   } catch (e) {
@@ -618,6 +663,7 @@ router.get('/parts/:id', param('id').isInt(), (req, res) => {
         } else throw e2;
       }
       if (row && !row.unit_name) row.unit_name = row.unit || null;
+      if (row && !row.part_family_code) { row.part_family_code = null; row.part_family_name = null; row.location_code = null; row.location_name = null; }
     } else throw e;
   }
   if (!row) return res.status(404).json({ error: 'Pièce non trouvée' });
@@ -655,7 +701,9 @@ router.put('/parts/:id', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RESPO
   body('subFamily2').optional().trim(),
   body('subFamily3').optional().trim(),
   body('subFamily4').optional().trim(),
-  body('subFamily5').optional().trim()
+  body('subFamily5').optional().trim(),
+  body('partFamilyId').optional({ nullable: true }).isInt(),
+  body('locationId').optional({ nullable: true }).isInt()
 ], (req, res) => {
   const db = req.db;
   const errors = validationResult(req);
@@ -666,7 +714,8 @@ router.put('/parts/:id', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RESPO
   const {
     name, description, unit, unitId, unitPrice, minStock, supplierId,
     location, manufacturerReference, imageData,
-    stockCategory, family, subFamily1, subFamily2, subFamily3, subFamily4, subFamily5
+    stockCategory, family, subFamily1, subFamily2, subFamily3, subFamily4, subFamily5,
+    partFamilyId, locationId
   } = req.body;
   let unitVal = unit;
   if (unitId !== undefined && unitId !== null) {
@@ -698,6 +747,8 @@ router.put('/parts/:id', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RESPO
   if (subFamily3 !== undefined) { updates.push('sub_family_3 = ?'); values.push(subFamily3 || null); }
   if (subFamily4 !== undefined) { updates.push('sub_family_4 = ?'); values.push(subFamily4 || null); }
   if (subFamily5 !== undefined) { updates.push('sub_family_5 = ?'); values.push(subFamily5 || null); }
+  if (partFamilyId !== undefined) { updates.push('part_family_id = ?'); values.push(partFamilyId || null); }
+  if (locationId !== undefined) { updates.push('location_id = ?'); values.push(locationId || null); }
   if (updates.length === 0) return res.status(400).json({ error: 'Aucune donnée à mettre à jour' });
   updates.push('updated_at = CURRENT_TIMESTAMP');
   values.push(id);
@@ -705,7 +756,7 @@ router.put('/parts/:id', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RESPO
     db.prepare('UPDATE spare_parts SET ' + updates.join(', ') + ' WHERE id = ?').run(...values);
   } catch (e) {
     if (e.message && e.message.includes('no such column')) {
-      const optionalCols = ['image_data', 'location', 'manufacturer_reference', 'stock_category', 'family', 'sub_family_1', 'sub_family_2', 'sub_family_3', 'sub_family_4', 'sub_family_5', 'unit_id'];
+      const optionalCols = ['image_data', 'location', 'manufacturer_reference', 'stock_category', 'family', 'sub_family_1', 'sub_family_2', 'sub_family_3', 'sub_family_4', 'sub_family_5', 'unit_id', 'part_family_id', 'location_id'];
       const safeUpdates = [];
       const safeValues = [];
       updates.forEach((u, i) => {
@@ -870,7 +921,9 @@ router.post('/parts', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('subFamily2').optional().trim(),
   body('subFamily3').optional().trim(),
   body('subFamily4').optional().trim(),
-  body('subFamily5').optional().trim()
+  body('subFamily5').optional().trim(),
+  body('partFamilyId').optional({ nullable: true }).isInt(),
+  body('locationId').optional({ nullable: true }).isInt()
 ], (req, res) => {
   const db = req.db;
   const errors = validationResult(req);
@@ -878,7 +931,8 @@ router.post('/parts', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   const {
     code: codeProvided, name, description, unit, unitId, unitPrice, minStock, supplierId,
     location, manufacturerReference, imageData,
-    stockCategory, family, subFamily1, subFamily2, subFamily3, subFamily4, subFamily5
+    stockCategory, family, subFamily1, subFamily2, subFamily3, subFamily4, subFamily5,
+    partFamilyId, locationId
   } = req.body;
   const code = codification.generateCodeIfNeeded(db, 'piece', codeProvided);
   if (!code || !code.trim()) return res.status(400).json({ error: 'Code requis ou configurer la codification dans Paramétrage' });
@@ -894,29 +948,44 @@ router.post('/parts', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
     try {
       result = db.prepare(`
         INSERT INTO spare_parts (code, name, description, unit, unit_id, unit_price, min_stock, supplier_id, location, manufacturer_reference, image_data,
-          stock_category, family, sub_family_1, sub_family_2, sub_family_3, sub_family_4, sub_family_5)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          stock_category, family, sub_family_1, sub_family_2, sub_family_3, sub_family_4, sub_family_5, part_family_id, location_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         code.trim(), name, description || null, unitVal, unitId || null, unitPrice || 0, minStock || 0, supplierId || null,
         location || null, manufacturerReference || null, imageData && String(imageData).trim() ? String(imageData).trim() : null,
-        stockCategory || null, family || null, subFamily1 || null, subFamily2 || null, subFamily3 || null, subFamily4 || null, subFamily5 || null
+        stockCategory || null, family || null, subFamily1 || null, subFamily2 || null, subFamily3 || null, subFamily4 || null, subFamily5 || null,
+        partFamilyId || null, locationId || null
       );
     } catch (e) {
       if (e.message && e.message.includes('no such column')) {
         try {
           result = db.prepare(`
-            INSERT INTO spare_parts (code, name, description, unit, unit_price, min_stock, supplier_id, location, manufacturer_reference, image_data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO spare_parts (code, name, description, unit, unit_id, unit_price, min_stock, supplier_id, location, manufacturer_reference, image_data,
+              stock_category, family, sub_family_1, sub_family_2, sub_family_3, sub_family_4, sub_family_5)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
-            code.trim(), name, description || null, unitVal, unitPrice || 0, minStock || 0, supplierId || null,
-            location || null, manufacturerReference || null, imageData && String(imageData).trim() ? String(imageData).trim() : null
+            code.trim(), name, description || null, unitVal, unitId || null, unitPrice || 0, minStock || 0, supplierId || null,
+            location || null, manufacturerReference || null, imageData && String(imageData).trim() ? String(imageData).trim() : null,
+            stockCategory || null, family || null, subFamily1 || null, subFamily2 || null, subFamily3 || null, subFamily4 || null, subFamily5 || null
           );
         } catch (e2) {
           if (e2.message && e2.message.includes('no such column')) {
-            result = db.prepare(`
-              INSERT INTO spare_parts (code, name, description, unit, unit_price, min_stock, supplier_id)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
-            `).run(code.trim(), name, description || null, unitVal, unitPrice || 0, minStock || 0, supplierId || null);
+            try {
+              result = db.prepare(`
+                INSERT INTO spare_parts (code, name, description, unit, unit_price, min_stock, supplier_id, location, manufacturer_reference, image_data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `).run(
+                code.trim(), name, description || null, unitVal, unitPrice || 0, minStock || 0, supplierId || null,
+                location || null, manufacturerReference || null, imageData && String(imageData).trim() ? String(imageData).trim() : null
+              );
+            } catch (e3) {
+              if (e3.message && e3.message.includes('no such column')) {
+                result = db.prepare(`
+                  INSERT INTO spare_parts (code, name, description, unit, unit_price, min_stock, supplier_id)
+                  VALUES (?, ?, ?, ?, ?, ?, ?)
+                `).run(code.trim(), name, description || null, unitVal, unitPrice || 0, minStock || 0, supplierId || null);
+              } else throw e3;
+            }
           } else throw e2;
         }
       } else throw e;

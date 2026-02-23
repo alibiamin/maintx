@@ -6,6 +6,7 @@ const express = require('express');
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { repairOnlyCondition } = require('../services/mttrMtbf');
 
 function writePdfTable(doc, headers, rows, colWidths) {
   let y = doc.y;
@@ -61,14 +62,17 @@ router.get('/maintenance-costs', (req, res) => {
 
 /**
  * GET /api/reports/mttr
- * MTTR (Mean Time To Repair) en heures - temps moyen de réparation par équipement ou global.
+ * MTTR (Mean Time To Repair) en heures — OT correctifs uniquement, durée réelle (actual_end > actual_start).
  */
 router.get('/mttr', (req, res) => {
   const db = req.db;
   const { startDate, endDate, siteId, equipmentId } = req.query;
   const start = startDate || '2020-01-01';
   const end = endDate || '2100-12-31';
-  let where = `wo.status = 'completed' AND wo.actual_start IS NOT NULL AND wo.actual_end IS NOT NULL AND date(wo.actual_end) BETWEEN ? AND ?`;
+  let where = `wo.status = 'completed' AND wo.actual_start IS NOT NULL AND wo.actual_end IS NOT NULL
+    AND (julianday(wo.actual_end) - julianday(wo.actual_start)) > 0
+    AND ${repairOnlyCondition('wo')}
+    AND date(wo.actual_end) BETWEEN ? AND ?`;
   const params = [start, end];
   if (siteId) {
     where += ' AND e.ligne_id IN (SELECT id FROM lignes WHERE site_id = ?)';
@@ -81,7 +85,7 @@ router.get('/mttr', (req, res) => {
   const byEquipment = db.prepare(`
     SELECT e.id as equipment_id, e.code, e.name,
            COUNT(wo.id) as repair_count,
-           AVG((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24) as mttr_hours
+           SUM((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24) / COUNT(*) as mttr_hours
     FROM work_orders wo
     JOIN equipment e ON wo.equipment_id = e.id
     WHERE ${where}
@@ -90,12 +94,67 @@ router.get('/mttr', (req, res) => {
   `).all(...params);
   const global = db.prepare(`
     SELECT COUNT(*) as repair_count,
-           AVG((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24) as mttr_hours
+           SUM((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24) / COUNT(*) as mttr_hours
     FROM work_orders wo
     JOIN equipment e ON wo.equipment_id = e.id
     WHERE ${where}
   `).get(...params);
   res.json({ global: global || { repair_count: 0, mttr_hours: null }, byEquipment });
+});
+
+/**
+ * GET /api/reports/mtbf
+ * MTBF (Mean Time Between Failures) — temps moyen entre deux pannes (failure_date), par équipement.
+ * Retour en heures pour cohérence avec les rapports.
+ */
+router.get('/mtbf', (req, res) => {
+  const db = req.db;
+  const { startDate, endDate, siteId, equipmentId } = req.query;
+  const start = startDate || '2020-01-01';
+  const end = endDate || '2100-12-31';
+  let where = `wo.failure_date IS NOT NULL AND wo.status = 'completed' AND wo.equipment_id IS NOT NULL
+    AND date(wo.failure_date) BETWEEN ? AND ?`;
+  const params = [start, end];
+  if (siteId) {
+    where += ' AND e.ligne_id IN (SELECT id FROM lignes WHERE site_id = ?)';
+    params.push(siteId);
+  }
+  if (equipmentId) {
+    where += ' AND wo.equipment_id = ?';
+    params.push(equipmentId);
+  }
+  const byEquipment = db.prepare(`
+    WITH ordered AS (
+      SELECT wo.equipment_id, wo.failure_date,
+             LAG(wo.failure_date) OVER (PARTITION BY wo.equipment_id ORDER BY wo.failure_date) as prev_failure
+      FROM work_orders wo
+      JOIN equipment e ON wo.equipment_id = e.id
+      WHERE ${where}
+    )
+    SELECT e.id as equipment_id, e.code, e.name,
+           COUNT(*) as intervals,
+           (SUM((julianday(o.failure_date) - julianday(o.prev_failure)) * 24) / COUNT(*)) as mtbf_hours
+    FROM ordered o
+    JOIN equipment e ON o.equipment_id = e.id
+    WHERE o.prev_failure IS NOT NULL
+    GROUP BY o.equipment_id
+    ORDER BY mtbf_hours DESC
+  `).all(...params);
+  const globalRow = db.prepare(`
+    WITH ordered AS (
+      SELECT wo.equipment_id, wo.failure_date,
+             LAG(wo.failure_date) OVER (PARTITION BY wo.equipment_id ORDER BY wo.failure_date) as prev_failure
+      FROM work_orders wo
+      JOIN equipment e ON wo.equipment_id = e.id
+      WHERE ${where}
+    ),
+    intervals AS (
+      SELECT (julianday(failure_date) - julianday(prev_failure)) * 24 as hours_between
+      FROM ordered WHERE prev_failure IS NOT NULL
+    )
+    SELECT COUNT(*) as intervals, (SUM(hours_between) / COUNT(*)) as mtbf_hours FROM intervals
+  `).get(...params);
+  res.json({ global: globalRow || { intervals: 0, mtbf_hours: null }, byEquipment });
 });
 
 /**
@@ -214,18 +273,40 @@ router.get('/parts-most-used', (req, res) => {
   const start = startDate || '2020-01-01';
   const end = endDate || '2100-12-31';
   const lim = Math.min(parseInt(limit, 10) || 20, 100);
-  const rows = db.prepare(`
-    SELECT sp.code as part_code, sp.name as part_name,
-           SUM(i.quantity_used) as quantity_used,
-           SUM(i.quantity_used * sp.unit_price) as total_cost
-    FROM interventions i
-    JOIN spare_parts sp ON i.spare_part_id = sp.id
-    JOIN work_orders wo ON i.work_order_id = wo.id
-    WHERE wo.actual_end BETWEEN ? AND ? AND wo.status = 'completed'
-    GROUP BY sp.id
-    ORDER BY quantity_used DESC
-    LIMIT ?
-  `).all(start, end, lim);
+  let rows;
+  try {
+    rows = db.prepare(`
+      SELECT sp.code as part_code, sp.name as part_name,
+             pf.code as part_family_code, pf.name as part_family_name,
+             sl.code as location_code, sl.name as location_name,
+             SUM(i.quantity_used) as quantity_used,
+             SUM(i.quantity_used * sp.unit_price) as total_cost
+      FROM interventions i
+      JOIN spare_parts sp ON i.spare_part_id = sp.id
+      LEFT JOIN part_families pf ON sp.part_family_id = pf.id
+      LEFT JOIN stock_locations sl ON sp.location_id = sl.id
+      JOIN work_orders wo ON i.work_order_id = wo.id
+      WHERE wo.actual_end BETWEEN ? AND ? AND wo.status = 'completed'
+      GROUP BY sp.id
+      ORDER BY quantity_used DESC
+      LIMIT ?
+    `).all(start, end, lim);
+  } catch (e) {
+    if (e.message && (e.message.includes('no such column') || e.message.includes('no such table'))) {
+      rows = db.prepare(`
+        SELECT sp.code as part_code, sp.name as part_name,
+               SUM(i.quantity_used) as quantity_used,
+               SUM(i.quantity_used * sp.unit_price) as total_cost
+        FROM interventions i
+        JOIN spare_parts sp ON i.spare_part_id = sp.id
+        JOIN work_orders wo ON i.work_order_id = wo.id
+        WHERE wo.actual_end BETWEEN ? AND ? AND wo.status = 'completed'
+        GROUP BY sp.id
+        ORDER BY quantity_used DESC
+        LIMIT ?
+      `).all(start, end, lim);
+    } else throw e;
+  }
   res.json(rows);
 });
 
@@ -435,15 +516,34 @@ router.get('/export/pdf/work-order/:id', (req, res) => {
   `).get(woId);
   if (!wo) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
 
-  const interventions = db.prepare(`
-    SELECT i.description, i.hours_spent, i.quantity_used, sp.code as part_code, sp.name as part_name, sp.unit_price,
-           u.first_name || ' ' || u.last_name as technician_name
-    FROM interventions i
-    LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id
-    LEFT JOIN users u ON i.technician_id = u.id
-    WHERE i.work_order_id = ?
-    ORDER BY i.id
-  `).all(woId);
+  let interventions;
+  try {
+    interventions = db.prepare(`
+      SELECT i.description, i.hours_spent, i.quantity_used, sp.code as part_code, sp.name as part_name, sp.unit_price,
+             pf.name as part_family_name, sl.name as location_name,
+             u.first_name || ' ' || u.last_name as technician_name
+      FROM interventions i
+      LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id
+      LEFT JOIN part_families pf ON sp.part_family_id = pf.id
+      LEFT JOIN stock_locations sl ON sp.location_id = sl.id
+      LEFT JOIN users u ON i.technician_id = u.id
+      WHERE i.work_order_id = ?
+      ORDER BY i.id
+    `).all(woId);
+  } catch (e) {
+    if (e.message && (e.message.includes('no such column') || e.message.includes('no such table'))) {
+      interventions = db.prepare(`
+        SELECT i.description, i.hours_spent, i.quantity_used, sp.code as part_code, sp.name as part_name, sp.unit_price,
+               u.first_name || ' ' || u.last_name as technician_name
+        FROM interventions i
+        LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id
+        LEFT JOIN users u ON i.technician_id = u.id
+        WHERE i.work_order_id = ?
+        ORDER BY i.id
+      `).all(woId);
+      interventions = interventions.map(i => ({ ...i, part_family_name: null, location_name: null }));
+    } else throw e;
+  }
 
   const statusLabels = { pending: 'En attente', in_progress: 'En cours', completed: 'Terminé', cancelled: 'Annulé', deferred: 'Reporté' };
   const priorityLabels = { low: 'Basse', medium: 'Moyenne', high: 'Haute', critical: 'Critique' };
@@ -478,13 +578,18 @@ router.get('/export/pdf/work-order/:id', (req, res) => {
     doc.font('Helvetica').text('Aucune intervention enregistrée.', 50, y);
     y += 24;
   } else {
+    const hasFamilyLoc = interventions.some(i => i.part_family_name != null || i.location_name != null);
+    const headers = hasFamilyLoc ? ['Technicien', 'Description', 'Heures', 'Pièce', 'Famille', 'Empl.', 'Qté', 'P.U.'] : ['Technicien', 'Description', 'Heures', 'Pièce', 'Qté', 'P.U.'];
+    const xPos = hasFamilyLoc ? [50, 80, 160, 220, 300, 360, 400, 440] : [50, 100, 180, 260, 320, 380];
     doc.fontSize(9).font('Helvetica-Bold');
-    ['Technicien', 'Description', 'Heures', 'Pièce', 'Qté', 'P.U.'].forEach((h, idx) => doc.text(h, 50 + [0, 100, 180, 260, 320, 380][idx], y));
+    headers.forEach((h, idx) => doc.text(h, xPos[idx], y));
     y += 16;
     doc.font('Helvetica');
     interventions.forEach((i) => {
-      const line = [i.technician_name || '-', (i.description || '').substring(0, 35), i.hours_spent != null ? `${i.hours_spent} h` : '-', i.part_name ? `${i.part_code || ''} ${i.part_name}`.trim().substring(0, 28) : '-', i.quantity_used ?? '-', i.unit_price != null ? `${Number(i.unit_price).toFixed(2)}` : '-'];
-      line.forEach((val, idx) => doc.text(String(val), 50 + [0, 100, 180, 260, 320, 380][idx], y));
+      const line = hasFamilyLoc
+        ? [i.technician_name || '-', (i.description || '').substring(0, 25), i.hours_spent != null ? `${i.hours_spent} h` : '-', i.part_name ? `${i.part_code || ''} ${i.part_name}`.trim().substring(0, 18) : '-', (i.part_family_name || '-').substring(0, 8), (i.location_name || '-').substring(0, 6), i.quantity_used ?? '-', i.unit_price != null ? `${Number(i.unit_price).toFixed(2)}` : '-']
+        : [i.technician_name || '-', (i.description || '').substring(0, 35), i.hours_spent != null ? `${i.hours_spent} h` : '-', i.part_name ? `${i.part_code || ''} ${i.part_name}`.trim().substring(0, 28) : '-', i.quantity_used ?? '-', i.unit_price != null ? `${Number(i.unit_price).toFixed(2)}` : '-'];
+      line.forEach((val, idx) => doc.text(String(val), xPos[idx], y));
       y += 16;
     });
     y += 8;
@@ -513,10 +618,31 @@ router.get('/export/pdf/kpis', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, 
   const end = endDate || new Date().toISOString().slice(0, 10);
   const woTotal = db.prepare('SELECT COUNT(*) as c FROM work_orders WHERE date(created_at) BETWEEN ? AND ?').get(start, end);
   const woCompleted = db.prepare("SELECT COUNT(*) as c FROM work_orders WHERE status = 'completed' AND date(actual_end) BETWEEN ? AND ?").get(start, end);
-  const mttrRow = db.prepare(`
-    SELECT AVG((julianday(actual_end) - julianday(actual_start)) * 24) as mttr
-    FROM work_orders WHERE status = 'completed' AND actual_start IS NOT NULL AND actual_end IS NOT NULL AND date(actual_end) BETWEEN ? AND ?
-  `).get(start, end);
+  let mttrRow = null;
+  let mtbfRow = null;
+  try {
+    mttrRow = db.prepare(`
+      SELECT SUM((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24) / COUNT(*) as mttr
+      FROM work_orders wo
+      WHERE wo.status = 'completed' AND wo.actual_start IS NOT NULL AND wo.actual_end IS NOT NULL
+        AND (julianday(wo.actual_end) - julianday(wo.actual_start)) > 0
+        AND ${repairOnlyCondition('wo')}
+        AND date(wo.actual_end) BETWEEN ? AND ?
+    `).get(start, end);
+  } catch (_) {}
+  try {
+    mtbfRow = db.prepare(`
+      WITH ordered AS (
+        SELECT wo.equipment_id, wo.failure_date,
+               LAG(wo.failure_date) OVER (PARTITION BY wo.equipment_id ORDER BY wo.failure_date) as prev_failure
+        FROM work_orders wo
+        WHERE wo.failure_date IS NOT NULL AND wo.status = 'completed' AND wo.equipment_id IS NOT NULL
+          AND date(wo.failure_date) BETWEEN ? AND ?
+      ),
+      intervals AS ( SELECT (julianday(failure_date) - julianday(prev_failure)) as days_between FROM ordered WHERE prev_failure IS NOT NULL )
+      SELECT SUM(days_between) / COUNT(*) as mtbf FROM intervals
+    `).get(start, end);
+  } catch (_) {}
   const eqCount = db.prepare('SELECT COUNT(*) as c FROM equipment WHERE status != ?').get('retired');
   const alertCount = db.prepare(`
     SELECT COUNT(*) as c FROM spare_parts sp
@@ -533,9 +659,10 @@ router.get('/export/pdf/kpis', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, 
   doc.fontSize(11);
   doc.text(`OT créés (période) : ${woTotal?.c ?? 0}`, 50, doc.y);
   doc.text(`OT terminés (période) : ${woCompleted?.c ?? 0}`, 50, doc.y + 20);
-  doc.text(`MTTR moyen (heures) : ${mttrRow?.mttr ? parseFloat(mttrRow.mttr).toFixed(2) : '-'}`, 50, doc.y + 40);
-  doc.text(`Équipements actifs : ${eqCount?.c ?? 0}`, 50, doc.y + 60);
-  doc.text(`Alertes stock (sous seuil) : ${alertCount?.c ?? 0}`, 50, doc.y + 80);
+  doc.text(`MTTR moyen (heures, correctifs) : ${mttrRow?.mttr != null ? parseFloat(mttrRow.mttr).toFixed(2) : '-'}`, 50, doc.y + 40);
+  doc.text(`MTBF moyen (jours, pannes) : ${mtbfRow?.mtbf != null ? parseFloat(mtbfRow.mtbf).toFixed(2) : '-'}`, 50, doc.y + 60);
+  doc.text(`Équipements actifs : ${eqCount?.c ?? 0}`, 50, doc.y + 80);
+  doc.text(`Alertes stock (sous seuil) : ${alertCount?.c ?? 0}`, 50, doc.y + 100);
   doc.end();
 });
 

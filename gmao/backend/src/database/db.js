@@ -93,6 +93,30 @@ function getAdminDb() {
 }
 
 /**
+ * Migrations à appliquer sur les bases client (tables OT, stock, etc.) lorsqu'elles sont ouvertes.
+ * Garantit que work_order_extra_fees et autres tables client existent.
+ */
+function runClientMigrations(wrapper) {
+  if (!wrapper) return;
+  const clientMigrations = [
+    () => require('./migrations/043_work_order_extra_fees.js')
+  ];
+  for (const load of clientMigrations) {
+    try {
+      const m = load();
+      if (m && m.up) {
+        m.up(wrapper);
+        if (wrapper._save) wrapper._save();
+      }
+    } catch (e) {
+      if (!e.message || (!e.message.includes('already exists') && !e.message.includes('duplicate'))) {
+        console.warn('[DB] Migration client:', e.message);
+      }
+    }
+  }
+}
+
+/**
  * Base client : par id tenant. Si le fichier n'existe pas, crée une base vierge (schéma GMAO).
  */
 function getClientDb(tenantIdOrKey) {
@@ -106,7 +130,10 @@ function getClientDb(tenantIdOrKey) {
     dbFilename = tenantIdOrKey.endsWith('.db') ? tenantIdOrKey : `${tenantIdOrKey}.db`;
   }
   if (_clientDbCache.has(dbFilename)) {
-    return _clientDbCache.get(dbFilename).wrapper;
+    const cached = _clientDbCache.get(dbFilename).wrapper;
+    runClientMigrations(cached);
+    if (cached._save) cached._save();
+    return cached;
   }
   const clientPath = path.join(dataDir, dbFilename);
   if (!_SQL) throw new Error('DB non initialisée');
@@ -124,12 +151,15 @@ function getClientDb(tenantIdOrKey) {
       console.warn('[DB] Schéma client:', e.message);
     }
     const wrapper = createDbWrapper(raw, clientPath);
+    runClientMigrations(wrapper);
     wrapper._save();
     _clientDbCache.set(dbFilename, { raw, wrapper });
     return wrapper;
   }
   raw.exec('PRAGMA foreign_keys = ON');
   const wrapper = createDbWrapper(raw, clientPath);
+  runClientMigrations(wrapper);
+  wrapper._save();
   _clientDbCache.set(dbFilename, { raw, wrapper });
   return wrapper;
 }

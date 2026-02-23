@@ -71,24 +71,31 @@ export default function Settings() {
   const [kpiLoading, setKpiLoading] = useState(false);
   const [kpiDialog, setKpiDialog] = useState({ open: false, id: null, name: '', source_key: '', color: 'primary', icon: '', is_visible: true });
   const [kpiSaving, setKpiSaving] = useState(false);
+  const [indicatorTargets, setIndicatorTargets] = useState([]);
+  const [indicatorTargetsLoading, setIndicatorTargetsLoading] = useState(false);
+  const [indicatorTargetsSaving, setIndicatorTargetsSaving] = useState(false);
   const { user } = useAuth();
   const canEditCodification = ['administrateur', 'responsable_maintenance'].includes(user?.role);
   const canEditUnits = ['administrateur', 'responsable_maintenance'].includes(user?.role);
   const canEditKpis = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEditTargets = ['administrateur', 'responsable_maintenance'].includes(user?.role);
   const isAdmin = user?.role === 'administrateur';
   const canViewAudit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
   const snackbar = useSnackbar();
   const [searchParams, setSearchParams] = useSearchParams();
   const unitsTabIndex = 3;
   const kpiTabIndex = 4;
-  const alertesTabIndex = isAdmin ? 6 : 5;
+  const targetsTabIndex = 5;
+  const backupTabIndex = 6; // Sauvegarde (visible seulement si isAdmin)
+  const alertesTabIndex = isAdmin ? 7 : 6;
   const auditTabIndex = alertesTabIndex + 1;
 
   useEffect(() => {
     if (searchParams.get('tab') === 'alertes') setTab(alertesTabIndex);
     if (searchParams.get('tab') === 'audit') setTab(auditTabIndex);
     if (searchParams.get('tab') === 'kpis') setTab(kpiTabIndex);
-  }, [searchParams.get('tab'), alertesTabIndex, auditTabIndex, kpiTabIndex]);
+    if (searchParams.get('tab') === 'targets') setTab(targetsTabIndex);
+  }, [searchParams.get('tab'), alertesTabIndex, auditTabIndex, kpiTabIndex, targetsTabIndex]);
 
   useEffect(() => {
     if (!canViewAudit || tab !== auditTabIndex) return;
@@ -177,6 +184,15 @@ export default function Settings() {
       })
       .finally(() => setKpiLoading(false));
   }, [tab, kpiTabIndex]);
+
+  useEffect(() => {
+    if (tab !== targetsTabIndex) return;
+    setIndicatorTargetsLoading(true);
+    api.get('/settings/indicator-targets')
+      .then((r) => setIndicatorTargets(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setIndicatorTargets([]))
+      .finally(() => setIndicatorTargetsLoading(false));
+  }, [tab, targetsTabIndex]);
 
   const openKpiDialog = (k = null) => {
     setKpiDialog({
@@ -312,6 +328,9 @@ export default function Settings() {
         onChange={(_, v) => {
           setTab(v);
           if (v === alertesTabIndex) setSearchParams({ tab: 'alertes' });
+          else if (v === auditTabIndex) setSearchParams({ tab: 'audit' });
+          else if (v === kpiTabIndex) setSearchParams({ tab: 'kpis' });
+          else if (v === targetsTabIndex) setSearchParams({ tab: 'targets' });
           else setSearchParams({});
         }}
         sx={{ mb: 2 }}
@@ -321,6 +340,7 @@ export default function Settings() {
         <Tab label="Codification" />
         <Tab label="Unités" />
         <Tab label="Indicateurs KPI" />
+        <Tab label="Objectifs indicateurs" />
         {isAdmin && <Tab label="Sauvegarde" />}
         <Tab label="Alertes email / SMS" />
         {canViewAudit && <Tab label="Journal d'audit" />}
@@ -505,6 +525,77 @@ export default function Settings() {
         </DialogActions>
       </Dialog>
 
+      {tab === targetsTabIndex && (
+        <Card sx={{ borderRadius: 2 }}>
+          <CardContent>
+            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+              Objectifs des indicateurs
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Valeurs cibles utilisées pour le tableau de bord, la page Indicateurs et l&apos;Assistance à la décision. Référence : norme EN 15341 et bonnes pratiques. Direction « min » : la valeur doit être ≥ objectif ; « max » : la valeur doit être ≤ objectif.
+            </Typography>
+            {indicatorTargetsLoading ? (
+              <Box display="flex" justifyContent="center" p={2}><CircularProgress /></Box>
+            ) : (
+              <>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Indicateur</TableCell>
+                      <TableCell>Objectif</TableCell>
+                      <TableCell>Direction</TableCell>
+                      <TableCell>Unité</TableCell>
+                      <TableCell>Référence</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {indicatorTargets.map((row) => (
+                      <TableRow key={row.key}>
+                        <TableCell>{row.label}</TableCell>
+                        <TableCell>
+                          {canEditTargets ? (
+                            <TextField
+                              type="number"
+                              size="small"
+                              value={row.target_value}
+                              onChange={(e) => setIndicatorTargets((prev) => prev.map((r) => r.key === row.key ? { ...r, target_value: parseFloat(e.target.value) || 0 } : r))}
+                              inputProps={{ step: 0.1, min: 0 }}
+                              sx={{ width: 100 }}
+                            />
+                          ) : (
+                            row.target_value
+                          )}
+                        </TableCell>
+                        <TableCell>{row.direction === 'max' ? 'Max (≤)' : 'Min (≥)'}</TableCell>
+                        <TableCell>{row.unit || '—'}</TableCell>
+                        <TableCell>{row.ref_label || '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {canEditTargets && indicatorTargets.length > 0 && (
+                  <Button variant="contained" startIcon={<Save />} sx={{ mt: 2 }} onClick={() => {
+                    setIndicatorTargetsSaving(true);
+                    api.put('/settings/indicator-targets', indicatorTargets)
+                      .then((r) => {
+                        setIndicatorTargets(Array.isArray(r.data) ? r.data : []);
+                        snackbar.showSuccess('Objectifs enregistrés');
+                      })
+                      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'))
+                      .finally(() => setIndicatorTargetsSaving(false));
+                  }} disabled={indicatorTargetsSaving}>
+                    {indicatorTargetsSaving ? 'Enregistrement…' : 'Enregistrer les objectifs'}
+                  </Button>
+                )}
+                {indicatorTargets.length === 0 && !indicatorTargetsLoading && (
+                  <Typography color="text.secondary">Aucun objectif. Exécutez les migrations pour créer les valeurs par défaut.</Typography>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {tab === kpiTabIndex && (
         <Card sx={{ borderRadius: 2 }}>
           <CardContent>
@@ -597,7 +688,7 @@ export default function Settings() {
         </DialogActions>
       </Dialog>
 
-      {isAdmin && tab === 5 && (
+      {isAdmin && tab === backupTabIndex && (
         <Card sx={{ borderRadius: 2 }}>
           <CardContent>
             <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>

@@ -38,6 +38,18 @@ const equipmentModelsRoutes = require('./routes/equipmentModels');
 const proceduresRoutes = require('./routes/procedures');
 const tenantsRoutes = require('./routes/tenants');
 const exploitationRoutes = require('./routes/exploitation');
+const partFamiliesRoutes = require('./routes/partFamilies');
+const brandsRoutes = require('./routes/brands');
+const budgetsRoutes = require('./routes/budgets');
+const externalContractorsRoutes = require('./routes/externalContractors');
+const subcontractOrdersRoutes = require('./routes/subcontractOrders');
+const trainingCatalogRoutes = require('./routes/trainingCatalog');
+const trainingPlansRoutes = require('./routes/trainingPlans');
+const satisfactionRoutes = require('./routes/satisfaction');
+const rootCausesRoutes = require('./routes/rootCauses');
+const workOrderTemplatesRoutes = require('./routes/workOrderTemplates');
+const stockLocationsRoutes = require('./routes/stockLocations');
+const stockReservationsRoutes = require('./routes/stockReservations');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -88,6 +100,18 @@ app.use('/api/equipment-models', equipmentModelsRoutes);
 app.use('/api/procedures', proceduresRoutes);
 app.use('/api/tenants', tenantsRoutes);
 app.use('/api/exploitation', exploitationRoutes);
+app.use('/api/part-families', partFamiliesRoutes);
+app.use('/api/brands', brandsRoutes);
+app.use('/api/budgets', budgetsRoutes);
+app.use('/api/external-contractors', externalContractorsRoutes);
+app.use('/api/subcontract-orders', subcontractOrdersRoutes);
+app.use('/api/training-catalog', trainingCatalogRoutes);
+app.use('/api/training-plans', trainingPlansRoutes);
+app.use('/api/satisfaction', satisfactionRoutes);
+app.use('/api/root-causes', rootCausesRoutes);
+app.use('/api/work-order-templates', workOrderTemplatesRoutes);
+app.use('/api/stock-locations', stockLocationsRoutes);
+app.use('/api/stock-reservations', stockReservationsRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

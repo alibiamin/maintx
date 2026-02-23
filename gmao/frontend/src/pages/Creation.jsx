@@ -76,7 +76,7 @@ const getDefaultForm = (type) => {
     section: { siteId: '', departmentId: '', ligneId: '', parentId: '', code: '', name: '', categoryId: '', criticite: 'B', status: 'operational' },
     composant: { siteId: '', departmentId: '', ligneId: '', hierarchyMachineId: '', parentId: '', code: '', name: '', categoryId: '', criticite: 'B', status: 'operational' },
     sous_composant: { siteId: '', departmentId: '', ligneId: '', hierarchyMachineId: '', hierarchySectionId: '', parentId: '', code: '', name: '', categoryId: '', criticite: 'B', status: 'operational' },
-    piece: { code: '', name: '', description: '', unitId: '', stockCategory: '', family: '', subFamily1: '', subFamily2: '', subFamily3: '', subFamily4: '', subFamily5: '', unitPrice: '0', minStock: '0', supplierId: '', location: '', manufacturerReference: '', imageData: null },
+    piece: { code: '', name: '', description: '', unitId: '', stockCategory: '', family: '', subFamily1: '', subFamily2: '', subFamily3: '', subFamily4: '', subFamily5: '', partFamilyId: '', locationId: '', unitPrice: '0', minStock: '0', supplierId: '', location: '', manufacturerReference: '', imageData: null },
     entree_stock: { sparePartId: '', quantity: '', reference: '', notes: '' },
     sortie_stock: { sparePartId: '', quantity: '', workOrderId: '', notes: '' },
     transfert_stock: { sparePartId: '', quantity: '', reference: '', notes: '' },
@@ -141,6 +141,8 @@ export default function Creation() {
   const [procedures, setProcedures] = useState([]);
   const [checklists, setChecklists] = useState([]);
   const [roles, setRoles] = useState([]);
+  const [partFamilies, setPartFamilies] = useState([]);
+  const [stockLocations, setStockLocations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -191,8 +193,10 @@ export default function Creation() {
       api.get('/stock/parts').catch(() => ({ data: [] })),
       api.get('/tools').catch(() => ({ data: [] })),
       api.get('/users').catch(() => ({ data: [] })),
-      api.get('/failure-codes').catch(() => ({ data: [] }))
-    ]).then(([s, l, c, e, sup, unitsRes, p, t, u]) => {
+      api.get('/failure-codes').catch(() => ({ data: [] })),
+      api.get('/part-families').catch(() => ({ data: [] })),
+      api.get('/stock-locations').catch(() => ({ data: [] }))
+    ]).then(([s, l, c, e, sup, unitsRes, p, t, u, fc, partFamsRes, stockLocsRes]) => {
       const dedupeById = (arr) => {
         if (!Array.isArray(arr)) return [];
         const seen = new Set();
@@ -212,6 +216,8 @@ export default function Creation() {
       setParts(dedupeById(p.data || []));
       setTools(dedupeById(t.data || []));
       setUsers(dedupeById(u.data || []));
+      setPartFamilies(Array.isArray(partFamsRes?.data) ? partFamsRes.data : []);
+      setStockLocations(Array.isArray(stockLocsRes?.data) ? stockLocsRes.data : []);
     }).catch(console.error);
     api.get('/departements').then(r => setDepartements(r.data || [])).catch(() => setDepartements([]));
     api.get('/users/roles').then(r => setRoles(r.data || [])).catch(() => setRoles([]));
@@ -369,6 +375,8 @@ export default function Creation() {
           unitPrice: parseFloat(form.unitPrice) || 0, minStock: parseInt(form.minStock) || 0,
           supplierId: form.supplierId ? parseInt(form.supplierId) : undefined,
           location: (form.location || '').trim() || undefined,
+          partFamilyId: form.partFamilyId ? parseInt(form.partFamilyId, 10) : undefined,
+          locationId: form.locationId ? parseInt(form.locationId, 10) : undefined,
           manufacturerReference: (form.manufacturerReference || '').trim() || undefined,
           imageData: form.imageData || undefined,
           stockCategory: (form.stockCategory || '').trim() || undefined,
@@ -667,7 +675,9 @@ export default function Creation() {
                 <Grid item xs={12} sm={4}><TextField fullWidth type="number" label={`Prix unitaire (${currency})`} value={form.unitPrice ?? ''} onChange={(e) => handleChange('unitPrice', e.target.value)} inputProps={{ min: 0, step: 0.01 }} /></Grid>
                 <Grid item xs={12} sm={4}><TextField fullWidth type="number" label="Stock minimum" value={form.minStock ?? ''} onChange={(e) => handleChange('minStock', e.target.value)} inputProps={{ min: 0 }} /></Grid>
                 <Grid item xs={12}><FormControl fullWidth><InputLabel>Fournisseur</InputLabel><Select value={form.supplierId ?? ''} label="Fournisseur" onChange={(e) => handleChange('supplierId', e.target.value)}><MenuItem value="">—</MenuItem>{suppliers.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
-                <Grid item xs={12} sm={6}><TextField fullWidth label="Emplacement" value={form.location ?? ''} onChange={(e) => handleChange('location', e.target.value)} placeholder="Rayon, armoire..." /></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Famille de pièce</InputLabel><Select value={form.partFamilyId ?? ''} label="Famille de pièce" onChange={(e) => handleChange('partFamilyId', e.target.value)}><MenuItem value="">—</MenuItem>{partFamilies.map(f => <MenuItem key={f.id} value={f.id}>{f.code} – {f.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Emplacement (référentiel)</InputLabel><Select value={form.locationId ?? ''} label="Emplacement (référentiel)" onChange={(e) => handleChange('locationId', e.target.value)}><MenuItem value="">—</MenuItem>{stockLocations.map(loc => <MenuItem key={loc.id} value={loc.id}>{loc.code} – {loc.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><TextField fullWidth label="Emplacement (texte libre)" value={form.location ?? ''} onChange={(e) => handleChange('location', e.target.value)} placeholder="Rayon, armoire..." /></Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth label="Référence constructeur" value={form.manufacturerReference ?? ''} onChange={(e) => handleChange('manufacturerReference', e.target.value)} /></Grid>
                 <Grid item xs={12}>
                   <Typography variant="subtitle2" color="text.secondary" gutterBottom>Image de l&apos;article (optionnel, max 500 Ko)</Typography>

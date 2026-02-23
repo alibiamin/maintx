@@ -20,8 +20,12 @@ import {
 } from '@mui/material';
 import { Search, ArrowUpward, ArrowDownward, SwapHoriz } from '@mui/icons-material';
 import api from '../../services/api';
+import { useCurrency } from '../../context/CurrencyContext';
+import { useTranslation } from 'react-i18next';
 
 export default function StockMovements() {
+  const { t } = useTranslation();
+  const currency = useCurrency();
   const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -65,10 +69,10 @@ export default function StockMovements() {
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
           <Typography variant="h5" fontWeight={700}>
-            Mouvements de stock
+            {t('stock.movementsTitle')}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Historique des entrées, sorties et transferts
+            {t('stock.movementsSubtitle')}
           </Typography>
         </Box>
         <Box display="flex" gap={2}>
@@ -105,7 +109,7 @@ export default function StockMovements() {
             </Box>
           ) : filteredMovements.length === 0 ? (
             <Typography color="text.secondary" textAlign="center" py={4}>
-              Aucun mouvement enregistré
+              {t('stock.noMovements')}
             </Typography>
           ) : (
             <Table>
@@ -114,7 +118,8 @@ export default function StockMovements() {
                   <TableCell>Date</TableCell>
                   <TableCell>Type</TableCell>
                   <TableCell>Pièce</TableCell>
-                  <TableCell>Quantité</TableCell>
+                  <TableCell align="right">{t('stock.quantity')}</TableCell>
+                  <TableCell align="right">{t('stock.costLine')}</TableCell>
                   <TableCell>Référence</TableCell>
                   <TableCell>Utilisateur</TableCell>
                 </TableRow>
@@ -130,7 +135,8 @@ export default function StockMovements() {
                       </Box>
                     </TableCell>
                     <TableCell>{movement.partName}</TableCell>
-                    <TableCell>{movement.quantity}</TableCell>
+                    <TableCell align="right">{movement.quantity}</TableCell>
+                    <TableCell align="right">{movement.line_cost != null ? `${Number(movement.line_cost).toFixed(2)} ${currency}` : '—'}</TableCell>
                     <TableCell>{movement.reference || '-'}</TableCell>
                     <TableCell>{movement.userName || '-'}</TableCell>
                   </TableRow>

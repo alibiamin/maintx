@@ -18,20 +18,37 @@ import { useCurrency } from '../context/CurrencyContext';
 
 const ICON_MAP = { Speed, Schedule, Euro, Build, TrendingUp, Warning };
 
+const SOURCE_TO_TARGET_KEY = { availabilityRate: 'availability', preventiveComplianceRate: 'preventive_compliance', slaBreached: 'sla_breached', mttr: 'mttr', mtbf: 'mtbf', totalCostPeriod: 'budget_period' };
+function getTargetLabel(sourceKey, kpis, currency = '') {
+  const key = SOURCE_TO_TARGET_KEY[sourceKey];
+  if (!key || !Array.isArray(kpis?.indicatorTargets)) return null;
+  const t = kpis.indicatorTargets.find((x) => x.key === key);
+  if (!t) return null;
+  const u = t.unit ? ` ${t.unit}` : (key === 'budget_period' && currency ? ` ${currency}` : '');
+  return t.direction === 'max' ? `Objectif ≤ ${Number(t.target_value).toLocaleString('fr-FR')}${u}` : `Objectif ≥ ${t.target_value}${u}`;
+}
 function formatKpiValue(sourceKey, rawValue, kpis, currency) {
   switch (sourceKey) {
     case 'availabilityRate':
-      return { value: `${Number(rawValue ?? 0).toFixed(1)}%`, sub: `${kpis?.operationalCount ?? 0}/${kpis?.totalEquipment ?? 0} opérationnels`, progress: rawValue ?? 0 };
+      return { value: `${Number(rawValue ?? 0).toFixed(1)}%`, sub: `${kpis?.operationalCount ?? 0}/${kpis?.totalEquipment ?? 0} opérationnels`, progress: rawValue ?? 0, target: getTargetLabel('availabilityRate', kpis) };
     case 'preventiveComplianceRate':
-      return { value: `${Number(rawValue ?? 100).toFixed(1)}%`, sub: 'Plans exécutés à temps', progress: rawValue ?? 100 };
-    case 'totalCostPeriod':
-      return { value: `${Number(rawValue ?? 0).toLocaleString('fr-FR')} ${currency}`, sub: `Pièces : ${(kpis?.partsCost ?? 0).toLocaleString('fr-FR')} ${currency} · Main d'œuvre : ${(kpis?.laborCost ?? 0).toLocaleString('fr-FR')} ${currency}` };
+      return { value: `${Number(rawValue ?? 100).toFixed(1)}%`, sub: 'Plans exécutés à temps', progress: rawValue ?? 100, target: getTargetLabel('preventiveComplianceRate', kpis) };
+    case 'totalCostPeriod': {
+      const parts = (kpis?.partsCost ?? 0).toLocaleString('fr-FR');
+      const labor = (kpis?.laborCost ?? 0).toLocaleString('fr-FR');
+      const sub = (kpis?.subcontractCost ?? 0).toLocaleString('fr-FR');
+      const woCount = kpis?.workOrdersCompletedPeriod ?? 0;
+      let subText = `Pièces : ${parts} ${currency} · Main d'œuvre : ${labor} ${currency}`;
+      if ((kpis?.subcontractCost ?? 0) > 0) subText += ` · Sous-traitance : ${sub} ${currency}`;
+      subText += ` (${woCount} OT clôturés)`;
+      return { value: `${Number(rawValue ?? 0).toLocaleString('fr-FR')} ${currency}`, sub: subText, target: getTargetLabel('totalCostPeriod', kpis, currency) };
+    }
     case 'mttr':
-      return { value: rawValue != null ? `${Number(rawValue).toFixed(1)} h` : '—', sub: 'Heures moyennes par OT terminé' };
+      return { value: rawValue != null ? `${Number(rawValue).toFixed(1)} h` : '—', sub: 'Heures moyennes par OT terminé', target: getTargetLabel('mttr', kpis) };
     case 'mtbf':
-      return { value: rawValue != null ? `${Number(rawValue).toFixed(1)} j` : '—', sub: 'Jours moyens entre pannes' };
+      return { value: rawValue != null ? `${Number(rawValue).toFixed(1)} j` : '—', sub: 'Jours moyens entre pannes', target: getTargetLabel('mtbf', kpis) };
     case 'slaBreached':
-      return { value: String(rawValue ?? 0), sub: 'À traiter en priorité', colorOverride: (rawValue ?? 0) > 0 ? 'error' : 'default' };
+      return { value: String(rawValue ?? 0), sub: 'À traiter en priorité', colorOverride: (rawValue ?? 0) > 0 ? 'error' : 'default', target: getTargetLabel('slaBreached', kpis) };
     case 'oee':
       return { value: `${Number(rawValue ?? 0).toFixed(1)}%`, sub: 'OEE (disponibilité)', progress: rawValue ?? 0 };
     default:
@@ -90,6 +107,7 @@ export default function DashboardKPIs() {
       value: formatted.value,
       sub: formatted.sub,
       progress: formatted.progress,
+      target: formatted.target,
       color,
       icon: IconComponent
     };
@@ -128,6 +146,9 @@ export default function DashboardKPIs() {
                     <Typography variant="body2" color="text.secondary" gutterBottom>{kpi.title}</Typography>
                     <Typography variant="h4" fontWeight={700}>{kpi.value}</Typography>
                     <Typography variant="caption" color="text.secondary" display="block">{kpi.sub}</Typography>
+                    {kpi.target && (
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ fontWeight: 500 }}>{kpi.target}</Typography>
+                    )}
                     {kpi.progress !== undefined && (
                       <LinearProgress variant="determinate" value={Math.min(kpi.progress, 100)} sx={{ mt: 1, height: 6, borderRadius: 2 }} color={kpi.color} />
                     )}
@@ -145,6 +166,9 @@ export default function DashboardKPIs() {
         </Button>
         <Button variant="outlined" sx={{ ml: 2 }} onClick={() => navigate('/app/settings?tab=kpis')}>
           Personnaliser les indicateurs
+        </Button>
+        <Button variant="outlined" sx={{ ml: 2 }} onClick={() => navigate('/app/settings?tab=targets')}>
+          Configurer les objectifs
         </Button>
       </Box>
     </Box>

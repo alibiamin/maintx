@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
 const codification = require('../services/codification');
+const { getIndicatorTargets } = require('../services/indicatorTargets');
 
 const router = express.Router();
 router.use(authenticate);
@@ -94,6 +95,66 @@ router.get('/codification/next/:entity', (req, res) => {
     res.json({ nextCode: nextCode || '' });
   } catch (e) {
     res.status(500).json({ error: e.message || 'Erreur génération code' });
+  }
+});
+
+// ——— Objectifs des indicateurs (targets) ———
+router.get('/indicator-targets', (req, res) => {
+  const db = req.db;
+  try {
+    const list = getIndicatorTargets(db);
+    res.json(list);
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) return res.json([]);
+    res.status(500).json({ error: e.message || 'Erreur chargement objectifs' });
+  }
+});
+
+router.put('/indicator-targets', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
+  const body = Array.isArray(req.body) ? req.body : (req.body?.targets ? req.body.targets : []);
+  if (!body.length) return res.status(400).json({ error: 'Tableau d\'objectifs requis' });
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS indicator_targets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        key TEXT UNIQUE NOT NULL,
+        label TEXT NOT NULL,
+        target_value REAL NOT NULL,
+        direction TEXT NOT NULL CHECK(direction IN ('min', 'max')),
+        unit TEXT DEFAULT '',
+        ref_label TEXT DEFAULT '',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+  } catch (_) {}
+  const updateStmt = db.prepare(`
+    UPDATE indicator_targets SET label = ?, target_value = ?, direction = ?, unit = ?, ref_label = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?
+  `);
+  const insertStmt = db.prepare(`
+    INSERT INTO indicator_targets (key, label, target_value, direction, unit, ref_label, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  try {
+    for (let i = 0; i < body.length; i++) {
+      const r = body[i];
+      const key = r.key || r.id;
+      const label = r.label != null ? String(r.label) : key;
+      const target_value = Number(r.target_value);
+      const direction = r.direction === 'max' ? 'max' : 'min';
+      const unit = r.unit != null ? String(r.unit) : '';
+      const ref_label = r.ref_label != null ? String(r.ref_label) : '';
+      const sort_order = parseInt(r.sort_order, 10) || i;
+      if (!key) continue;
+      const upd = updateStmt.run(label, target_value, direction, unit, ref_label, sort_order, key);
+      if (upd.changes === 0) insertStmt.run(key, label, target_value, direction, unit, ref_label, sort_order);
+    }
+    const list = getIndicatorTargets(db);
+    res.json(list);
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Erreur enregistrement objectifs' });
   }
 });
 
@@ -294,6 +355,63 @@ router.delete('/kpi-definitions/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE),
     if (e.message && e.message.includes('no such table')) return res.status(404).json({ error: 'Indicateur non trouvé' });
     res.status(500).json({ error: e.message || 'Erreur suppression' });
   }
+});
+
+// ——— Templates email ———
+router.get('/email-templates', (req, res) => {
+  const db = req.db;
+  try {
+    const rows = db.prepare('SELECT * FROM email_templates ORDER BY code').all();
+    res.json(rows);
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) return res.json([]);
+    throw e;
+  }
+});
+router.get('/email-templates/:id', (req, res) => {
+  const db = req.db;
+  try {
+    const row = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Template non trouvé' });
+    res.json(row);
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) return res.status(404).json({ error: 'Template non trouvé' });
+    throw e;
+  }
+});
+router.post('/email-templates', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
+  const { code, name, subjectTemplate, bodyTemplate, description } = req.body || {};
+  if (!code || !name) return res.status(400).json({ error: 'code et name requis' });
+  try {
+    db.prepare(`
+      INSERT INTO email_templates (code, name, subject_template, body_template, description)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(code.trim(), name.trim(), subjectTemplate || null, bodyTemplate || null, description || null);
+    const row = db.prepare('SELECT * FROM email_templates WHERE code = ?').get(code.trim());
+    res.status(201).json(row);
+  } catch (e) {
+    if (e.message && e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Code déjà existant' });
+    if (e.message && e.message.includes('no such table')) return res.status(501).json({ error: 'Table email_templates non disponible' });
+    throw e;
+  }
+});
+router.put('/email-templates/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
+  const id = req.params.id;
+  const existing = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'Template non trouvé' });
+  const { code, name, subjectTemplate, bodyTemplate, description } = req.body || {};
+  db.prepare(`
+    UPDATE email_templates SET code = ?, name = ?, subject_template = ?, body_template = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).run(code ?? existing.code, name ?? existing.name, subjectTemplate !== undefined ? subjectTemplate : existing.subject_template, bodyTemplate !== undefined ? bodyTemplate : existing.body_template, description !== undefined ? description : existing.description, id);
+  res.json(db.prepare('SELECT * FROM email_templates WHERE id = ?').get(id));
+});
+router.delete('/email-templates/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
+  const r = db.prepare('DELETE FROM email_templates WHERE id = ?').run(req.params.id);
+  if (r.changes === 0) return res.status(404).json({ error: 'Template non trouvé' });
+  res.status(204).send();
 });
 
 // ——— Sauvegarde base de données (réservé aux administrateurs) ———

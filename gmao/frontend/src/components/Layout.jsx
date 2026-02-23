@@ -61,7 +61,12 @@ import {
   Notifications as NotificationsIcon,
   Warning as WarningIcon,
   Info as InfoIcon,
-  ImportExport as ImportExportIcon
+  ImportExport as ImportExportIcon,
+  Category as CategoryIcon,
+  AccountBalance as BudgetIcon,
+  BusinessCenter as SubcontractIcon,
+  School as TrainingIcon,
+  Lightbulb as LightbulbIcon
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
@@ -118,7 +123,9 @@ function getMenuStructure() {
         { labelKey: 'item.projects', path: `${APP_BASE}/maintenance-projects` },
         { labelKey: 'item.checklists', path: `${APP_BASE}/checklists` },
         { labelKey: 'item.procedures', path: `${APP_BASE}/procedures` },
-        { labelKey: 'item.due', path: `${APP_BASE}/maintenance-plans/due` }
+        { labelKey: 'item.due', path: `${APP_BASE}/maintenance-plans/due` },
+        { labelKey: 'item.root_causes', path: `${APP_BASE}/maintenance/root-causes` },
+        { labelKey: 'item.satisfaction', path: `${APP_BASE}/maintenance/satisfaction` }
       ]},
       { titleKey: 'section.maintenance_creation', items: [
         { labelKey: 'item.creation_plan_maintenance', path: `${APP_BASE}/maintenance/creation/plan` },
@@ -136,7 +143,9 @@ function getMenuStructure() {
         { labelKey: 'item.stock_list', path: `${APP_BASE}/stock` },
         { labelKey: 'item.stock_movements', path: `${APP_BASE}/stock/movements` },
         { labelKey: 'item.stock_inventories', path: `${APP_BASE}/stock/inventories` },
-        { labelKey: 'item.stock_alerts', path: `${APP_BASE}/stock/alerts` }
+        { labelKey: 'item.stock_alerts', path: `${APP_BASE}/stock/alerts` },
+        { labelKey: 'item.stock_locations', path: `${APP_BASE}/stock/locations` },
+        { labelKey: 'item.stock_reservations', path: `${APP_BASE}/stock/reservations` }
       ]},
       { titleKey: 'section.stock_1', items: [
         { labelKey: 'item.stock_entries', path: `${APP_BASE}/stock/entries` },
@@ -175,11 +184,41 @@ function getMenuStructure() {
         { labelKey: 'item.creation_assignation_outil', path: `${APP_BASE}/tools/creation/assignment` }
       ]}
     ]},
+    { id: 'catalogue', labelKey: 'menu.catalogue', icon: <CategoryIcon />, path: `${APP_BASE}/catalogue/part-families`, sections: [
+      { titleKey: 'section.catalogue_0', items: [
+        { labelKey: 'item.part_families', path: `${APP_BASE}/catalogue/part-families` },
+        { labelKey: 'item.brands', path: `${APP_BASE}/catalogue/brands` },
+        { labelKey: 'item.wo_templates', path: `${APP_BASE}/catalogue/wo-templates` }
+      ]}
+    ]},
+    { id: 'budget', labelKey: 'menu.budget', icon: <BudgetIcon />, path: `${APP_BASE}/budgets`, sections: [
+      { titleKey: 'section.budget_0', items: [
+        { labelKey: 'item.budgets_list', path: `${APP_BASE}/budgets` }
+      ]}
+    ]},
+    { id: 'subcontracting', labelKey: 'menu.subcontracting', icon: <SubcontractIcon />, path: `${APP_BASE}/subcontracting/contractors`, sections: [
+      { titleKey: 'section.subcontracting_0', items: [
+        { labelKey: 'item.external_contractors', path: `${APP_BASE}/subcontracting/contractors` },
+        { labelKey: 'item.subcontract_orders', path: `${APP_BASE}/subcontracting/orders` }
+      ]}
+    ]},
+    { id: 'training', labelKey: 'menu.training', icon: <TrainingIcon />, path: `${APP_BASE}/training/catalog`, sections: [
+      { titleKey: 'section.training_0', items: [
+        { labelKey: 'item.training_catalog', path: `${APP_BASE}/training/catalog` },
+        { labelKey: 'item.training_plans', path: `${APP_BASE}/training/plans` }
+      ]}
+    ]},
     { id: 'reports', labelKey: 'menu.reports', icon: <ReportsIcon />, path: `${APP_BASE}/reports`, sections: [
       { titleKey: 'section.reports_0', items: [
         { labelKey: 'item.reports_costs', path: `${APP_BASE}/reports` },
         { labelKey: 'item.reports_availability', path: `${APP_BASE}/reports?tab=availability` },
+        { labelKey: 'item.reports_mtbf_mttr', path: `${APP_BASE}/reports/mtbf-mttr` },
         { labelKey: 'item.reports_exports', path: `${APP_BASE}/reports/exports` }
+      ]}
+    ]},
+    { id: 'decisionSupport', labelKey: 'menu.decisionSupport', icon: <LightbulbIcon />, path: `${APP_BASE}/decision-support`, sections: [
+      { titleKey: 'section.decisionSupport_0', items: [
+        { labelKey: 'item.decisionSupport_analysis', path: `${APP_BASE}/decision-support` }
       ]}
     ]},
     { id: 'sites', labelKey: 'menu.sites', icon: <BusinessIcon />, path: `${APP_BASE}/sites`, sections: [
@@ -210,7 +249,8 @@ function getMenuStructure() {
         { labelKey: 'item.failure_codes', path: `${APP_BASE}/failure-codes` },
         { labelKey: 'item.settings_users', path: `${APP_BASE}/users` },
         { labelKey: 'item.settings_roles', path: `${APP_BASE}/settings/roles` },
-        { labelKey: 'item.settings_tenants', path: `${APP_BASE}/settings/tenants` }
+        { labelKey: 'item.settings_tenants', path: `${APP_BASE}/settings/tenants` },
+        { labelKey: 'item.email_templates', path: `${APP_BASE}/settings/email-templates` }
       ]},
       { titleKey: 'section.settings_creation', items: [
         { labelKey: 'item.creation_user', path: `${APP_BASE}/settings/creation/user` },
@@ -996,6 +1036,13 @@ export default function Layout() {
               maxHeight: '85vh'
             }
           }}
+          TransitionProps={{
+            onEntered: () => {
+              const dialog = document.querySelector('[role="dialog"]');
+              const focusable = dialog?.querySelector('a[href], button:not([disabled])');
+              if (focusable) focusable.focus();
+            }
+          }}
         >
           {selectedMenu && (
             <>
@@ -1159,31 +1206,39 @@ export default function Layout() {
               <Link component={RouterLink} to="/app" underline="hover" color="inherit" sx={{ fontSize: '0.875rem' }}>
                 {t('common.home')}
               </Link>
-              {location.pathname.split('/').filter(Boolean).map((segment, i, arr) => {
-                const path = arr.slice(0, i + 1).join('/');
-                const pathKey = `path.${path}`;
-                const segmentKey = `path.${segment}`;
-                const translatedPath = t(pathKey);
-                const translatedSegment = t(segmentKey);
-                const isId = /^\d+$/.test(segment) || /^[0-9a-f-]{20,}$/i.test(segment);
-                const label = path
-                  ? (translatedPath && translatedPath !== pathKey
-                    ? translatedPath
-                    : isId
-                      ? t('path._detail')
-                      : (translatedSegment && translatedSegment !== segmentKey ? translatedSegment : t('path._unknown')))
-                  : t('path._home');
-                const isLast = i === arr.length - 1;
-                return isLast ? (
-                  <Typography key={path} color="text.primary" sx={{ fontSize: '0.875rem', fontWeight: 600 }}>
-                    {label}
-                  </Typography>
-                ) : (
-                  <Link key={path} component={RouterLink} to={`/${path}`} underline="hover" color="inherit" sx={{ fontSize: '0.875rem' }}>
-                    {label}
-                  </Link>
-                );
-              })}
+              {(() => {
+                const isApp = location.pathname.startsWith('/app');
+                const segments = isApp
+                  ? location.pathname.replace(/^\/app\/?/, '').split('/').filter(Boolean)
+                  : location.pathname.split('/').filter(Boolean);
+                const basePath = isApp ? '/app' : '';
+                return segments.map((segment, i, arr) => {
+                  const path = arr.slice(0, i + 1).join('/');
+                  const pathKey = `path.${path}`;
+                  const segmentKey = `path.${segment}`;
+                  const translatedPath = t(pathKey);
+                  const translatedSegment = t(segmentKey);
+                  const isId = /^\d+$/.test(segment) || /^[0-9a-f-]{20,}$/i.test(segment);
+                  const label = path
+                    ? (translatedPath && translatedPath !== pathKey
+                      ? translatedPath
+                      : isId
+                        ? t('path._detail')
+                        : (translatedSegment && translatedSegment !== segmentKey ? translatedSegment : t('path._unknown')))
+                    : t('path._home');
+                  const isLast = i === arr.length - 1;
+                  const linkTo = basePath ? `${basePath}/${path}` : `/${path}`;
+                  return isLast ? (
+                    <Typography key={path} color="text.primary" sx={{ fontSize: '0.875rem', fontWeight: 600 }}>
+                      {label}
+                    </Typography>
+                  ) : (
+                    <Link key={path} component={RouterLink} to={linkTo} underline="hover" color="inherit" sx={{ fontSize: '0.875rem' }}>
+                      {label}
+                    </Link>
+                  );
+                });
+              })()}
             </Breadcrumbs>
             <Suspense fallback={
               <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>

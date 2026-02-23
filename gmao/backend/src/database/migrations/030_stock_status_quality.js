@@ -5,8 +5,6 @@
  * quality_control_log : historique libération / rejet
  */
 
-const STATUS = { A: 'A', Q: 'Q', R: 'R' };
-
 function up(db) {
   // stock_balance : répartition par statut
   for (const col of ['quantity_accepted', 'quantity_quarantine', 'quantity_rejected']) {
@@ -26,7 +24,7 @@ function up(db) {
 
   // stock_movements : statut du mouvement (entrée A ou Q)
   try {
-    db.prepare('ALTER TABLE stock_movements ADD COLUMN status TEXT DEFAULT ?').run(STATUS.A);
+    db.prepare("ALTER TABLE stock_movements ADD COLUMN status TEXT DEFAULT 'A'").run();
   } catch (e) {
     if (!e.message || !e.message.includes('duplicate column')) throw e;
   }

@@ -444,6 +444,8 @@ export default function Reports() {
                   <TableRow>
                     <TableCell>Code</TableCell>
                     <TableCell>Désignation</TableCell>
+                    <TableCell>Famille</TableCell>
+                    <TableCell>Emplacement</TableCell>
                     <TableCell align="right">Quantité utilisée</TableCell>
                     <TableCell align="right">Coût total ({currency})</TableCell>
                   </TableRow>
@@ -453,6 +455,8 @@ export default function Reports() {
                     <TableRow key={idx}>
                       <TableCell>{row.part_code}</TableCell>
                       <TableCell>{row.part_name}</TableCell>
+                      <TableCell>{row.part_family_name || row.part_family_code || '—'}</TableCell>
+                      <TableCell>{row.location_name || row.location_code || '—'}</TableCell>
                       <TableCell align="right">{row.quantity_used ?? 0}</TableCell>
                       <TableCell align="right">{row.total_cost ? parseFloat(row.total_cost).toFixed(2) : '-'}</TableCell>
                     </TableRow>

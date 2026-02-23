@@ -69,6 +69,21 @@ const CompetenciesPage = lazy(() => import('./pages/technicians/CompetenciesPage
 const TypeCompetenciesPage = lazy(() => import('./pages/technicians/TypeCompetenciesPage'));
 const ExploitationExport = lazy(() => import('./pages/ExploitationExport'));
 const ExploitationImport = lazy(() => import('./pages/ExploitationImport'));
+const PartFamiliesList = lazy(() => import('./pages/catalogue/PartFamiliesList'));
+const BrandsList = lazy(() => import('./pages/catalogue/BrandsList'));
+const WOTemplatesList = lazy(() => import('./pages/catalogue/WOTemplatesList'));
+const BudgetsList = lazy(() => import('./pages/BudgetsList'));
+const ExternalContractorsList = lazy(() => import('./pages/subcontracting/ExternalContractorsList'));
+const SubcontractOrdersList = lazy(() => import('./pages/subcontracting/SubcontractOrdersList'));
+const TrainingCatalogList = lazy(() => import('./pages/training/TrainingCatalogList'));
+const TrainingPlansList = lazy(() => import('./pages/training/TrainingPlansList'));
+const StockLocationsList = lazy(() => import('./pages/stock/StockLocationsList'));
+const StockReservationsList = lazy(() => import('./pages/stock/StockReservationsList'));
+const RootCausesList = lazy(() => import('./pages/maintenance/RootCausesList'));
+const SatisfactionList = lazy(() => import('./pages/maintenance/SatisfactionList'));
+const ReportsMtbfMttr = lazy(() => import('./pages/ReportsMtbfMttr'));
+const SettingsEmailTemplates = lazy(() => import('./pages/SettingsEmailTemplates'));
+const DecisionSupport = lazy(() => import('./pages/DecisionSupport'));
 
 const LOADING_MIN_MS = 3000;
 
@@ -146,8 +161,23 @@ export default function App() {
         <Route path="sites" element={<Sites />} />
         <Route path="sites/lines" element={<SitesLines />} />
         <Route path="sites/map" element={<SitesMap />} />
+        <Route path="catalogue/part-families" element={<PartFamiliesList />} />
+        <Route path="catalogue/brands" element={<BrandsList />} />
+        <Route path="catalogue/wo-templates" element={<WOTemplatesList />} />
+        <Route path="budgets" element={<BudgetsList />} />
+        <Route path="subcontracting/contractors" element={<ExternalContractorsList />} />
+        <Route path="subcontracting/orders" element={<SubcontractOrdersList />} />
+        <Route path="training/catalog" element={<TrainingCatalogList />} />
+        <Route path="training/plans" element={<TrainingPlansList />} />
+        <Route path="stock/locations" element={<StockLocationsList />} />
+        <Route path="stock/reservations" element={<StockReservationsList />} />
+        <Route path="maintenance/root-causes" element={<RootCausesList />} />
+        <Route path="maintenance/satisfaction" element={<SatisfactionList />} />
         <Route path="reports" element={<Reports />} />
+        <Route path="reports/mtbf-mttr" element={<ReportsMtbfMttr />} />
         <Route path="reports/exports" element={<ReportsExports />} />
+        <Route path="decision-support" element={<DecisionSupport />} />
+        <Route path="settings/email-templates" element={<SettingsEmailTemplates />} />
         <Route path="contracts" element={<Contracts />} />
         <Route path="tools" element={<Tools />} />
         <Route path="tools/creation/:type" element={<Creation />} />

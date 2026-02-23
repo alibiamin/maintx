@@ -70,6 +70,8 @@ export default function StockFiche() {
   const [part, setPart] = useState(null);
   const [movements, setMovements] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [partFamilies, setPartFamilies] = useState([]);
+  const [stockLocations, setStockLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -82,6 +84,8 @@ export default function StockFiche() {
     minStock: 0,
     supplierId: '',
     location: '',
+    partFamilyId: '',
+    locationId: '',
     manufacturerReference: '',
     imageData: null
   });
@@ -100,13 +104,17 @@ export default function StockFiche() {
     Promise.all([
       api.get(`/stock/parts/${id}`),
       api.get(`/stock/parts/${id}/movements`).catch(() => ({ data: [] })),
-      api.get('/suppliers').catch(() => ({ data: [] }))
+      api.get('/suppliers').catch(() => ({ data: [] })),
+      api.get('/part-families').catch(() => ({ data: [] })),
+      api.get('/stock-locations').catch(() => ({ data: [] }))
     ])
-      .then(([partRes, movRes, supRes]) => {
+      .then(([partRes, movRes, supRes, famRes, locRes]) => {
         const p = partRes.data;
         setPart(p);
         setMovements(Array.isArray(movRes.data) ? movRes.data : []);
         setSuppliers(Array.isArray(supRes.data) ? supRes.data : []);
+        setPartFamilies(Array.isArray(famRes?.data) ? famRes.data : []);
+        setStockLocations(Array.isArray(locRes?.data) ? locRes.data : []);
         setForm({
           name: p.name || '',
           description: p.description || '',
@@ -115,6 +123,8 @@ export default function StockFiche() {
           minStock: p.min_stock ?? 0,
           supplierId: p.supplier_id ?? '',
           location: p.location || '',
+          partFamilyId: p.part_family_id ?? '',
+          locationId: p.location_id ?? '',
           manufacturerReference: p.manufacturer_reference || '',
           imageData: p.image_data || null
         });
@@ -208,6 +218,8 @@ export default function StockFiche() {
         minStock: parseInt(form.minStock, 10) || 0,
         supplierId: form.supplierId ? parseInt(form.supplierId, 10) : null,
         location: (form.location || '').trim() || null,
+        partFamilyId: form.partFamilyId ? parseInt(form.partFamilyId, 10) : null,
+        locationId: form.locationId ? parseInt(form.locationId, 10) : null,
         manufacturerReference: (form.manufacturerReference || '').trim() || null,
         imageData: form.imageData || null
       })
@@ -222,6 +234,8 @@ export default function StockFiche() {
           minStock: r.data.min_stock ?? 0,
           supplierId: r.data.supplier_id ?? '',
           location: r.data.location || '',
+          partFamilyId: r.data.part_family_id ?? '',
+          locationId: r.data.location_id ?? '',
           manufacturerReference: r.data.manufacturer_reference || '',
           imageData: r.data.image_data || null
         }));
@@ -446,9 +460,39 @@ export default function StockFiche() {
                     </FormControl>
                   </Grid>
                   <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Famille de pièce</InputLabel>
+                      <Select
+                        value={form.partFamilyId ?? ''}
+                        label="Famille de pièce"
+                        onChange={(e) => handleChange('partFamilyId', e.target.value)}
+                      >
+                        <MenuItem value="">— Aucune —</MenuItem>
+                        {partFamilies.map((f) => (
+                          <MenuItem key={f.id} value={f.id}>{f.code} – {f.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Emplacement (référentiel)</InputLabel>
+                      <Select
+                        value={form.locationId ?? ''}
+                        label="Emplacement (référentiel)"
+                        onChange={(e) => handleChange('locationId', e.target.value)}
+                      >
+                        <MenuItem value="">— Aucun —</MenuItem>
+                        {stockLocations.map((loc) => (
+                          <MenuItem key={loc.id} value={loc.id}>{loc.code} – {loc.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
-                      label="Emplacement"
+                      label="Emplacement (texte libre)"
                       value={form.location}
                       onChange={(e) => handleChange('location', e.target.value)}
                       placeholder="Rayon, armoire..."
@@ -490,10 +534,10 @@ export default function StockFiche() {
                     </Grid>
                     <Grid item xs={6} sm={3}>
                       <Typography variant="caption" color="text.secondary">Stock actuel</Typography>
-                      <Typography variant="body1" fontWeight={600}>
-                        {stockQty}
-                        {belowMin && <Chip label="Sous seuil" size="small" color="warning" sx={{ ml: 1 }} />}
-                      </Typography>
+                      <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+                        <Typography component="span" variant="body1" fontWeight={600}>{stockQty}</Typography>
+                        {belowMin && <Chip label="Sous seuil" size="small" color="warning" />}
+                      </Box>
                     </Grid>
                     {(part.quantity_accepted != null || part.quantity_quarantine != null) && (
                       <Grid item xs={12} sm={6}>
@@ -510,11 +554,19 @@ export default function StockFiche() {
                       <Typography variant="body1">{part.min_stock ?? 0}</Typography>
                     </Grid>
                     <Grid item xs={12} sm={6}>
+                      <Typography variant="caption" color="text.secondary">Famille de pièce</Typography>
+                      <Typography variant="body1">{part.part_family_name || part.part_family_code || '—'}</Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="caption" color="text.secondary">Emplacement</Typography>
+                      <Typography variant="body1">{part.location_name || part.location_code || part.location || '—'}</Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
                       <Typography variant="caption" color="text.secondary">Fournisseur</Typography>
                       <Typography variant="body1">{part.supplier_name || '—'}</Typography>
                     </Grid>
                     <Grid item xs={12} sm={6}>
-                      <Typography variant="caption" color="text.secondary">Emplacement</Typography>
+                      <Typography variant="caption" color="text.secondary">Emplacement (texte libre)</Typography>
                       <Typography variant="body1">{part.location || '—'}</Typography>
                     </Grid>
                     <Grid item xs={12}>

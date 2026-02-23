@@ -4,6 +4,9 @@
 
 const express = require('express');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const getWorkOrderCosts = require('./workOrders').getWorkOrderCosts;
+const { getIndicatorTargets, getTargetByKey, getStatusForKey } = require('../services/indicatorTargets');
+const { getMttr, getMtbf } = require('../services/mttrMtbf');
 
 const router = express.Router();
 router.use(authenticate);
@@ -34,8 +37,12 @@ router.get('/kpis', (req, res) => {
         totalCostPeriod: 0,
         partsCost: 0,
         laborCost: 0,
+        subcontractCost: 0,
+        workOrdersCompletedPeriod: 0,
         preventiveComplianceRate: 100,
-        slaBreached: 0
+        slaBreached: 0,
+        indicatorTargets: [],
+        indicatorStatuses: { availability: 'ok', preventive_compliance: 'ok', sla_breached: 'ok', budget_period: 'ok', mttr: 'ok', mtbf: 'ok' }
       });
     }
     throw e;
@@ -45,7 +52,8 @@ router.get('/kpis', (req, res) => {
 function getKpis(req, res) {
   const db = req.db;
   const { period = 30 } = req.query; // jours
-  const since = `date('now', '-${parseInt(period) || 30} days')`;
+  const periodDays = parseInt(period, 10) || 30;
+  const since = `date('now', 'localtime', '-${periodDays} days')`;
 
   const equipment = db.prepare('SELECT COUNT(*) as total FROM equipment WHERE status != "retired"').get();
   const total = equipment.total || 1;
@@ -57,76 +65,82 @@ function getKpis(req, res) {
   `).get();
   const availabilityRate = ((available.c / total) * 100).toFixed(2);
 
-  // MTTR moyen (heures)
-  const mttrRow = db.prepare(`
-    SELECT AVG((julianday(actual_end) - julianday(actual_start)) * 24) as mttr
-    FROM work_orders WHERE status = 'completed' AND actual_start IS NOT NULL AND actual_end IS NOT NULL
-  `).get();
-  const mttr = mttrRow?.mttr ? parseFloat(mttrRow.mttr).toFixed(2) : null;
+  // MTTR (heures) : temps moyen de réparation — OT correctifs uniquement, durée réelle (actual_end > actual_start)
+  const mttrResult = getMttr(db, { since: `date('now', 'localtime', '-${periodDays} days')` });
+  const mttr = mttrResult.mttrHours != null ? String(mttrResult.mttrHours) : null;
 
-  // MTBF (jours)
-  const mtbfRow = db.prepare(`
-    SELECT AVG(days_between) as mtbf FROM (
-      SELECT julianday(failure_date) - julianday(LAG(failure_date) OVER (ORDER BY failure_date)) as days_between
-      FROM work_orders WHERE failure_date IS NOT NULL AND status = 'completed'
-    ) WHERE days_between > 0
-  `).get();
-  const mtbf = mtbfRow?.mtbf ? parseFloat(mtbfRow.mtbf).toFixed(2) : null;
+  // MTBF (jours) : temps moyen entre deux pannes — par équipement (failure_date), intervalles consécutifs
+  const mtbfResult = getMtbf(db, { since: `date('now', 'localtime', '-${periodDays} days')` });
+  const mtbf = mtbfResult.mtbfDays != null ? String(mtbfResult.mtbfDays) : null;
 
   // OEE simplifié (disponibilité seule, perf=qualité=100%)
   const oee = parseFloat(availabilityRate);
 
-  // Coût maintenance période (pièces + main d'œuvre par technicien)
-  // Période : OT clôturés dont la date de fin (actual_end) est dans les N derniers jours
-  let defaultRate = 45;
+  // Coût période = somme des coûts totaux de chaque OT clôturé dans la période + sous-traitance
+  // Période : actual_end ou completed_at dans les N derniers jours (date en local pour cohérence)
+  let woIdsInPeriod = [];
   try {
-    const r = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('hourly_rate');
-    if (r?.value) defaultRate = parseFloat(r.value);
-  } catch (_) {}
-
-  // Pièces : somme (quantité × prix unitaire) pour les interventions des OT complétés dans la période
-  const partsRow = db.prepare(`
-    SELECT COALESCE(SUM(COALESCE(i.quantity_used, 0) * COALESCE(sp.unit_price, 0)), 0) as parts
-    FROM work_orders wo
-    LEFT JOIN interventions i ON i.work_order_id = wo.id
-    LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id
-    WHERE wo.status = 'completed' AND wo.actual_end IS NOT NULL AND date(wo.actual_end) >= ${since}
-  `).get();
-  const partsCost = Number(partsRow?.parts) || 0;
-
-  // Main d'œuvre : heures × taux horaire (technicien ou défaut) pour les interventions des OT complétés dans la période
-  const interventionRows = db.prepare(`
-    SELECT i.hours_spent, u.hourly_rate
-    FROM work_orders wo
-    JOIN interventions i ON i.work_order_id = wo.id
-    LEFT JOIN users u ON i.technician_id = u.id
-    WHERE wo.status = 'completed' AND wo.actual_end IS NOT NULL AND date(wo.actual_end) >= ${since}
-  `).all();
-  let laborCost = interventionRows.reduce((sum, row) => {
-    const hours = parseFloat(row.hours_spent) || 0;
-    const rate = row.hourly_rate != null && row.hourly_rate !== '' ? parseFloat(row.hourly_rate) : defaultRate;
-    return sum + hours * rate;
-  }, 0);
-
-  // Complément : OT clôturés dans la période sans interventions (ou sans heures) → durée réelle × taux du technicien assigné
-  const woWithoutInterventions = db.prepare(`
-    SELECT wo.id,
-           (julianday(wo.actual_end) - julianday(wo.actual_start)) * 24 as duration_hours,
-           u.hourly_rate
-    FROM work_orders wo
-    LEFT JOIN users u ON wo.assigned_to = u.id
-    WHERE wo.status = 'completed' AND wo.actual_end IS NOT NULL AND wo.actual_start IS NOT NULL
-      AND date(wo.actual_end) >= ${since}
-      AND NOT EXISTS (SELECT 1 FROM interventions i WHERE i.work_order_id = wo.id AND COALESCE(i.hours_spent, 0) > 0)
-  `).all();
-  woWithoutInterventions.forEach((row) => {
-    const hours = parseFloat(row.duration_hours) || 0;
-    if (hours <= 0) return;
-    const rate = row.hourly_rate != null && row.hourly_rate !== '' ? parseFloat(row.hourly_rate) : defaultRate;
-    laborCost += hours * rate;
-  });
-
-  const totalCost = partsCost + laborCost;
+    const sql = `
+      SELECT wo.id FROM work_orders wo
+      WHERE wo.status = 'completed'
+        AND (
+          (wo.actual_end IS NOT NULL AND date(wo.actual_end) >= ${since})
+          OR (wo.completed_at IS NOT NULL AND date(wo.completed_at) >= ${since})
+        )
+    `;
+    woIdsInPeriod = db.prepare(sql).all();
+  } catch (e) {
+    if (e.message && e.message.includes('no such column') && e.message.includes('completed_at')) {
+      woIdsInPeriod = db.prepare(`
+        SELECT id FROM work_orders
+        WHERE status = 'completed' AND actual_end IS NOT NULL AND date(actual_end) >= ${since}
+      `).all();
+    } else throw e;
+  }
+  let partsCost = 0;
+  let laborCost = 0;
+  let totalWOCost = 0;
+  const processedWoIds = new Set();
+  if (typeof getWorkOrderCosts === 'function') {
+    for (const row of woIdsInPeriod || []) {
+      const woId = row.id ?? row.ID ?? row['wo.id'] ?? (Object.keys(row || {}).length ? row[Object.keys(row)[0]] : null);
+      if (woId == null || processedWoIds.has(Number(woId))) continue;
+      processedWoIds.add(Number(woId));
+      try {
+        const costs = getWorkOrderCosts(db, woId);
+        if (costs) {
+          partsCost += Number(costs.partsCost) || 0;
+          laborCost += Number(costs.laborCost) || 0;
+          totalWOCost += Number(costs.totalCost) || 0;
+        }
+      } catch (_) {}
+    }
+  }
+  let subcontractCost = 0;
+  try {
+    let subRow = db.prepare(`
+      SELECT COALESCE(SUM(so.amount), 0) as sub_total
+      FROM subcontract_orders so
+      INNER JOIN work_orders wo ON so.work_order_id = wo.id
+      WHERE wo.status = 'completed' AND (date(wo.actual_end) >= ${since} OR (wo.completed_at IS NOT NULL AND date(wo.completed_at) >= ${since}))
+        AND COALESCE(so.amount, 0) > 0
+    `).get();
+    subcontractCost = Number(subRow?.sub_total) || 0;
+  } catch (e) {
+    if (e.message && e.message.includes('completed_at')) {
+      try {
+        const subRow = db.prepare(`
+          SELECT COALESCE(SUM(so.amount), 0) as sub_total
+          FROM subcontract_orders so
+          INNER JOIN work_orders wo ON so.work_order_id = wo.id
+          WHERE wo.status = 'completed' AND wo.actual_end IS NOT NULL AND date(wo.actual_end) >= ${since}
+            AND COALESCE(so.amount, 0) > 0
+        `).get();
+        subcontractCost = Number(subRow?.sub_total) || 0;
+      } catch (_) {}
+    }
+  }
+  const totalCost = totalWOCost + subcontractCost;
 
   // Taux respect plans préventifs (exécutés à temps)
   const prevRow = db.prepare(`
@@ -145,6 +159,41 @@ function getKpis(req, res) {
   `).get();
   const slaBreached = backlogRow?.cnt || 0;
 
+  // Nombre d'OT clôturés dans la période (même filtre que le coût)
+  let workOrdersCompletedPeriod = 0;
+  try {
+    const woCount = db.prepare(`
+      SELECT COUNT(*) as c FROM work_orders
+      WHERE status = 'completed'
+        AND ((actual_end IS NOT NULL AND date(actual_end) >= ${since}) OR (completed_at IS NOT NULL AND date(completed_at) >= ${since}))
+    `).get();
+    workOrdersCompletedPeriod = woCount?.c ?? 0;
+  } catch (e) {
+    if (e.message && e.message.includes('completed_at')) {
+      try {
+        const woCount = db.prepare(`SELECT COUNT(*) as c FROM work_orders WHERE status = 'completed' AND actual_end IS NOT NULL AND date(actual_end) >= ${since}`).get();
+        workOrdersCompletedPeriod = woCount?.c ?? 0;
+      } catch (_) {}
+    }
+  }
+
+  let indicatorTargets = [];
+  try {
+    indicatorTargets = getIndicatorTargets(db);
+  } catch (_) {}
+
+  const targetByKey = {};
+  (indicatorTargets || []).forEach((t) => { targetByKey[t.key] = t; });
+  const getTarget = (k) => targetByKey[k];
+  const indicatorStatuses = {
+    availability: getStatusForKey('availability', parseFloat(availabilityRate), getTarget('availability')),
+    preventive_compliance: getStatusForKey('preventive_compliance', parseFloat(preventiveRate), getTarget('preventive_compliance')),
+    sla_breached: getStatusForKey('sla_breached', slaBreached, getTarget('sla_breached')),
+    budget_period: getStatusForKey('budget_period', parseFloat((totalCost).toFixed(2)), getTarget('budget_period')),
+    mttr: getStatusForKey('mttr', mttr ? parseFloat(mttr) : null, getTarget('mttr')),
+    mtbf: getStatusForKey('mtbf', mtbf ? parseFloat(mtbf) : null, getTarget('mtbf'))
+  };
+
   return res.json({
     availabilityRate: parseFloat(availabilityRate),
     oee: parseFloat(oee),
@@ -155,8 +204,12 @@ function getKpis(req, res) {
     totalCostPeriod: parseFloat((totalCost).toFixed(2)),
     partsCost: parseFloat((partsCost).toFixed(2)),
     laborCost: parseFloat((laborCost).toFixed(2)),
+    subcontractCost: parseFloat((subcontractCost).toFixed(2)),
+    workOrdersCompletedPeriod,
     preventiveComplianceRate: parseFloat(preventiveRate),
-    slaBreached
+    slaBreached,
+    indicatorTargets,
+    indicatorStatuses
   });
 }
 
@@ -169,7 +222,7 @@ router.get('/charts', (req, res) => {
     return getCharts(req, res);
   } catch (e) {
     if (isMissingTable(e)) {
-      return res.json({ byStatus: [], byPriority: [], byType: [], weeklyOT: [] });
+      return res.json({ byStatus: [], byPriority: [], byType: [], evolutionOT: [], evolutionGranularity: 'week', evolutionPeriodDays: 30 });
     }
     throw e;
   }
@@ -177,6 +230,9 @@ router.get('/charts', (req, res) => {
 
 function getCharts(req, res) {
   const db = req.db;
+  const periodDays = Math.min(365, Math.max(7, parseInt(req.query.period, 10) || 30));
+  const since = `date('now', 'localtime', '-${periodDays} days')`;
+
   const workOrdersByStatus = db.prepare(`
     SELECT status, COUNT(*) as count
     FROM work_orders
@@ -194,23 +250,40 @@ function getCharts(req, res) {
     SELECT t.name, COUNT(wo.id) as count
     FROM work_orders wo
     LEFT JOIN work_order_types t ON wo.type_id = t.id
-    WHERE wo.created_at >= date('now', '-30 days')
+    WHERE wo.created_at >= ${since}
     GROUP BY t.name
   `).all();
 
-  // OT par semaine (30 derniers jours) pour graphique évolution
-  const weeklyOT = db.prepare(`
-    SELECT strftime('%Y-%W', created_at) as week, status, COUNT(*) as count
-    FROM work_orders
-    WHERE created_at >= date('now', '-30 days')
-    GROUP BY week, status
-  `).all();
+  // Évolution des OT dans le temps : par jour (≤ 31 j) ou par semaine (> 31 j), avec statut
+  const useDaily = periodDays <= 31;
+  let evolutionOT = [];
+  try {
+    if (useDaily) {
+      evolutionOT = db.prepare(`
+        SELECT date(created_at) as period_key, status, COUNT(*) as count
+        FROM work_orders
+        WHERE created_at >= ${since}
+        GROUP BY period_key, status
+        ORDER BY period_key
+      `).all();
+    } else {
+      evolutionOT = db.prepare(`
+        SELECT strftime('%Y-%W', created_at) as period_key, status, COUNT(*) as count
+        FROM work_orders
+        WHERE created_at >= ${since}
+        GROUP BY period_key, status
+        ORDER BY period_key
+      `).all();
+    }
+  } catch (_) {}
 
   return res.json({
     byStatus: workOrdersByStatus,
     byPriority: workOrdersByPriority,
     byType: maintenanceByType,
-    weeklyOT
+    evolutionOT,
+    evolutionGranularity: useDaily ? 'day' : 'week',
+    evolutionPeriodDays: periodDays
   });
 }
 
@@ -559,6 +632,442 @@ function getWoByEntity(req, res) {
 }
 
 /**
+ * GET /api/dashboard/cost-by-entity
+ * Répartition du coût total des OT (période) par Site, Département, Ligne, Équipement
+ * Query: period (jours, défaut 30)
+ */
+router.get('/cost-by-entity', (req, res) => {
+  try {
+    return getCostByEntity(req, res);
+  } catch (e) {
+    if (isMissingTable(e)) {
+      return res.json({ bySite: [], byDepartment: [], byLigne: [], byEquipment: [], period: req.query.period || 30 });
+    }
+    throw e;
+  }
+});
+
+function getCostByEntity(req, res) {
+  const db = req.db;
+  const period = parseInt(req.query.period, 10) || 30;
+  const since = `date('now', 'localtime', '-${period} days')`;
+
+  let woRows = [];
+  try {
+    woRows = db.prepare(`
+      SELECT wo.id as wo_id, wo.equipment_id,
+             e.ligne_id, e.department_id,
+             l.site_id as site_id_from_ligne,
+             d.site_id as site_id_from_dept
+      FROM work_orders wo
+      LEFT JOIN equipment e ON wo.equipment_id = e.id
+      LEFT JOIN lignes l ON e.ligne_id = l.id
+      LEFT JOIN departements d ON e.department_id = d.id
+      WHERE wo.status = 'completed'
+        AND ((wo.actual_end IS NOT NULL AND date(wo.actual_end) >= ${since}) OR (wo.completed_at IS NOT NULL AND date(wo.completed_at) >= ${since}))
+    `).all();
+  } catch (e) {
+    if (e.message && e.message.includes('no such column') && e.message.includes('completed_at')) {
+      woRows = db.prepare(`
+        SELECT wo.id as wo_id, wo.equipment_id,
+               e.ligne_id, e.department_id,
+               l.site_id as site_id_from_ligne,
+               d.site_id as site_id_from_dept
+        FROM work_orders wo
+        LEFT JOIN equipment e ON wo.equipment_id = e.id
+        LEFT JOIN lignes l ON e.ligne_id = l.id
+        LEFT JOIN departements d ON e.department_id = d.id
+        WHERE wo.status = 'completed' AND wo.actual_end IS NOT NULL AND date(wo.actual_end) >= ${since}
+      `).all();
+    } else throw e;
+  }
+
+  const costBySite = { _na: 0 };
+  const costByLigne = {};
+  const costByDepartment = {};
+  const costByEquipment = {};
+  const processedWoIds = new Set();
+
+  const getCosts = typeof getWorkOrderCosts === 'function' ? getWorkOrderCosts : null;
+  for (const row of woRows || []) {
+    const woId = row.wo_id ?? row.wo_ID ?? row['wo_id'] ?? (row && Object.keys(row).length ? row[Object.keys(row)[0]] : null);
+    if (woId == null || processedWoIds.has(Number(woId))) continue;
+    processedWoIds.add(Number(woId));
+    let cost = 0;
+    if (getCosts) {
+      try {
+        const c = getCosts(db, woId);
+        cost = c && c.totalCost != null ? Number(c.totalCost) : 0;
+      } catch (_) {}
+    }
+    const siteId = row.site_id_from_ligne ?? row.site_id_from_dept ?? null;
+    if (siteId != null) costBySite[siteId] = (costBySite[siteId] || 0) + cost;
+    else costBySite._na += cost;
+    if (row.ligne_id != null) costByLigne[row.ligne_id] = (costByLigne[row.ligne_id] || 0) + cost;
+    if (row.department_id != null) costByDepartment[row.department_id] = (costByDepartment[row.department_id] || 0) + cost;
+    if (row.equipment_id != null) costByEquipment[row.equipment_id] = (costByEquipment[row.equipment_id] || 0) + cost;
+  }
+
+  let bySite = [];
+  try {
+    const sites = db.prepare('SELECT id, code, name FROM sites').all();
+    bySite = sites.map((s) => ({
+      siteId: s.id,
+      siteCode: s.code || '',
+      siteName: s.name || '',
+      cost: Math.round((costBySite[s.id] || 0) * 100) / 100
+    }));
+    if (costBySite._na > 0) bySite.push({ siteId: null, siteCode: '', siteName: 'Sans affectation', cost: Math.round(costBySite._na * 100) / 100 });
+    bySite = bySite.filter((r) => r.cost > 0).sort((a, b) => b.cost - a.cost);
+  } catch (_) {}
+
+  let byLigne = [];
+  try {
+    const lignes = db.prepare('SELECT l.id, l.code, l.name, s.name as site_name FROM lignes l LEFT JOIN sites s ON l.site_id = s.id').all();
+    byLigne = lignes.map((l) => ({
+      ligneId: l.id,
+      ligneCode: l.code || '',
+      ligneName: l.name || '',
+      siteName: l.site_name || '',
+      cost: Math.round((costByLigne[l.id] || 0) * 100) / 100
+    })).filter((r) => r.cost > 0).sort((a, b) => b.cost - a.cost);
+  } catch (_) {}
+
+  let byDepartment = [];
+  try {
+    const deps = db.prepare('SELECT d.id, d.code, d.name, s.name as site_name FROM departements d LEFT JOIN sites s ON d.site_id = s.id').all();
+    byDepartment = deps.map((d) => ({
+      departmentId: d.id,
+      departmentCode: d.code || '',
+      departmentName: d.name || '',
+      siteName: d.site_name || '',
+      cost: Math.round((costByDepartment[d.id] || 0) * 100) / 100
+    })).filter((r) => r.cost > 0).sort((a, b) => b.cost - a.cost);
+  } catch (_) {}
+
+  let byEquipment = [];
+  try {
+    const equip = db.prepare(`
+      SELECT e.id, e.code, e.name, l.name as ligne_name, d.name as department_name
+      FROM equipment e
+      LEFT JOIN lignes l ON e.ligne_id = l.id
+      LEFT JOIN departements d ON e.department_id = d.id
+    `).all();
+    byEquipment = equip
+      .map((e) => ({
+        equipmentId: e.id,
+        equipmentCode: e.code || '',
+        equipmentName: e.name || '',
+        ligneName: e.ligne_name || '',
+        departmentName: e.department_name || '',
+        cost: Math.round((costByEquipment[e.id] || 0) * 100) / 100
+      }))
+      .filter((r) => r.cost > 0)
+      .sort((a, b) => b.cost - a.cost)
+      .slice(0, 50);
+  } catch (_) {}
+
+  return res.json({ bySite, byDepartment, byLigne, byEquipment, period });
+}
+
+/**
+ * GET /api/dashboard/decision-support
+ * Analyse de l'état de la société selon indicateurs normés (EN 15341, bonnes pratiques)
+ * et production d'observations, recommandations et aide à la décision pour la direction.
+ * Query: period (jours, défaut 30)
+ */
+router.get('/decision-support', (req, res) => {
+  try {
+    return getDecisionSupport(req, res);
+  } catch (e) {
+    if (isMissingTable(e)) {
+      return res.json({
+        period: parseInt(req.query.period, 10) || 30,
+        generatedAt: new Date().toISOString(),
+        currency: '€',
+        indicators: [],
+        observations: [],
+        recommendations: [],
+        priorities: [],
+        decisionSupport: []
+      });
+    }
+    throw e;
+  }
+});
+
+function getDecisionSupport(req, res) {
+  const db = req.db;
+  const period = parseInt(req.query.period, 10) || 30;
+  const since = `date('now', 'localtime', '-${period} days')`;
+
+  const targetByKey = {};
+  try {
+    getIndicatorTargets(db).forEach(t => { targetByKey[t.key] = t; });
+  } catch (_) {}
+  let currency = '€';
+  try {
+    const r = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('currency');
+    if (r?.value) currency = String(r.value).trim();
+  } catch (_) {}
+
+  const indicators = [];
+  const observations = [];
+  const recommendations = [];
+  const priorities = [];
+  const decisionSupport = [];
+
+  let availabilityRate = 100;
+  let totalEquipment = 1;
+  let operationalCount = 0;
+  let mttr = null;
+  let mtbf = null;
+  let totalCostPeriod = 0;
+  let workOrdersCompletedPeriod = 0;
+  let preventiveComplianceRate = 100;
+  let slaBreached = 0;
+  let workOrdersPending = 0;
+  let workOrdersInProgress = 0;
+  let maintenancePlansOverdue = 0;
+  let maintenancePlansActive = 0;
+  let stockAlertsCount = 0;
+  let stockPartsCount = 0;
+
+  try {
+    const eq = db.prepare('SELECT COUNT(*) as total FROM equipment WHERE status != "retired"').get();
+    totalEquipment = eq?.total || 1;
+    const avail = db.prepare(`
+      SELECT COUNT(*) as c FROM equipment e
+      WHERE e.status = 'operational'
+        AND e.id NOT IN (SELECT equipment_id FROM work_orders WHERE status IN ('pending', 'in_progress') AND equipment_id IS NOT NULL)
+    `).get();
+    operationalCount = avail?.c ?? 0;
+    availabilityRate = totalEquipment > 0 ? Math.round((operationalCount / totalEquipment) * 10000) / 100 : 100;
+  } catch (_) {}
+
+  try {
+    const mttrRes = getMttr(db, { since: `date('now', 'localtime', '-${period} days')` });
+    mttr = mttrRes.mttrHours;
+  } catch (_) {}
+  try {
+    const mtbfRes = getMtbf(db, { since: `date('now', 'localtime', '-${period} days')` });
+    mtbf = mtbfRes.mtbfDays;
+  } catch (_) {}
+
+  try {
+    const woCount = db.prepare(`
+      SELECT COUNT(*) as c FROM work_orders
+      WHERE status = 'completed'
+        AND ((actual_end IS NOT NULL AND date(actual_end) >= ${since}) OR (completed_at IS NOT NULL AND date(completed_at) >= ${since}))
+    `).get();
+    workOrdersCompletedPeriod = woCount?.c ?? 0;
+  } catch (e) {
+    if (e.message && e.message.includes('no such column') && e.message.includes('completed_at')) {
+      try {
+        const woCount = db.prepare(`
+          SELECT COUNT(*) as c FROM work_orders
+          WHERE status = 'completed' AND actual_end IS NOT NULL AND date(actual_end) >= ${since}
+        `).get();
+        workOrdersCompletedPeriod = woCount?.c ?? 0;
+      } catch (_) {}
+    }
+  }
+  try {
+    const prevRow = db.prepare(`
+      SELECT COUNT(*) as total, SUM(CASE WHEN date(last_execution_date) <= date(next_due_date, '+7 days') OR last_execution_date IS NULL THEN 1 ELSE 0 END) as onTime
+      FROM maintenance_plans WHERE is_active = 1
+    `).get();
+    const prevTotal = prevRow?.total || 0;
+    preventiveComplianceRate = prevTotal > 0 ? Math.round((prevRow.onTime / prevTotal) * 10000) / 100 : 100;
+  } catch (_) {}
+  try {
+    const slaRow = db.prepare(`
+      SELECT COUNT(*) as cnt FROM work_orders
+      WHERE status IN ('pending', 'in_progress') AND sla_deadline IS NOT NULL AND datetime(sla_deadline) < datetime('now')
+    `).get();
+    slaBreached = slaRow?.cnt ?? 0;
+  } catch (_) {}
+  try {
+    let woIds = [];
+    try {
+      woIds = db.prepare(`
+        SELECT id FROM work_orders
+        WHERE status = 'completed'
+          AND ((actual_end IS NOT NULL AND date(actual_end) >= ${since}) OR (completed_at IS NOT NULL AND date(completed_at) >= ${since}))
+      `).all();
+    } catch (e) {
+      if (e.message && e.message.includes('no such column') && e.message.includes('completed_at')) {
+        woIds = db.prepare(`SELECT id FROM work_orders WHERE status = 'completed' AND actual_end IS NOT NULL AND date(actual_end) >= ${since}`).all();
+      } else throw e;
+    }
+    const processed = new Set();
+    for (const row of woIds || []) {
+      const woId = row.id ?? row.ID ?? row['wo.id'];
+      if (woId == null || processed.has(Number(woId))) continue;
+      processed.add(Number(woId));
+      if (typeof getWorkOrderCosts === 'function') {
+        try {
+          const c = getWorkOrderCosts(db, woId);
+          if (c && c.totalCost != null) totalCostPeriod += Number(c.totalCost) || 0;
+        } catch (_) {}
+      }
+    }
+    let subRow = null;
+    try {
+      subRow = db.prepare(`
+        SELECT COALESCE(SUM(so.amount), 0) as sub FROM subcontract_orders so
+        INNER JOIN work_orders wo ON so.work_order_id = wo.id
+        WHERE wo.status = 'completed' AND (date(wo.actual_end) >= ${since} OR (wo.completed_at IS NOT NULL AND date(wo.completed_at) >= ${since}))
+          AND COALESCE(so.amount, 0) > 0
+      `).get();
+    } catch (e) {
+      if (e.message && e.message.includes('no such column') && e.message.includes('completed_at')) {
+        subRow = db.prepare(`
+          SELECT COALESCE(SUM(so.amount), 0) as sub FROM subcontract_orders so
+          INNER JOIN work_orders wo ON so.work_order_id = wo.id
+          WHERE wo.status = 'completed' AND wo.actual_end IS NOT NULL AND date(wo.actual_end) >= ${since}
+            AND COALESCE(so.amount, 0) > 0
+        `).get();
+      } else throw e;
+    }
+    totalCostPeriod += Number(subRow?.sub) || 0;
+  } catch (_) {}
+  try {
+    const pending = db.prepare('SELECT COUNT(*) as c FROM work_orders WHERE status = ?').get('pending');
+    const inProgress = db.prepare('SELECT COUNT(*) as c FROM work_orders WHERE status = ?').get('in_progress');
+    workOrdersPending = pending?.c ?? 0;
+    workOrdersInProgress = inProgress?.c ?? 0;
+  } catch (_) {}
+  try {
+    const plans = db.prepare(`
+      SELECT COUNT(*) as total, SUM(CASE WHEN date(next_due_date) < date('now', 'localtime') THEN 1 ELSE 0 END) as overdue
+      FROM maintenance_plans WHERE is_active = 1
+    `).get();
+    maintenancePlansActive = plans?.total ?? 0;
+    maintenancePlansOverdue = plans?.overdue ?? 0;
+  } catch (_) {}
+  try {
+    const stock = db.prepare('SELECT COUNT(*) as c FROM spare_parts').get();
+    stockPartsCount = stock?.c ?? 0;
+    const alerts = db.prepare(`
+      SELECT COUNT(*) as c FROM spare_parts sp
+      LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
+      WHERE COALESCE(sb.quantity, 0) < COALESCE(sp.min_stock, 0) AND COALESCE(sp.min_stock, 0) > 0
+    `).get();
+    stockAlertsCount = alerts?.c ?? 0;
+  } catch (_) {}
+
+  const backlogTotal = workOrdersPending + workOrdersInProgress;
+
+  // Même ordre et libellés que le bandeau KPI du dashboard
+  const t = (key, label, value, unit, refLabel, refVal, targetDirection) => {
+    const target = targetByKey[key];
+    const status = getStatusForKey(key, value, target);
+    return {
+      id: key,
+      label,
+      value,
+      unit,
+      ref: refVal != null ? refVal : (target && target.target_value),
+      refLabel: refLabel || (target && target.ref_label) || '',
+      targetDirection: (targetDirection != null ? targetDirection : (target && target.direction)) || null,
+      status
+    };
+  };
+  indicators.push(t('availability', 'Disponibilité', availabilityRate, '%', (targetByKey.availability && targetByKey.availability.ref_label) || 'Seuil min. (réf. EN 15341)', targetByKey.availability && targetByKey.availability.target_value, 'min'));
+  const budgetTarget = targetByKey.budget_period;
+  const costPeriodStatus = budgetTarget ? getStatusForKey('budget_period', totalCostPeriod, budgetTarget) : 'ok';
+  indicators.push({
+    id: 'cost_period',
+    label: 'Coût période',
+    value: totalCostPeriod,
+    unit: currency,
+    ref: budgetTarget ? budgetTarget.target_value : null,
+    refLabel: budgetTarget ? (budgetTarget.ref_label || 'Budget période') : 'Suivi budgétaire',
+    targetDirection: 'max',
+    status: costPeriodStatus
+  });
+  indicators.push(t('mttr', 'MTTR moyen', mttr != null ? Math.round(mttr * 100) / 100 : null, 'h', (targetByKey.mttr && targetByKey.mttr.ref_label) || 'À minimiser', targetByKey.mttr && targetByKey.mttr.target_value, 'max'));
+  indicators.push(t('mtbf', 'MTBF moyen', mtbf != null ? Math.round(mtbf * 100) / 100 : null, 'j', (targetByKey.mtbf && targetByKey.mtbf.ref_label) || 'À maximiser', targetByKey.mtbf && targetByKey.mtbf.target_value, 'min'));
+  indicators.push(t('preventive_compliance', 'Respect préventif', preventiveComplianceRate, '%', (targetByKey.preventive_compliance && targetByKey.preventive_compliance.ref_label) || 'Objectif', targetByKey.preventive_compliance && targetByKey.preventive_compliance.target_value, 'min'));
+  indicators.push(t('sla_breached', 'OT en dépassement SLA', slaBreached, '', (targetByKey.sla_breached && targetByKey.sla_breached.ref_label) || 'Objectif 0', targetByKey.sla_breached && targetByKey.sla_breached.target_value, 'max'));
+  indicators.push(t('backlog', 'Backlog (en attente + en cours)', backlogTotal, 'OT', (targetByKey.backlog && targetByKey.backlog.ref_label) || 'À maîtriser', targetByKey.backlog && targetByKey.backlog.target_value, 'max'));
+  indicators.push(t('overdue_plans', 'Plans préventifs en retard', maintenancePlansOverdue, '', (targetByKey.overdue_plans && targetByKey.overdue_plans.ref_label) || 'Objectif 0', targetByKey.overdue_plans && targetByKey.overdue_plans.target_value, 'max'));
+  indicators.push(t('stock_alerts', 'Alertes stock (sous seuil)', stockAlertsCount, 'réf.', (targetByKey.stock_alerts && targetByKey.stock_alerts.ref_label) || 'Objectif 0', targetByKey.stock_alerts && targetByKey.stock_alerts.target_value, 'max'));
+  indicators.push({ id: 'wo_completed', label: 'OT clôturés sur la période', value: workOrdersCompletedPeriod, unit: 'OT', ref: null, refLabel: 'Activité', targetDirection: null, status: 'ok' });
+
+  const targetVal = (key) => (targetByKey[key] && targetByKey[key].target_value) ?? (key === 'availability' ? 85 : key === 'preventive_compliance' ? 90 : key === 'backlog' ? 10 : 0);
+  const toSeverity = (s) => (s === 'attention' ? 'warning' : s === 'critical' ? 'critical' : 'info');
+  if (availabilityRate < targetVal('availability')) {
+    observations.push({ type: 'indicator', severity: toSeverity(getStatusForKey('availability', availabilityRate, targetByKey.availability)), text: `La disponibilité des équipements (${availabilityRate} %) est inférieure à l'objectif (${targetVal('availability')} %). ${totalEquipment - operationalCount} équipement(s) non disponible(s) (en maintenance ou OT en cours).` });
+    recommendations.push({ category: 'disponibilité', text: 'Renforcer la maintenance préventive et analyser les pannes récurrentes pour réduire les temps d\'indisponibilité.' });
+    priorities.push({ level: 'high', domain: 'Maintenance', action: 'Analyser les causes d\'indisponibilité et prioriser les interventions sur les équipements critiques.' });
+  }
+  if (mttr != null && (targetByKey.mttr ? mttr > targetByKey.mttr.target_value : mttr > 24)) {
+    observations.push({ type: 'indicator', severity: toSeverity(getStatusForKey('mttr', mttr, targetByKey.mttr)), text: `Le MTTR moyen (${Math.round(mttr * 10) / 10} h) indique des temps de réparation élevés. Objectif : ${(targetByKey.mttr && targetByKey.mttr.target_value) || 24} h ou moins.` });
+    recommendations.push({ category: 'efficacité', text: 'Optimiser la réactivité (pièces en stock, compétences, procédures) et formaliser les retours d\'expérience pour les pannes récurrentes.' });
+  }
+  if (mtbf != null && (targetByKey.mtbf ? mtbf < targetByKey.mtbf.target_value : mtbf < 30)) {
+    observations.push({ type: 'indicator', severity: toSeverity(getStatusForKey('mtbf', mtbf, targetByKey.mtbf)), text: `Le MTBF moyen (${Math.round(mtbf * 10) / 10} j) reflète une fréquence de défaillances élevée. Objectif : ${(targetByKey.mtbf && targetByKey.mtbf.target_value) || 30} j ou plus.` });
+    recommendations.push({ category: 'fiabilité', text: 'Renforcer les plans de maintenance préventive et l\'analyse des causes racines pour les équipements à faible MTBF.' });
+  }
+  if (preventiveComplianceRate < targetVal('preventive_compliance')) {
+    observations.push({ type: 'indicator', severity: toSeverity(getStatusForKey('preventive_compliance', preventiveComplianceRate, targetByKey.preventive_compliance)), text: `Le taux de respect des plans préventifs (${preventiveComplianceRate} %) est en dessous de l'objectif (${targetVal('preventive_compliance')} %). ${maintenancePlansOverdue} plan(s) en retard.` });
+    recommendations.push({ category: 'préventif', text: 'Replanifier les interventions préventives en retard et ajuster les fréquences ou les ressources pour tenir les échéances.' });
+    priorities.push({ level: 'high', domain: 'Préventif', action: 'Traiter en priorité les plans préventifs en retard pour limiter les pannes évitables.' });
+  }
+  if (slaBreached > targetVal('sla_breached')) {
+    observations.push({ type: 'indicator', severity: toSeverity(getStatusForKey('sla_breached', slaBreached, targetByKey.sla_breached)), text: `${slaBreached} ordre(s) de travail en dépassement du délai SLA. Risque pour la qualité de service et la satisfaction.` });
+    recommendations.push({ category: 'réactivité', text: 'Affecter des ressources aux OT en retard et revoir les délais SLA si les capacités sont structurellement insuffisantes.' });
+    priorities.push({ level: 'urgent', domain: 'SLA', action: 'Traiter immédiatement les OT dont le SLA est dépassé.' });
+  }
+  if (backlogTotal > targetVal('backlog')) {
+    observations.push({ type: 'indicator', severity: toSeverity(getStatusForKey('backlog', backlogTotal, targetByKey.backlog)), text: `Le backlog (${backlogTotal} OT en attente ou en cours) dépasse l'objectif (${targetVal('backlog')}). Charge de travail à rééquilibrer.` });
+    recommendations.push({ category: 'charge', text: 'Évaluer les capacités (effectifs, sous-traitance) et prioriser les OT selon criticité et délais.' });
+    if (priorities.every(p => p.domain !== 'Backlog')) priorities.push({ level: 'medium', domain: 'Backlog', action: 'Réduire le backlog par priorisation et renfort temporaire si nécessaire.' });
+  }
+  if (maintenancePlansOverdue > (targetByKey.overdue_plans ? targetByKey.overdue_plans.target_value : 0)) {
+    observations.push({ type: 'indicator', severity: 'warning', text: `${maintenancePlansOverdue} plan(s) de maintenance préventive en retard. Risque de dégradation de la fiabilité.` });
+    if (!recommendations.some(r => r.category === 'préventif')) recommendations.push({ category: 'préventif', text: 'Replanifier et exécuter les visites préventives en retard.' });
+  }
+  if (stockAlertsCount > targetVal('stock_alerts')) {
+    observations.push({ type: 'indicator', severity: toSeverity(getStatusForKey('stock_alerts', stockAlertsCount, targetByKey.stock_alerts)), text: `${stockAlertsCount} référence(s) en alerte stock (quantité sous seuil minimum). Risque de rupture pour les interventions.` });
+    recommendations.push({ category: 'stock', text: 'Lancer les réapprovisionnements pour les pièces sous seuil et ajuster les niveaux min. si nécessaire.' });
+    priorities.push({ level: stockAlertsCount > 5 ? 'urgent' : 'medium', domain: 'Stock', action: 'Traiter les alertes stock pour éviter les ruptures en intervention.' });
+  }
+  const budgetVal = targetByKey.budget_period ? targetByKey.budget_period.target_value : null;
+  if (budgetVal != null && totalCostPeriod > budgetVal) {
+    observations.push({ type: 'indicator', severity: toSeverity(getStatusForKey('budget_period', totalCostPeriod, targetByKey.budget_period)), text: `Le coût période (${totalCostPeriod.toLocaleString('fr-FR')} ${currency}) dépasse le budget défini (${Number(budgetVal).toLocaleString('fr-FR')} ${currency}).` });
+    recommendations.push({ category: 'budget', text: 'Analyser les postes de coût (pièces, main d\'œuvre, sous-traitance) et prioriser les interventions pour rester dans l\'enveloppe budgétaire.' });
+    priorities.push({ level: totalCostPeriod > budgetVal * 1.1 ? 'high' : 'medium', domain: 'Budget', action: 'Maîtriser les coûts de maintenance et revoir les engagements si nécessaire.' });
+  }
+
+  observations.push({ type: 'synthesis', severity: 'info', text: `Sur les ${period} derniers jours : ${workOrdersCompletedPeriod} ordre(s) de travail clôturé(s), coût période ${totalCostPeriod.toLocaleString('fr-FR')} ${currency}. ${totalEquipment} équipement(s) suivis, ${operationalCount} opérationnel(s).` });
+
+  if (observations.filter(o => o.severity === 'critical').length > 0) {
+    decisionSupport.push({ audience: 'direction', type: 'alert', text: 'Plusieurs indicateurs sont en zone critique. Une revue de la performance maintenance et des moyens (effectifs, stock, préventif) est recommandée.' });
+  }
+  if (recommendations.length > 0) {
+    decisionSupport.push({ audience: 'direction', type: 'recommendation', text: 'Les recommandations listées ci-dessous, issues de l\'analyse des indicateurs normés, constituent un plan d\'actions priorisable pour la direction et les responsables maintenance.' });
+  }
+  if (priorities.some(p => p.level === 'urgent')) {
+    decisionSupport.push({ audience: 'responsables', type: 'action', text: 'Actions urgentes identifiées (SLA dépassés, risques stock). À traiter en priorité par les responsables.' });
+  }
+  decisionSupport.push({ audience: 'direction', type: 'info', text: 'Ce rapport est établi selon les indicateurs de la norme EN 15341 (maintenance) et bonnes pratiques. Période d\'analyse : ' + period + ' jours. À utiliser en support des revues de direction et du pilotage de la maintenance.' });
+
+  return res.json({
+    period,
+    generatedAt: new Date().toISOString(),
+    currency,
+    indicators,
+    observations,
+    recommendations,
+    priorities,
+    decisionSupport
+  });
+}
+
+/**
  * GET /api/dashboard/summary
  * Résumé des entités pour accès rapide et indicateurs liés aux sections
  */
@@ -802,13 +1311,16 @@ router.get('/analytics', (req, res) => {
   let mttrByWeek = [];
   let costsByEquipment = [];
   try {
+    const { repairOnlyCondition } = require('../services/mttrMtbf');
     mttrByWeek = db.prepare(`
       SELECT strftime('%Y-%W', wo.actual_end) as week,
-             AVG((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24) as mttr_hours
+             SUM((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24) / COUNT(*) as mttr_hours
       FROM work_orders wo
       WHERE wo.status = 'completed' AND wo.actual_start IS NOT NULL AND wo.actual_end IS NOT NULL
+        AND (julianday(wo.actual_end) - julianday(wo.actual_start)) > 0
+        AND ${repairOnlyCondition('wo')}
         AND date(wo.actual_end) >= ${since}
-      GROUP BY week ORDER BY week
+      GROUP BY strftime('%Y-%W', wo.actual_end) ORDER BY week
     `).all();
   } catch (_) {}
   try {

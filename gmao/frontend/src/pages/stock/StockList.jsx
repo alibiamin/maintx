@@ -23,8 +23,10 @@ import { Search, Warning, Visibility } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
+import { useTranslation } from 'react-i18next';
 
 export default function StockList() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const currency = useCurrency();
   const [parts, setParts] = useState([]);
@@ -115,6 +117,8 @@ export default function StockList() {
               <TableRow>
                 <TableCell>Code</TableCell>
                 <TableCell>Designation</TableCell>
+                <TableCell>{t('stock.family')}</TableCell>
+                <TableCell>{t('stock.location')}</TableCell>
                 <TableCell>Fournisseur</TableCell>
                 <TableCell align="right">Stock</TableCell>
                 {(parts[0] && (parts[0].quantity_accepted != null || parts[0].quantity_quarantine != null)) && (
@@ -125,7 +129,7 @@ export default function StockList() {
                   </>
                 )}
                 <TableCell align="right">Seuil min</TableCell>
-                <TableCell align="right">Prix unit.</TableCell>
+                <TableCell align="right">{t('stock.unitPrice')}</TableCell>
                 <TableCell>Alerte</TableCell>
                 <TableCell width={56}></TableCell>
               </TableRow>
@@ -135,6 +139,8 @@ export default function StockList() {
                 <TableRow key={p.id} hover sx={{ cursor: 'pointer' }} onClick={() => navigate(`/app/stock/parts/${p.id}`)}>
                   <TableCell>{p.code}</TableCell>
                   <TableCell>{p.name}</TableCell>
+                  <TableCell>{p.part_family_name || p.part_family_code || '-'}</TableCell>
+                  <TableCell>{p.location_name || p.location_code || '-'}</TableCell>
                   <TableCell>{p.supplier_name || '-'}</TableCell>
                   <TableCell align="right">{p.stock_quantity ?? 0}</TableCell>
                   {(parts[0] && (parts[0].quantity_accepted != null || parts[0].quantity_quarantine != null)) && (
@@ -145,7 +151,7 @@ export default function StockList() {
                     </>
                   )}
                   <TableCell align="right">{p.min_stock}</TableCell>
-                  <TableCell align="right">{p.unit_price ? `${p.unit_price.toFixed(2)} ${currency}` : '-'}</TableCell>
+                  <TableCell align="right">{p.unit_price != null ? `${Number(p.unit_price).toFixed(2)} ${currency}` : '-'}</TableCell>
                   <TableCell>
                     {(p.stock_quantity ?? 0) <= p.min_stock ? (
                       <Chip label="Stock bas" size="small" color="warning" />
