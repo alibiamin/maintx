@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useSearchParams, useLocation, useParams } from 'react-router-dom';
 import {
   Box,
@@ -72,10 +72,10 @@ const getDefaultForm = (type) => {
     site: { code: '', name: '', address: '' },
     departement: { siteId: '', code: '', name: '', description: '' },
     ligne: { siteId: '', code: '', name: '' },
-    machine: { code: '', name: '', description: '', categoryId: '', ligneId: '', departmentId: '', serialNumber: '', criticite: 'B', status: 'operational' },
-    section: { code: '', name: '', parentId: '', categoryId: '', criticite: 'B', status: 'operational' },
-    composant: { code: '', name: '', parentId: '', categoryId: '', criticite: 'B', status: 'operational' },
-    sous_composant: { code: '', name: '', parentId: '', categoryId: '', criticite: 'B', status: 'operational' },
+    machine: { siteId: '', code: '', name: '', description: '', categoryId: '', ligneId: '', departmentId: '', serialNumber: '', criticite: 'B', status: 'operational' },
+    section: { siteId: '', departmentId: '', ligneId: '', parentId: '', code: '', name: '', categoryId: '', criticite: 'B', status: 'operational' },
+    composant: { siteId: '', departmentId: '', ligneId: '', hierarchyMachineId: '', parentId: '', code: '', name: '', categoryId: '', criticite: 'B', status: 'operational' },
+    sous_composant: { siteId: '', departmentId: '', ligneId: '', hierarchyMachineId: '', hierarchySectionId: '', parentId: '', code: '', name: '', categoryId: '', criticite: 'B', status: 'operational' },
     piece: { code: '', name: '', description: '', unitId: '', stockCategory: '', family: '', subFamily1: '', subFamily2: '', subFamily3: '', subFamily4: '', subFamily5: '', unitPrice: '0', minStock: '0', supplierId: '', location: '', manufacturerReference: '', imageData: null },
     entree_stock: { sparePartId: '', quantity: '', reference: '', notes: '' },
     sortie_stock: { sparePartId: '', quantity: '', workOrderId: '', notes: '' },
@@ -268,7 +268,63 @@ export default function Creation() {
     setSuccess('');
   }, [creationType]);
 
-  const handleChange = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
+  const handleChange = (field, value) => {
+    setForm(prev => {
+      const next = { ...prev, [field]: value };
+      if (field === 'siteId') {
+        next.departmentId = ''; next.ligneId = ''; next.parentId = ''; next.hierarchyMachineId = ''; next.hierarchySectionId = '';
+      } else if (field === 'departmentId' || field === 'ligneId') {
+        next.parentId = ''; next.hierarchyMachineId = ''; next.hierarchySectionId = '';
+      } else if (field === 'hierarchyMachineId') {
+        next.parentId = ''; next.hierarchySectionId = '';
+      } else if (field === 'hierarchySectionId') {
+        next.parentId = '';
+      }
+      return next;
+    });
+  };
+
+  const siteIdForFilter = form.siteId || '';
+  const safeSelectValue = (list, formVal) => {
+    if (formVal === '' || formVal === undefined || formVal === null) return '';
+    const found = list.find(item => String(item.id) === String(formVal));
+    return found != null ? found.id : '';
+  };
+  const departementsFiltered = useMemo(() => {
+    if (!siteIdForFilter) return departements;
+    return departements.filter(d => String(d.site_id || d.siteId || '') === String(siteIdForFilter));
+  }, [departements, siteIdForFilter]);
+  const lignesFiltered = useMemo(() => {
+    if (!siteIdForFilter) return lignes;
+    return lignes.filter(l => String(l.site_id || l.siteId || '') === String(siteIdForFilter));
+  }, [lignes, siteIdForFilter]);
+  const equipmentMachines = useMemo(() =>
+    equipment.filter(e => (e.equipmentType || e.equipment_type) === 'machine'), [equipment]);
+  const equipmentSections = useMemo(() =>
+    equipment.filter(e => (e.equipmentType || e.equipment_type) === 'section'), [equipment]);
+  const equipmentComposants = useMemo(() =>
+    equipment.filter(e => (e.equipmentType || e.equipment_type) === 'composant'), [equipment]);
+  const parentMachinesForSection = useMemo(() => {
+    const lid = form.ligneId ? String(form.ligneId) : '';
+    const did = form.departmentId ? String(form.departmentId) : '';
+    return equipmentMachines.filter(m => {
+      const matchLigne = !lid || String(m.ligneId || m.ligne_id || '') === lid;
+      const matchDept = !did || String(m.departmentId || m.department_id || '') === did;
+      return matchLigne && matchDept;
+    });
+  }, [equipmentMachines, form.ligneId, form.departmentId]);
+  const parentSectionsForComposant = useMemo(() => {
+    const mid = form.hierarchyMachineId ? String(form.hierarchyMachineId) : '';
+    return equipmentSections.filter(s => !mid || String(s.parentId || s.parent_id || '') === mid);
+  }, [equipmentSections, form.hierarchyMachineId]);
+  const parentComposantsForSousComposant = useMemo(() => {
+    const sid = form.hierarchySectionId ? String(form.hierarchySectionId) : '';
+    return equipmentComposants.filter(c => !sid || String(c.parentId || c.parent_id || '') === sid);
+  }, [equipmentComposants, form.hierarchySectionId]);
+  const sectionsUnderMachineForSousComposant = useMemo(() => {
+    const mid = form.hierarchyMachineId ? String(form.hierarchyMachineId) : '';
+    return equipmentSections.filter(s => !mid || String(s.parentId || s.parent_id || '') === mid);
+  }, [equipmentSections, form.hierarchyMachineId]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -441,7 +497,10 @@ export default function Creation() {
     if (creationType === 'site') return form.name?.trim();
     if (creationType === 'departement') return form.siteId && form.name?.trim();
     if (creationType === 'ligne') return form.siteId && form.name?.trim();
-    if (['machine', 'section', 'composant', 'sous_composant'].includes(creationType)) return form.name?.trim() && (nextCode || form.code?.trim());
+    if (creationType === 'machine') return form.siteId && form.name?.trim() && (nextCode || form.code?.trim());
+    if (creationType === 'section') return form.siteId && form.ligneId && form.parentId && form.name?.trim() && (nextCode || form.code?.trim());
+    if (creationType === 'composant') return form.siteId && form.ligneId && form.hierarchyMachineId && form.parentId && form.name?.trim() && (nextCode || form.code?.trim());
+    if (creationType === 'sous_composant') return form.siteId && form.ligneId && form.hierarchyMachineId && form.hierarchySectionId && form.parentId && form.name?.trim() && (nextCode || form.code?.trim());
     if (creationType === 'piece') return form.name?.trim() && (nextCode || form.code?.trim());
     if (creationType === 'entree_stock') return form.sparePartId && form.quantity && parseInt(form.quantity) > 0;
     if (creationType === 'sortie_stock') return form.sparePartId && form.quantity && parseInt(form.quantity) > 0;
@@ -530,21 +589,58 @@ export default function Creation() {
             )}
             {creationType === 'machine' && (
               <Grid container spacing={2}>
+                <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Hiérarchie : sélectionnez d&apos;abord le site, puis le département et la ligne.</Typography></Grid>
+                <Grid item xs={12}><FormControl fullWidth required><InputLabel>Site</InputLabel><Select value={safeSelectValue(sites, form.siteId)} label="Site" onChange={(e) => handleChange('siteId', e.target.value)}><MenuItem value="">—</MenuItem>{sites.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Département</InputLabel><Select value={safeSelectValue(departementsFiltered, form.departmentId)} label="Département" onChange={(e) => handleChange('departmentId', e.target.value)} disabled={!form.siteId}><MenuItem value="">—</MenuItem>{departementsFiltered.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Ligne</InputLabel><Select value={safeSelectValue(lignesFiltered, form.ligneId)} label="Ligne" onChange={(e) => handleChange('ligneId', e.target.value)} disabled={!form.siteId}><MenuItem value="">—</MenuItem>{lignesFiltered.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select></FormControl></Grid>
                 {nextCode && <Grid item xs={12}><Typography variant="body2" color="text.secondary">Code : attribué automatiquement (ex. {nextCode})</Typography></Grid>}
                 {!nextCode && <Grid item xs={12} sm={6}><TextField fullWidth required label="Code" value={form.code ?? ''} onChange={(e) => handleChange('code', e.target.value)} /></Grid>}
                 <Grid item xs={12} sm={6}><TextField fullWidth required label={nextCode ? 'Désignation (nom)' : 'Nom'} value={form.name ?? ''} onChange={(e) => handleChange('name', e.target.value)} /></Grid>
                 <Grid item xs={12}><TextField fullWidth multiline label="Description" value={form.description ?? ''} onChange={(e) => handleChange('description', e.target.value)} /></Grid>
-                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Catégorie</InputLabel><Select value={form.categoryId ?? ''} label="Catégorie" onChange={(e) => handleChange('categoryId', e.target.value)}><MenuItem value="">—</MenuItem>{categories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}</Select></FormControl></Grid>
-                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Département</InputLabel><Select value={form.departmentId ?? ''} label="Département" onChange={(e) => handleChange('departmentId', e.target.value)}><MenuItem value="">—</MenuItem>{departements.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select></FormControl></Grid>
-                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Ligne</InputLabel><Select value={form.ligneId ?? ''} label="Ligne" onChange={(e) => handleChange('ligneId', e.target.value)}><MenuItem value="">—</MenuItem>{lignes.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Catégorie</InputLabel><Select value={safeSelectValue(categories, form.categoryId)} label="Catégorie" onChange={(e) => handleChange('categoryId', e.target.value)}><MenuItem value="">—</MenuItem>{categories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}</Select></FormControl></Grid>
                 <Grid item xs={12} sm={6}><TextField fullWidth label="N° série" value={form.serialNumber ?? ''} onChange={(e) => handleChange('serialNumber', e.target.value)} /></Grid>
                 <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Criticité</InputLabel><Select value={form.criticite ?? 'B'} label="Criticité" onChange={(e) => handleChange('criticite', e.target.value)}><MenuItem value="A">A</MenuItem><MenuItem value="B">B</MenuItem><MenuItem value="C">C</MenuItem></Select></FormControl></Grid>
                 <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Statut</InputLabel><Select value={form.status ?? 'operational'} label="Statut" onChange={(e) => handleChange('status', e.target.value)}><MenuItem value="operational">Opérationnel</MenuItem><MenuItem value="maintenance">En maintenance</MenuItem><MenuItem value="out_of_service">Hors service</MenuItem></Select></FormControl></Grid>
               </Grid>
             )}
-            {(creationType === 'section' || creationType === 'composant' || creationType === 'sous_composant') && (
+            {creationType === 'section' && (
               <Grid container spacing={2}>
-                <Grid item xs={12}><FormControl fullWidth required><InputLabel>Équipement parent</InputLabel><Select value={form.parentId ?? ''} label="Équipement parent" onChange={(e) => handleChange('parentId', e.target.value)}><MenuItem value="">—</MenuItem>{equipment.map(eq => <MenuItem key={eq.id} value={eq.id}>{eq.code} — {eq.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Hiérarchie : Site → Département → Ligne → Machine (parent de la section).</Typography></Grid>
+                <Grid item xs={12}><FormControl fullWidth required><InputLabel>Site</InputLabel><Select value={safeSelectValue(sites, form.siteId)} label="Site" onChange={(e) => handleChange('siteId', e.target.value)}><MenuItem value="">—</MenuItem>{sites.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Département</InputLabel><Select value={safeSelectValue(departementsFiltered, form.departmentId)} label="Département" onChange={(e) => handleChange('departmentId', e.target.value)} disabled={!form.siteId}><MenuItem value="">—</MenuItem>{departementsFiltered.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth required><InputLabel>Ligne</InputLabel><Select value={safeSelectValue(lignesFiltered, form.ligneId)} label="Ligne" onChange={(e) => handleChange('ligneId', e.target.value)} disabled={!form.siteId}><MenuItem value="">—</MenuItem>{lignesFiltered.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12}><FormControl fullWidth required><InputLabel>Machine / Équipement parent</InputLabel><Select value={safeSelectValue(parentMachinesForSection, form.parentId)} label="Machine parent" onChange={(e) => handleChange('parentId', e.target.value)} disabled={!form.ligneId}><MenuItem value="">—</MenuItem>{parentMachinesForSection.map(eq => <MenuItem key={eq.id} value={eq.id}>{eq.code} — {eq.name}</MenuItem>)}</Select></FormControl></Grid>
+                {nextCode && <Grid item xs={12}><Typography variant="body2" color="text.secondary">Code : attribué automatiquement (ex. {nextCode})</Typography></Grid>}
+                {!nextCode && <Grid item xs={12} sm={6}><TextField fullWidth required label="Code" value={form.code ?? ''} onChange={(e) => handleChange('code', e.target.value)} /></Grid>}
+                <Grid item xs={12} sm={6}><TextField fullWidth required label={nextCode ? 'Désignation (nom)' : 'Nom'} value={form.name ?? ''} onChange={(e) => handleChange('name', e.target.value)} /></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Catégorie</InputLabel><Select value={safeSelectValue(categories, form.categoryId)} label="Catégorie" onChange={(e) => handleChange('categoryId', e.target.value)}><MenuItem value="">—</MenuItem>{categories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Criticité</InputLabel><Select value={form.criticite ?? 'B'} label="Criticité" onChange={(e) => handleChange('criticite', e.target.value)}><MenuItem value="A">A</MenuItem><MenuItem value="B">B</MenuItem><MenuItem value="C">C</MenuItem></Select></FormControl></Grid>
+              </Grid>
+            )}
+            {creationType === 'composant' && (
+              <Grid container spacing={2}>
+                <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Hiérarchie : Site → Département → Ligne → Machine → Section (parent du composant).</Typography></Grid>
+                <Grid item xs={12}><FormControl fullWidth required><InputLabel>Site</InputLabel><Select value={safeSelectValue(sites, form.siteId)} label="Site" onChange={(e) => handleChange('siteId', e.target.value)}><MenuItem value="">—</MenuItem>{sites.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Département</InputLabel><Select value={safeSelectValue(departementsFiltered, form.departmentId)} label="Département" onChange={(e) => handleChange('departmentId', e.target.value)} disabled={!form.siteId}><MenuItem value="">—</MenuItem>{departementsFiltered.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth required><InputLabel>Ligne</InputLabel><Select value={safeSelectValue(lignesFiltered, form.ligneId)} label="Ligne" onChange={(e) => handleChange('ligneId', e.target.value)} disabled={!form.siteId}><MenuItem value="">—</MenuItem>{lignesFiltered.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12}><FormControl fullWidth required><InputLabel>Machine</InputLabel><Select value={safeSelectValue(parentMachinesForSection, form.hierarchyMachineId)} label="Machine" onChange={(e) => handleChange('hierarchyMachineId', e.target.value)} disabled={!form.ligneId}><MenuItem value="">—</MenuItem>{parentMachinesForSection.map(eq => <MenuItem key={eq.id} value={eq.id}>{eq.code} — {eq.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12}><FormControl fullWidth required><InputLabel>Section parent</InputLabel><Select value={safeSelectValue(parentSectionsForComposant, form.parentId)} label="Section parent" onChange={(e) => handleChange('parentId', e.target.value)} disabled={!form.hierarchyMachineId}><MenuItem value="">—</MenuItem>{parentSectionsForComposant.map(eq => <MenuItem key={eq.id} value={eq.id}>{eq.code} — {eq.name}</MenuItem>)}</Select></FormControl></Grid>
+                {nextCode && <Grid item xs={12}><Typography variant="body2" color="text.secondary">Code : attribué automatiquement (ex. {nextCode})</Typography></Grid>}
+                {!nextCode && <Grid item xs={12} sm={6}><TextField fullWidth required label="Code" value={form.code ?? ''} onChange={(e) => handleChange('code', e.target.value)} /></Grid>}
+                <Grid item xs={12} sm={6}><TextField fullWidth required label={nextCode ? 'Désignation (nom)' : 'Nom'} value={form.name ?? ''} onChange={(e) => handleChange('name', e.target.value)} /></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Catégorie</InputLabel><Select value={safeSelectValue(categories, form.categoryId)} label="Catégorie" onChange={(e) => handleChange('categoryId', e.target.value)}><MenuItem value="">—</MenuItem>{categories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Criticité</InputLabel><Select value={form.criticite ?? 'B'} label="Criticité" onChange={(e) => handleChange('criticite', e.target.value)}><MenuItem value="A">A</MenuItem><MenuItem value="B">B</MenuItem><MenuItem value="C">C</MenuItem></Select></FormControl></Grid>
+              </Grid>
+            )}
+            {creationType === 'sous_composant' && (
+              <Grid container spacing={2}>
+                <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Hiérarchie : Site → Département → Ligne → Machine → Section → Composant (parent du sous-composant).</Typography></Grid>
+                <Grid item xs={12}><FormControl fullWidth required><InputLabel>Site</InputLabel><Select value={form.siteId ?? ''} label="Site" onChange={(e) => handleChange('siteId', e.target.value)}><MenuItem value="">—</MenuItem>{sites.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Département</InputLabel><Select value={form.departmentId ?? ''} label="Département" onChange={(e) => handleChange('departmentId', e.target.value)} disabled={!form.siteId}><MenuItem value="">—</MenuItem>{departementsFiltered.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12} sm={6}><FormControl fullWidth required><InputLabel>Ligne</InputLabel><Select value={form.ligneId ?? ''} label="Ligne" onChange={(e) => handleChange('ligneId', e.target.value)} disabled={!form.siteId}><MenuItem value="">—</MenuItem>{lignesFiltered.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12}><FormControl fullWidth required><InputLabel>Machine</InputLabel><Select value={form.hierarchyMachineId ?? ''} label="Machine" onChange={(e) => handleChange('hierarchyMachineId', e.target.value)} disabled={!form.ligneId}><MenuItem value="">—</MenuItem>{parentMachinesForSection.map(eq => <MenuItem key={eq.id} value={eq.id}>{eq.code} — {eq.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12}><FormControl fullWidth required><InputLabel>Section</InputLabel><Select value={form.hierarchySectionId ?? ''} label="Section" onChange={(e) => handleChange('hierarchySectionId', e.target.value)} disabled={!form.hierarchyMachineId}><MenuItem value="">—</MenuItem>{sectionsUnderMachineForSousComposant.map(eq => <MenuItem key={eq.id} value={eq.id}>{eq.code} — {eq.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12}><FormControl fullWidth required><InputLabel>Composant parent</InputLabel><Select value={form.parentId ?? ''} label="Composant parent" onChange={(e) => handleChange('parentId', e.target.value)} disabled={!form.hierarchySectionId}><MenuItem value="">—</MenuItem>{parentComposantsForSousComposant.map(eq => <MenuItem key={eq.id} value={eq.id}>{eq.code} — {eq.name}</MenuItem>)}</Select></FormControl></Grid>
                 {nextCode && <Grid item xs={12}><Typography variant="body2" color="text.secondary">Code : attribué automatiquement (ex. {nextCode})</Typography></Grid>}
                 {!nextCode && <Grid item xs={12} sm={6}><TextField fullWidth required label="Code" value={form.code ?? ''} onChange={(e) => handleChange('code', e.target.value)} /></Grid>}
                 <Grid item xs={12} sm={6}><TextField fullWidth required label={nextCode ? 'Désignation (nom)' : 'Nom'} value={form.name ?? ''} onChange={(e) => handleChange('name', e.target.value)} /></Grid>

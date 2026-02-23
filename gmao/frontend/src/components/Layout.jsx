@@ -60,7 +60,8 @@ import {
   ChevronRight,
   Notifications as NotificationsIcon,
   Warning as WarningIcon,
-  Info as InfoIcon
+  Info as InfoIcon,
+  ImportExport as ImportExportIcon
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
@@ -194,6 +195,12 @@ function getMenuStructure() {
         { labelKey: 'item.technicians_competencies', path: `${APP_BASE}/technicians/competencies` },
         { labelKey: 'item.technicians_rules', path: `${APP_BASE}/technicians/type-competencies` },
         { labelKey: 'item.technicians_team', path: `${APP_BASE}/technicians/team` }
+      ]}
+    ]},
+    { id: 'exploitation', labelKey: 'menu.exploitation', icon: <ImportExportIcon />, path: `${APP_BASE}/exploitation/export`, sections: [
+      { titleKey: 'section.exploitation_0', items: [
+        { labelKey: 'item.exploitation_export', path: `${APP_BASE}/exploitation/export` },
+        { labelKey: 'item.exploitation_import', path: `${APP_BASE}/exploitation/import` }
       ]}
     ]},
     { id: 'settings', labelKey: 'menu.settings', icon: <SettingsIcon />, path: `${APP_BASE}/settings`, sections: [

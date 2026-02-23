@@ -67,6 +67,8 @@ const TechnicianDetail = lazy(() => import('./pages/technicians/TechnicianDetail
 const TeamPage = lazy(() => import('./pages/technicians/TeamPage'));
 const CompetenciesPage = lazy(() => import('./pages/technicians/CompetenciesPage'));
 const TypeCompetenciesPage = lazy(() => import('./pages/technicians/TypeCompetenciesPage'));
+const ExploitationExport = lazy(() => import('./pages/ExploitationExport'));
+const ExploitationImport = lazy(() => import('./pages/ExploitationImport'));
 
 const LOADING_MIN_MS = 3000;
 
@@ -158,6 +160,8 @@ export default function App() {
         <Route path="settings/roles" element={<SettingsRoles />} />
         <Route path="settings/tenants" element={<SettingsTenants />} />
         <Route path="failure-codes" element={<FailureCodesList />} />
+        <Route path="exploitation/export" element={<ExploitationExport />} />
+        <Route path="exploitation/import" element={<ExploitationImport />} />
         <Route path="users" element={<Users />} />
         <Route path="technicians" element={<TechnicianList />} />
         <Route path="technicians/team" element={<TeamPage />} />

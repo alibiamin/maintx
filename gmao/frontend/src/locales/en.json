@@ -15,7 +15,23 @@
     "pin": "Pin",
     "unpin": "Unpin",
     "language": "Language",
-    "all": "All"
+    "all": "All",
+    "download": "Download",
+    "downloading": "Downloading…"
+  },
+  "exploitation": {
+    "exportHint": "Download an Excel template (headers only) for the chosen table. Fill it in then import it via \"Import data\".",
+    "noTemplates": "No templates available.",
+    "importHint": "Choose the target table and the filled Excel file (template downloaded from \"Export data\"). Rows will be inserted into the database.",
+    "selectTable": "Table (entity)",
+    "chooseFile": "Choose an Excel file (.xlsx)",
+    "importButton": "Import",
+    "importing": "Importing…",
+    "successCount": "Import complete: {{count}} row(s) inserted.",
+    "errorCount": "{{count}} error(s).",
+    "errorsExtract": "Errors (excerpt)",
+    "rowError": "Row {{row}}: {{message}}",
+    "requiredEntityFile": "Please choose a table and an Excel file."
   },
   "creation": {
     "title": "Creation",
@@ -87,7 +103,9 @@
     "technicians": "Workforce",
     "technicians/competencies": "Competencies",
     "technicians/type-competencies": "Assignment rules",
-    "technicians/team": "Team"
+    "technicians/team": "Team",
+    "exploitation/export": "Data export",
+    "exploitation/import": "Data import"
   },
   "menu": {
     "dashboard": "Dashboard",
@@ -100,6 +118,7 @@
     "reports": "Reports",
     "sites": "Sites",
     "effectif": "Workforce",
+    "exploitation": "Data management",
     "settings": "Settings"
   },
   "section": {
@@ -122,6 +141,7 @@
     "reports_0": "Reports",
     "sites_0": "Sites",
     "effectif_0": "Workforce",
+    "exploitation_0": "Data",
     "settings_0": "Settings",
     "settings_creation": "Creation"
   },
@@ -201,7 +221,9 @@
     "settings_roles": "Roles and permissions",
     "settings_tenants": "Clients (tenants)",
     "creation_user": "User",
-    "creation_failure_code": "Failure code"
+    "creation_failure_code": "Failure code",
+    "exploitation_export": "Export data",
+    "exploitation_import": "Import data"
   },
   "login": {
     "title": "Sign in",

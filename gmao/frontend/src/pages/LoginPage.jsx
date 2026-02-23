@@ -523,7 +523,6 @@ export default function LoginPage() {
                 {loading ? t('login.submitting') : t('login.submit')}
               </Button>
               <Typography variant="caption" sx={{ display: 'block', mt: 1.5, textAlign: 'center', color: 'text.secondary' }}>
-                Première connexion ? admin@xmaint.org / Admin123!
               </Typography>
               <Box sx={{ mt: 2, textAlign: 'center' }}>
                 <Link component={RouterLink} to="/" underline="hover" sx={{ color: 'text.secondary', fontSize: '0.875rem' }}>

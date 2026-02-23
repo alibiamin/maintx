@@ -23,6 +23,8 @@ function formatEquipment(row) {
     ligneId: row.ligne_id,
     ligneName: row.ligne_name,
     parentId: row.parent_id,
+    departmentId: row.department_id != null ? row.department_id : null,
+    equipmentType: row.equipment_type || 'machine',
     serialNumber: row.serial_number,
     manufacturer: row.manufacturer,
     model: row.model,
