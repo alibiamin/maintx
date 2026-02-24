@@ -962,12 +962,37 @@ async function runSeed(db) {
   }
 
   try {
-    const planIdProc = db.prepare('SELECT id FROM maintenance_plans LIMIT 1').get()?.id;
-    db.prepare("INSERT OR IGNORE INTO procedures (name, description, version, is_active) VALUES ('Lubrification presse P500', 'Étapes de graissage points désignés', '1.0', 1)").run();
-    db.prepare("INSERT OR IGNORE INTO procedures (name, description, version, is_active) VALUES ('Contrôle convoyeur', 'Vérification tension courroie et rouleaux', '1.0', 1)").run();
-    const procId = db.prepare('SELECT id FROM procedures LIMIT 1').get()?.id;
-    const woProc = db.prepare('SELECT id FROM work_orders WHERE number = ?').get('OT-2025-003')?.id;
-    if (procId && woProc) db.prepare('INSERT OR IGNORE INTO work_order_procedures (work_order_id, procedure_id) VALUES (?, ?)').run(woProc, procId);
+    // Procédures et modes opératoires de test (colonnes réelles : name, description, steps, safety_notes, equipment_model_id ; + procedure_type, code si migration 057)
+    const existingCount = db.prepare('SELECT COUNT(*) as c FROM procedures').get()?.c ?? 0;
+    if (existingCount === 0) {
+      const modelId = db.prepare('SELECT id FROM equipment_models LIMIT 1').get()?.id || null;
+      const procRows = [
+        { name: 'Lubrification presse P500', description: 'Étapes de graissage points désignés', steps: '1. Couper énergie\n2. Repérer points de graissage\n3. Graisser selon plan', safetyNotes: 'Gants, pas de surgraissage', type: 'maintenance', code: 'MNT-001' },
+        { name: 'Contrôle convoyeur', description: 'Vérification tension courroie et rouleaux', steps: '1. Arrêt machine\n2. Vérifier tension courroie\n3. Contrôler rouleaux', safetyNotes: 'Cadenassage obligatoire', type: 'maintenance', code: 'MNT-002' },
+        { name: 'Test de mise en route pompe', description: 'Mode opératoire de test après maintenance ou remplacement', steps: '1. Vérifier niveau fluide\n2. Démarrer à vide 2 min\n3. Mise en charge progressive\n4. Relever pressions et températures', safetyNotes: 'Ne pas dépasser Pmax. Port des EPI.', type: 'test', code: 'TEST-001' },
+        { name: 'Test électrique moteur', description: 'Contrôle isolation et courant à vide', steps: '1. Coupure électrique et consignation\n2. Mesure mégohm\n3. Remise sous tension\n4. Mesure courant à vide', safetyNotes: 'Travail sous tension interdit sans habilitation.', type: 'test', code: 'TEST-002' },
+        { name: 'Réception après réparation', description: 'Procédure de test de réception après intervention', steps: '1. Contrôle visuel\n2. Essai à vide\n3. Essai en charge\n4. Enregistrement des paramètres', safetyNotes: 'Respecter les consignes constructeur.', type: 'test', code: 'TEST-003' },
+        { name: 'Mode opératoire démarrage ligne', description: 'Démarrage séquentiel de la ligne de production', steps: '1. Contrôles pré-démarrage\n2. Démarrage auxiliaires\n3. Démarrage moteurs principaux\n4. Mise en production', safetyNotes: 'Signalisation et zone dégagée.', type: 'operating_mode', code: 'OP-001' }
+      ];
+      for (const row of procRows) {
+        try {
+          db.prepare(`
+            INSERT INTO procedures (name, description, steps, safety_notes, equipment_model_id, procedure_type, code)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(row.name, row.description, row.steps || null, row.safetyNotes || null, modelId, row.type, row.code);
+        } catch (colErr) {
+          if (colErr.message && colErr.message.includes('no such column')) {
+            db.prepare(`
+              INSERT INTO procedures (name, description, steps, safety_notes, equipment_model_id)
+              VALUES (?, ?, ?, ?, ?)
+            `).run(row.name, row.description, row.steps || null, row.safetyNotes || null, modelId);
+          } else throw colErr;
+        }
+      }
+      const procId = db.prepare('SELECT id FROM procedures LIMIT 1').get()?.id;
+      const woProc = db.prepare('SELECT id FROM work_orders WHERE number = ?').get('OT-2025-003')?.id;
+      if (procId && woProc) db.prepare('INSERT OR IGNORE INTO work_order_procedures (work_order_id, procedure_id) VALUES (?, ?)').run(woProc, procId);
+    }
   } catch (e) {
     if (!e.message?.includes('no such table')) console.warn('procedures/work_order_procedures:', e.message);
   }
