@@ -25,6 +25,14 @@
     "delete": "Delete"
   },
   "exploitation": {
+    "title": "Data export and import",
+    "subtitle": "Bulk import without manual entry: download a template per table, fill required columns and references (foreign keys), then import.",
+    "exportTab": "Export (templates)",
+    "importTab": "Import",
+    "tableLabel": "Table",
+    "requiredColumns": "Required columns",
+    "foreignKeys": "Foreign keys",
+    "firstErrors": "Showing first 100 errors of {{count}} total.",
     "exportHint": "Download an Excel template (headers only) for the chosen table. Fill it in then import it via \"Import data\".",
     "noTemplates": "No templates available.",
     "importHint": "Choose the target table and the filled Excel file (template downloaded from \"Export data\"). Rows will be inserted into the database.",

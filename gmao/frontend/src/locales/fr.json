@@ -27,9 +27,16 @@
     "delete": "Supprimer"
   },
   "exploitation": {
-    "exportHint": "Téléchargez un modèle Excel (structure avec en-têtes) pour la table choisie. Remplissez-le puis importez-le via « Importation des données ».",
+    "title": "Exportation et importation des données",
+    "subtitle": "Import en masse sans saisie manuelle : téléchargez un modèle par table, remplissez les colonnes obligatoires et les références (clés étrangères), puis importez.",
+    "exportTab": "Exportation (modèles)",
+    "importTab": "Importation",
+    "tableLabel": "Table",
+    "requiredColumns": "Colonnes obligatoires",
+    "foreignKeys": "Clés étrangères",
+    "exportHint": "Téléchargez le modèle Excel pour la table. La feuille « Instructions » liste les colonnes obligatoires et les références (valeurs à saisir doivent exister dans la table liée).",
     "noTemplates": "Aucun modèle disponible.",
-    "importHint": "Choisissez la table cible et le fichier Excel rempli (modèle téléchargé depuis « Exportation des données »). Les lignes seront insérées en base.",
+    "importHint": "Sélectionnez la table, puis le fichier Excel rempli (modèle téléchargé). Les lignes sont validées (NOT NULL, clés étrangères) puis insérées.",
     "selectTable": "Table (entité)",
     "chooseFile": "Choisir un fichier Excel (.xlsx)",
     "importButton": "Importer",
@@ -38,7 +45,8 @@
     "errorCount": "{{count}} erreur(s).",
     "errorsExtract": "Erreurs (extrait)",
     "rowError": "Ligne {{row}}: {{message}}",
-    "requiredEntityFile": "Choisissez une table et un fichier Excel."
+    "requiredEntityFile": "Choisissez une table et un fichier Excel.",
+    "firstErrors": "Affichage des 100 premières erreurs sur {{count}} au total."
   },
   "interventionRequests": {
     "title": "Demandes d'intervention",

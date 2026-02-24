@@ -70,8 +70,7 @@ const CompetenciesPage = lazy(() => import('./pages/technicians/CompetenciesPage
 const TypeCompetenciesPage = lazy(() => import('./pages/technicians/TypeCompetenciesPage'));
 const PresencePage = lazy(() => import('./pages/effectif/PresencePage'));
 const PointagePage = lazy(() => import('./pages/effectif/PointagePage'));
-const ExploitationExport = lazy(() => import('./pages/ExploitationExport'));
-const ExploitationImport = lazy(() => import('./pages/ExploitationImport'));
+const ExploitationData = lazy(() => import('./pages/ExploitationData'));
 const PartFamiliesList = lazy(() => import('./pages/catalogue/PartFamiliesList'));
 const BrandsList = lazy(() => import('./pages/catalogue/BrandsList'));
 const WOTemplatesList = lazy(() => import('./pages/catalogue/WOTemplatesList'));
@@ -197,8 +196,9 @@ export default function App() {
         <Route path="settings/roles" element={<SettingsRoles />} />
         <Route path="settings/tenants" element={<SettingsTenants />} />
         <Route path="failure-codes" element={<FailureCodesList />} />
-        <Route path="exploitation/export" element={<ExploitationExport />} />
-        <Route path="exploitation/import" element={<ExploitationImport />} />
+        <Route path="exploitation" element={<ExploitationData />} />
+        <Route path="exploitation/export" element={<ExploitationData />} />
+        <Route path="exploitation/import" element={<ExploitationData />} />
         <Route path="users" element={<Users />} />
         <Route path="technicians" element={<TechnicianList />} />
         <Route path="technicians/team" element={<TeamPage />} />
