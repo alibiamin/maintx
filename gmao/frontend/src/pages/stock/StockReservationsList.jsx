@@ -15,7 +15,6 @@ import { useTranslation } from 'react-i18next';
 import api from '../../services/api';
 import { useCurrency } from '../../context/CurrencyContext';
 import { useSnackbar } from '../../context/SnackbarContext';
-import { useCurrency } from '../../context/CurrencyContext';
 
 const STATUS_LABELS = { reserved: 'Réservé', consumed: 'Consommé', released: 'Libéré', cancelled: 'Annulé' };
 
