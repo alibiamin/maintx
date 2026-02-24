@@ -11,13 +11,18 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem('xmaint-token');
     if (token) {
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      const timeoutId = setTimeout(() => setLoading(false), 10000);
       api.get('/auth/me')
         .then((res) => setUser(res.data))
         .catch(() => {
           localStorage.removeItem('xmaint-token');
           delete api.defaults.headers.common['Authorization'];
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          clearTimeout(timeoutId);
+          setLoading(false);
+        });
+      return () => clearTimeout(timeoutId);
     } else {
       setLoading(false);
     }

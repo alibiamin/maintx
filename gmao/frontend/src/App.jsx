@@ -1,8 +1,9 @@
 import React, { lazy, Suspense, useState, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import Landing from './pages/Landing';
+import DemandeInterventionForm from './pages/DemandeInterventionForm';
 import Layout from './components/Layout';
 import AppLoadingScreen from './components/AppLoadingScreen';
 import AppLoadingScreenWithMinDelay from './components/AppLoadingScreenWithMinDelay';
@@ -86,12 +87,14 @@ const SatisfactionList = lazy(() => import('./pages/maintenance/SatisfactionList
 const ReportsMtbfMttr = lazy(() => import('./pages/ReportsMtbfMttr'));
 const SettingsEmailTemplates = lazy(() => import('./pages/SettingsEmailTemplates'));
 const DecisionSupport = lazy(() => import('./pages/DecisionSupport'));
+const BibliothequeNormes = lazy(() => import('./pages/BibliothequeNormes'));
 
 const LOADING_MIN_MS = 3000;
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
-  const content = !isAuthenticated ? <Navigate to="/login" replace /> : <Suspense fallback={<AppLoadingScreen />}>{children}</Suspense>;
+  const location = useLocation();
+  const content = !isAuthenticated ? <Navigate to="/login" replace state={{ from: location }} /> : <Suspense fallback={<AppLoadingScreen />}>{children}</Suspense>;
   return (
     <AppLoadingScreenWithMinDelay loading={loading} minDisplayMs={LOADING_MIN_MS}>
       {content}
@@ -116,6 +119,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/demande-intervention" element={<PrivateRoute><DemandeInterventionForm /></PrivateRoute>} />
       <Route path="/app" element={<AppInitialLoader><PrivateRoute><Layout /></PrivateRoute></AppInitialLoader>}>
         <Route index element={<Dashboard />} />
         <Route path="dashboard/kpis" element={<DashboardKPIs />} />
@@ -179,6 +183,7 @@ export default function App() {
         <Route path="reports/mtbf-mttr" element={<ReportsMtbfMttr />} />
         <Route path="reports/exports" element={<ReportsExports />} />
         <Route path="decision-support" element={<DecisionSupport />} />
+        <Route path="standards" element={<BibliothequeNormes />} />
         <Route path="settings/email-templates" element={<SettingsEmailTemplates />} />
         <Route path="contracts" element={<Contracts />} />
         <Route path="tools" element={<Tools />} />

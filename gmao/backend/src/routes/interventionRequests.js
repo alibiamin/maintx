@@ -41,6 +41,8 @@ function getResponsibles(db, tenantId) {
 
 function formatRequest(row) {
   if (!row) return null;
+  const requestedByName = row.requested_by_name ||
+    (row.requester_name ? [row.requester_name, row.requester_email].filter(Boolean).join(' — ') : null);
   return {
     id: row.id,
     number: row.number,
@@ -50,7 +52,10 @@ function formatRequest(row) {
     equipmentName: row.equipment_name,
     equipmentCode: row.equipment_code,
     requestedBy: row.requested_by,
-    requestedByName: row.requested_by_name,
+    requestedByName,
+    requesterName: row.requester_name || null,
+    requesterEmail: row.requester_email || null,
+    requesterPhone: row.requester_phone || null,
     priority: row.priority,
     status: row.status,
     workOrderId: row.work_order_id,

@@ -44,6 +44,7 @@
     "title": "Demandes d'intervention",
     "subtitle": "Portail libre-service : déclarez une demande d'intervention. Les responsables peuvent valider (création d'un OT) ou rejeter.",
     "newRequest": "Nouvelle demande",
+    "publicFormNewTab": "Formulaire public (nouvel onglet)",
     "tabs": { "pending": "En attente", "validated": "Validées", "rejected": "Rejetées" },
     "table": {
       "number": "N°",
@@ -64,7 +65,8 @@
     "rejected": "Demande rejetée.",
     "validatedShort": "Validée",
     "rejectedShort": "Rejetée",
-    "noData": "Aucune demande"
+    "noData": "Aucune demande",
+    "alertNewRequest": "Nouvelle demande d'intervention reçue."
   },
   "creation": {
     "title": "Création",
@@ -77,7 +79,8 @@
     "demande_sublabel": "Déclaration panne",
     "assigned": "Affectation",
     "assigned_sublabel": "Équipe assignée",
-    "in_progress_sublabel": "Intervention terrain"
+    "in_progress_sublabel": "Intervention terrain",
+    "filterHint": "Cliquez sur une phase pour filtrer. Cliquez à nouveau pour tout afficher."
   },
   "path": {
     "_home": "Tableau de bord",
@@ -158,7 +161,19 @@
     "maintenance/satisfaction": "Satisfaction",
     "reports/mtbf-mttr": "MTBF / MTTR",
     "settings/email-templates": "Templates email",
-    "decision-support": "Assistance et aide à la décision"
+    "decision-support": "Assistance et aide à la décision",
+    "standards": "Bibliothèque des Normes"
+  },
+  "menuCategory": {
+    "overview": "Vue d'ensemble",
+    "assets": "Actifs & Sites",
+    "maintenance": "Maintenance",
+    "logistics": "Stock & Achats",
+    "finance": "Budget & Finances",
+    "hr": "Effectif & Formation",
+    "analysis": "Rapports & Référentiels",
+    "data": "Données",
+    "settings": "Paramétrage"
   },
   "menu": {
     "dashboard": "Tableau de bord",
@@ -177,7 +192,8 @@
     "sites": "Sites",
     "effectif": "Effectif",
     "exploitation": "Exploitation",
-    "settings": "Paramétrage"
+    "settings": "Paramétrage",
+    "standards_library": "Bibliothèque des Normes"
   },
   "section": {
     "dashboard_0": "Tableau de bord",
@@ -207,7 +223,8 @@
     "effectif_1": "Pointage et présence",
     "exploitation_0": "Données",
     "settings_0": "Paramétrage",
-    "settings_creation": "Création"
+    "settings_creation": "Création",
+    "standards_0": "Référentiel normes"
   },
   "item": {
     "dashboard_overview": "Vue d'ensemble",
@@ -306,7 +323,34 @@
     "creation_user": "Utilisateur",
     "creation_failure_code": "Code défaut",
     "exploitation_export": "Exportation des données",
-    "exploitation_import": "Importation des données"
+    "exploitation_import": "Importation des données",
+    "standards_library": "Bibliothèque des Normes"
+  },
+  "standards": {
+    "searchPlaceholder": "Rechercher (code, titre, domaine)",
+    "filterType": "Type de norme",
+    "filterOrg": "Organisation",
+    "noData": "Aucune norme trouvée.",
+    "code": "Code",
+    "title": "Titre / description",
+    "domain": "Domaine",
+    "type": "Type",
+    "organization": "Organisation",
+    "marks": "Marques",
+    "favorite": "Favori",
+    "toConsult": "À consulter",
+    "description": "Description",
+    "objectives": "Objectifs principaux",
+    "sectorsEquipment": "Secteurs ou équipements concernés",
+    "versionHistory": "Historique / version",
+    "documentLink": "Document officiel ou PDF",
+    "errorLoad": "Erreur lors du chargement des normes.",
+    "type_quality": "Qualité",
+    "type_safety": "Sécurité",
+    "type_reliability": "Fiabilité",
+    "type_sector": "Secteur spécifique",
+    "type_asset_mgmt": "Management des actifs",
+    "type_maintenance": "Maintenance"
   },
   "login": {
     "title": "Connexion",

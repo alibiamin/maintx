@@ -28,7 +28,7 @@ import {
   DialogContent,
   DialogActions
 } from '@mui/material';
-import { Add, CheckCircle, Cancel, Visibility } from '@mui/icons-material';
+import { Add, CheckCircle, Cancel, Visibility, OpenInNew } from '@mui/icons-material';
 import api from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
@@ -69,6 +69,12 @@ export default function InterventionRequests() {
     api.get('/equipment').then((r) => setEquipment(r.data || [])).catch(() => setEquipment([]));
   }, []);
 
+  useEffect(() => {
+    const onNewRequest = () => fetchRequests();
+    window.addEventListener('intervention-request-created', onNewRequest);
+    return () => window.removeEventListener('intervention-request-created', onNewRequest);
+  }, []);
+
   const handleCreate = (e) => {
     e.preventDefault();
     setError('');
@@ -85,6 +91,11 @@ export default function InterventionRequests() {
         setForm({ title: '', description: '', equipmentId: '', priority: 'medium' });
         setFormOpen(false);
         fetchRequests();
+        try {
+          const ch = new BroadcastChannel('gmao-intervention-request');
+          ch.postMessage({ type: 'created' });
+          ch.close();
+        } catch (_) {}
       })
       .catch((err) => setError(err.response?.data?.error || err.message || 'Erreur'))
       .finally(() => setSubmitting(false));
@@ -136,9 +147,21 @@ export default function InterventionRequests() {
               <Tab value="validated" label={t('interventionRequests.tabs.validated')} />
               <Tab value="rejected" label={t('interventionRequests.tabs.rejected')} />
             </Tabs>
-            <Button startIcon={<Add />} variant="contained" onClick={() => setFormOpen(true)}>
-              {t('interventionRequests.newRequest')}
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Button startIcon={<Add />} variant="contained" onClick={() => setFormOpen(true)}>
+                {t('interventionRequests.newRequest')}
+              </Button>
+              <Button
+                component="a"
+                href={`${window.location.origin}${(window.location.pathname.split('/app')[0] || '').replace(/\/$/, '')}/demande-intervention`}
+                target="_blank"
+                rel="noopener noreferrer"
+                startIcon={<OpenInNew />}
+                variant="outlined"
+              >
+                {t('interventionRequests.publicFormNewTab')}
+              </Button>
+            </Box>
           </Box>
         </CardContent>
       </Card>

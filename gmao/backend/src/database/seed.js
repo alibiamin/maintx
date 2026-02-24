@@ -105,6 +105,30 @@ async function runSeed(db) {
     db.prepare('INSERT OR IGNORE INTO work_order_types (name, color) VALUES (?, ?)').run(t.name, t.color);
   }
 
+  // Bibliothèque des normes (maintenance industrielle)
+  try {
+    const hasStandards = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='standards'").get();
+    if (hasStandards) {
+      const stmt = db.prepare(`INSERT OR IGNORE INTO standards (code, title, description, domain, standard_type, organization, document_url, objectives, sectors_equipment, version_history) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      const norms = [
+        ['ISO 55000', 'Systèmes de management des actifs', 'Famille de normes pour le management des actifs physiques (infrastructures, équipements).', 'industrie générale', 'management_actifs', 'ISO', 'https://www.iso.org/standard/55088.html', 'Alignement stratégique, gestion du cycle de vie, création de valeur.', 'Tous secteurs, actifs physiques.', 'ISO 55000:2014, 55001, 55002.'],
+        ['ISO 9001', 'Systèmes de management de la qualité', 'Exigences pour un système de management de la qualité.', 'industrie générale', 'qualité', 'ISO', 'https://www.iso.org/standard/62085.html', 'Satisfaction client, amélioration continue, processus documentés.', 'Tous secteurs.', 'Version 2015 (révision 2025 en cours).'],
+        ['ISO 14001', 'Management environnemental', 'Système de management environnemental.', 'industrie générale', 'qualité', 'ISO', 'https://www.iso.org/standard/60857.html', 'Maîtrise des impacts environnementaux, conformité réglementaire.', 'Tous secteurs.', 'ISO 14001:2015.'],
+        ['IEC 61508', 'Sécurité fonctionnelle – Sûreté de fonctionnement', 'Norme cadre pour les systèmes électriques/électroniques/électroniques programmables relatifs à la sécurité.', 'industrie générale, électrique', 'sécurité', 'IEC', 'https://www.iec.ch/61508', 'Niveaux d\'intégrité de sécurité (SIL), analyse des risques.', 'Process, machines, équipements de sécurité.', 'Série IEC 61508 (parties 1-7).'],
+        ['IEC 61511', 'Sécurité fonctionnelle – SIS pour le secteur de la transformation', 'Systèmes instrumentés de sécurité pour le secteur des industries de process.', 'pétrolière, chimique', 'sécurité', 'IEC', 'https://www.iec.ch/61511', 'Conception et exploitation des SIS, boucles de sécurité.', 'Raffineries, chimie, gaz.', 'IEC 61511 (parties 1-3).'],
+        ['API 570', 'Inspection, réparation, altération et reclassement des circuits de tuyauterie en service', 'Recommandations pour l\'inspection et la maintenance des tuyauteries.', 'pétrolière', 'secteur_spécifique', 'API', 'https://www.api.org/standards', 'Sécurité des circuits sous pression, planification des inspections.', 'Tuyauteries, raffineries, pétrochimie.', 'Révisions périodiques API.'],
+        ['API 653', 'Réservoirs de stockage à toit fixe', 'Inspection, réparation, modification et reconstruction des réservoirs de stockage.', 'pétrolière', 'secteur_spécifique', 'API', 'https://www.api.org/standards', 'Intégrité des réservoirs, programme d\'inspection.', 'Réservoirs atmosphériques.', 'Révisions API.'],
+        ['ASME B31.3', 'Tuyauterie – Procédés', 'Règles de conception et construction des tuyauteries de process.', 'pétrolière, chimique', 'secteur_spécifique', 'ASME', 'https://www.asme.org/codes-standards', 'Conception, matériaux, essais, inspection.', 'Tuyauteries process, pression.', 'ASME B31.3 (mises à jour régulières).'],
+        ['EN 13306', 'Terminologie de la maintenance', 'Définitions normalisées pour la maintenance (maintenance préventive, corrective, conditionnelle, etc.).', 'industrie générale', 'maintenance', 'EN', 'https://www.en-standard.eu/', 'Harmonisation du vocabulaire maintenance en Europe.', 'Tous secteurs.', 'EN 13306 (CEN).'],
+        ['EN 15341', 'Indicateurs de performance de maintenance', 'KPIs pour évaluer la performance de la maintenance.', 'industrie générale', 'management_actifs', 'EN', 'https://www.en-standard.eu/', 'Indicateurs économiques, techniques, organisationnels.', 'Tous secteurs.', 'EN 15341 (CEN).'],
+        ['NF EN 60812', 'Analyse des modes de défaillance et de leurs effets (AMDE)', 'Méthodologie FMEA pour l\'analyse des défaillances.', 'industrie générale', 'fiabilité', 'EN', 'https://www.en-standard.eu/', 'Identification des modes de défaillance, criticité.', 'Équipements, processus.', 'Équivalent IEC 60812.'],
+      ];
+      for (const n of norms) stmt.run(...n);
+    }
+  } catch (e) {
+    if (!e.message?.includes('no such table')) console.warn('Seed standards:', e.message);
+  }
+
   // Sites et Lignes
   db.prepare("INSERT OR IGNORE INTO sites (code, name, address) VALUES ('SITE-01', 'Usine principale', 'Zone industrielle')").run();
   const siteId = db.prepare('SELECT id FROM sites WHERE code = ?').get('SITE-01')?.id;
@@ -1066,7 +1090,7 @@ async function runSeed(db) {
 
   try {
     const woOp = db.prepare('SELECT id FROM work_orders WHERE number = ?').get('OT-2025-002')?.id;
-    if (woOp && techIdDev) db.prepare('INSERT OR IGNORE INTO work_order_operators (work_order_id, user_id, role) VALUES (?, ?, ?)').run(woOp, techIdDev, 'technician');
+    if (woOp && techIdDev) db.prepare('INSERT OR IGNORE INTO work_order_operators (work_order_id, user_id) VALUES (?, ?)').run(woOp, techIdDev);
   } catch (e) {
     if (!e.message?.includes('no such table')) console.warn('work_order_operators:', e.message);
   }
@@ -1104,9 +1128,9 @@ async function runSeed(db) {
   }
 
   try {
-    db.prepare("INSERT OR IGNORE INTO units (code, name, symbol) VALUES ('unit', 'Unité', 'u')").run();
-    db.prepare("INSERT OR IGNORE INTO units (code, name, symbol) VALUES ('L', 'Litre', 'L')").run();
-    db.prepare("INSERT OR IGNORE INTO units (code, name, symbol) VALUES ('m', 'Mètre', 'm')").run();
+    db.prepare("INSERT OR IGNORE INTO units (name, symbol) VALUES ('Unité', 'u')").run();
+    db.prepare("INSERT OR IGNORE INTO units (name, symbol) VALUES ('Litre', 'L')").run();
+    db.prepare("INSERT OR IGNORE INTO units (name, symbol) VALUES ('Mètre', 'm')").run();
   } catch (e) {
     if (!e.message?.includes('no such table') && !e.message?.includes('UNIQUE')) console.warn('units:', e.message);
   }
@@ -1300,7 +1324,7 @@ async function runSeed(db) {
     if (techId) run(() => db.prepare('INSERT OR IGNORE INTO technician_badges (technician_id, badge_code) VALUES (?, ?)').run(techId, 'BADGE-999'));
     if (catId) run(() => db.prepare("INSERT OR IGNORE INTO required_document_types (entity_type, entity_id, document_type_name, is_mandatory) VALUES ('equipment_category', ?, ?, 1)").run(catId, 'Notice'));
     if (woId) run(() => db.prepare('INSERT OR IGNORE INTO work_order_extra_fees (work_order_id, description, amount) VALUES (?, ?, ?)').run(woId, 'Frais test', 50));
-    if (woId && techId) run(() => db.prepare('INSERT OR IGNORE INTO work_order_operators (work_order_id, user_id, role) VALUES (?, ?, ?)').run(woId, techId, 'technician'));
+    if (woId && techId) run(() => db.prepare('INSERT OR IGNORE INTO work_order_operators (work_order_id, user_id) VALUES (?, ?)').run(woId, techId));
     if (woId && eqId && uid) run(() => db.prepare('INSERT OR IGNORE INTO equipment_root_causes (work_order_id, equipment_id, root_cause_code, root_cause_description, created_by) VALUES (?, ?, ?, ?, ?)').run(woId, eqId, 'TEST', 'Cause test', uid));
     if (woId && wo2 && woId !== wo2) run(() => db.prepare('INSERT OR IGNORE INTO work_order_links (work_order_id, linked_work_order_id, link_type) VALUES (?, ?, ?)').run(woId, wo2, 'related'));
     if (woId && uid) run(() => db.prepare('INSERT OR IGNORE INTO work_order_attachments (work_order_id, file_name, file_path, attachment_type, uploaded_by) VALUES (?, ?, ?, ?, ?)').run(woId, 'fichier.pdf', '/uploads/f.pdf', 'document', uid));

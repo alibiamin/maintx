@@ -18,6 +18,16 @@ export default function AppLoadingScreenWithMinDelay({ loading, children, minDis
       setCanHide(false);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => setCanHide(true), minDisplayMs);
+    } else {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      const startedAt = startedAtRef.current;
+      if (startedAt != null) {
+        const elapsed = Date.now() - startedAt;
+        const remaining = Math.max(0, minDisplayMs - elapsed);
+        timeoutRef.current = setTimeout(() => setCanHide(true), remaining);
+      } else {
+        setCanHide(true);
+      }
     }
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);

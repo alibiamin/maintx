@@ -44,12 +44,17 @@
     "typeLabel": "Element type",
     "moduleFormHint": "Fill in the form below."
   },
+  "interventionRequests": {
+    "publicFormNewTab": "Public form (new tab)",
+    "alertNewRequest": "New intervention request received."
+  },
   "flow": {
     "demande": "Request",
     "demande_sublabel": "Failure report",
     "assigned": "Assignment",
     "assigned_sublabel": "Team assigned",
-    "in_progress_sublabel": "Field intervention"
+    "in_progress_sublabel": "Field intervention",
+    "filterHint": "Click a phase to filter. Click again to show all."
   },
   "path": {
     "_home": "Dashboard",
@@ -129,7 +134,19 @@
     "maintenance/satisfaction": "Satisfaction",
     "reports/mtbf-mttr": "MTBF / MTTR",
     "settings/email-templates": "Email templates",
-    "decision-support": "Assistance and decision support"
+    "decision-support": "Assistance and decision support",
+    "standards": "Standards Library"
+  },
+  "menuCategory": {
+    "overview": "Overview",
+    "assets": "Assets & Sites",
+    "maintenance": "Maintenance",
+    "logistics": "Stock & Purchasing",
+    "finance": "Budget & Finance",
+    "hr": "Workforce & Training",
+    "analysis": "Reports & Reference",
+    "data": "Data",
+    "settings": "Settings"
   },
   "menu": {
     "dashboard": "Dashboard",
@@ -148,7 +165,8 @@
     "sites": "Sites",
     "effectif": "Workforce",
     "exploitation": "Data management",
-    "settings": "Settings"
+    "settings": "Settings",
+    "standards_library": "Standards Library"
   },
   "section": {
     "catalogue_0": "Reference data",
@@ -178,7 +196,8 @@
     "effectif_1": "Time & attendance",
     "exploitation_0": "Data",
     "settings_0": "Settings",
-    "settings_creation": "Creation"
+    "settings_creation": "Creation",
+    "standards_0": "Standards reference"
   },
   "item": {
     "dashboard_overview": "Overview",
@@ -275,7 +294,34 @@
     "creation_user": "User",
     "creation_failure_code": "Failure code",
     "exploitation_export": "Export data",
-    "exploitation_import": "Import data"
+    "exploitation_import": "Import data",
+    "standards_library": "Standards Library"
+  },
+  "standards": {
+    "searchPlaceholder": "Search (code, title, domain)",
+    "filterType": "Standard type",
+    "filterOrg": "Organization",
+    "noData": "No standards found.",
+    "code": "Code",
+    "title": "Title / short description",
+    "domain": "Domain",
+    "type": "Type",
+    "organization": "Organization",
+    "marks": "Marks",
+    "favorite": "Favorite",
+    "toConsult": "To consult",
+    "description": "Description",
+    "objectives": "Main objectives",
+    "sectorsEquipment": "Sectors or equipment concerned",
+    "versionHistory": "Version / history",
+    "documentLink": "Official document or PDF",
+    "errorLoad": "Error loading standards.",
+    "type_quality": "Quality",
+    "type_safety": "Safety",
+    "type_reliability": "Reliability",
+    "type_sector": "Specific sector",
+    "type_asset_mgmt": "Asset management",
+    "type_maintenance": "Maintenance"
   },
   "login": {
     "title": "Sign in",

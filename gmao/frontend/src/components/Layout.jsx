@@ -64,7 +64,8 @@ import {
   ImportExport as ImportExportIcon,
   AccountBalance as BudgetIcon,
   BusinessCenter as SubcontractIcon,
-  Lightbulb as LightbulbIcon
+  Lightbulb as LightbulbIcon,
+  MenuBook as MenuBookIcon
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
@@ -72,10 +73,14 @@ import { ActionBar } from '../context/ActionPanelContext';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import api from '../services/api';
 import { LANGUAGES } from '../constants/languages';
+import { useSnackbar } from '../context/SnackbarContext';
 
 const APP_BASE = '/app';
+const INTERVENTION_REQUEST_CHANNEL = 'gmao-intervention-request';
+const PENDING_POLL_INTERVAL_MS = 20000;
 
-function getMenuStructure() {
+/** Liste plate de tous les menus (sans catégories). */
+function getRawMenus() {
   return [
     { id: 'dashboard', labelKey: 'menu.dashboard', icon: <DashboardIcon />, path: APP_BASE, sections: [
       { titleKey: 'section.dashboard_0', items: [
@@ -206,6 +211,11 @@ function getMenuStructure() {
         { labelKey: 'item.decisionSupport_analysis', path: `${APP_BASE}/decision-support` }
       ]}
     ]},
+    { id: 'standards', labelKey: 'menu.standards_library', icon: <MenuBookIcon />, path: `${APP_BASE}/standards`, sections: [
+      { titleKey: 'section.standards_0', items: [
+        { labelKey: 'item.standards_library', path: `${APP_BASE}/standards` }
+      ]}
+    ]},
     { id: 'sites', labelKey: 'menu.sites', icon: <BusinessIcon />, path: `${APP_BASE}/sites`, sections: [
       { titleKey: 'section.sites_0', items: [
         { labelKey: 'item.sites_list', path: `${APP_BASE}/sites` },
@@ -256,6 +266,32 @@ function getMenuStructure() {
   ];
 }
 
+/** Catégories du menu : chaque catégorie regroupe des menus par domaine. */
+function getMenuCategories(rawMenus) {
+  const byId = (id) => rawMenus.find((m) => m.id === id);
+  const categories = [
+    { id: 'overview', labelKey: 'menuCategory.overview', menuIds: ['dashboard'] },
+    { id: 'assets', labelKey: 'menuCategory.assets', menuIds: ['equipment', 'sites'] },
+    { id: 'maintenance', labelKey: 'menuCategory.maintenance', menuIds: ['maintenance', 'tools'] },
+    { id: 'logistics', labelKey: 'menuCategory.logistics', menuIds: ['stock', 'suppliers', 'subcontracting'] },
+    { id: 'finance', labelKey: 'menuCategory.finance', menuIds: ['budget'] },
+    { id: 'hr', labelKey: 'menuCategory.hr', menuIds: ['effectif'] },
+    { id: 'analysis', labelKey: 'menuCategory.analysis', menuIds: ['reports', 'decisionSupport', 'standards'] },
+    { id: 'data', labelKey: 'menuCategory.data', menuIds: ['exploitation'] },
+    { id: 'settings', labelKey: 'menuCategory.settings', menuIds: ['settings'] }
+  ];
+  return categories.map((cat) => ({
+    id: cat.id,
+    labelKey: cat.labelKey,
+    items: cat.menuIds.map(byId).filter(Boolean)
+  })).filter((cat) => cat.items.length > 0);
+}
+
+/** Liste plate des menus (pour currentMenuId, selectedMenu, etc.). */
+function getMenuStructure(rawMenus, menuCategories) {
+  return menuCategories.flatMap((c) => c.items);
+}
+
 export default function Layout() {
   const { t, i18n } = useTranslation();
   const [selectedMenuId, setSelectedMenuId] = useState(null);
@@ -273,9 +309,13 @@ export default function Layout() {
   const [searchLoading, setSearchLoading] = useState(false);
   const searchInputRef = useRef(null);
   const searchDebounceRef = useRef(null);
+  const lastPendingCountRef = useRef(-1);
   const { user, logout } = useAuth();
+  const snackbar = useSnackbar();
 
-  const menuStructure = React.useMemo(() => getMenuStructure(), []);
+  const rawMenus = React.useMemo(() => getRawMenus(), []);
+  const menuCategories = React.useMemo(() => getMenuCategories(rawMenus), [rawMenus]);
+  const menuStructure = React.useMemo(() => getMenuStructure(rawMenus, menuCategories), [rawMenus, menuCategories]);
   const getPathLabel = (pathSeg) => (pathSeg === '' ? t('path._home') : t(`path.${pathSeg}`));
   const getItemLabelByPath = (path) => {
     const pathOnly = path.split('?')[0];
@@ -319,6 +359,36 @@ export default function Layout() {
     api.get('/alerts/unread-count').then((r) => setUnreadCount(r.data?.count ?? 0)).catch(() => {});
   };
   useEffect(() => { fetchUnreadCount(); }, []);
+
+  // Alerte en temps réel : nouvelle demande d'intervention (polling + BroadcastChannel)
+  useEffect(() => {
+    const notifyNewInterventionRequest = () => {
+      snackbar.showInfo(t('interventionRequests.alertNewRequest'));
+      window.dispatchEvent(new CustomEvent('intervention-request-created'));
+    };
+    let channel;
+    try {
+      channel = new BroadcastChannel(INTERVENTION_REQUEST_CHANNEL);
+      channel.onmessage = (e) => { if (e?.data?.type === 'created') notifyNewInterventionRequest(); };
+    } catch (_) {}
+    const poll = () => {
+      api.get('/intervention-requests', { params: { status: 'pending' } })
+        .then((r) => {
+          const list = Array.isArray(r.data) ? r.data : [];
+          const count = list.length;
+          if (lastPendingCountRef.current >= 0 && count > lastPendingCountRef.current) notifyNewInterventionRequest();
+          lastPendingCountRef.current = count;
+        })
+        .catch(() => {});
+    };
+    poll();
+    const intervalId = setInterval(poll, PENDING_POLL_INTERVAL_MS);
+    return () => {
+      clearInterval(intervalId);
+      try { if (channel) channel.close(); } catch (_) {}
+    };
+  }, [t, snackbar]);
+
   const openAlertsMenu = (e) => {
     setAlertAnchorEl(e.currentTarget);
     Promise.all([
@@ -974,44 +1044,64 @@ export default function Layout() {
           </Box>
           <Box sx={{ flex: 1, overflow: 'auto' }}>
             <List disablePadding sx={{ py: 1, px: 1 }}>
-              {menuStructure.map((menu) => {
-                const isSelected = selectedMenuId === menu.id;
-                return (
-                  <ListItemButton
-                    key={menu.id}
-                    onClick={() => handleMenuClick(menu.id)}
-                    sx={{
-                      borderRadius: 2,
-                      mb: 0.5,
-                      bgcolor: isSelected ? alpha(theme.palette.primary.main, 0.15) : 'transparent',
-                      color: isSelected ? 'primary.main' : 'text.primary',
-                      px: menuCollapsed ? 2 : 2,
-                      py: 1.25,
-                      justifyContent: menuCollapsed ? 'center' : 'flex-start',
-                      '&:hover': {
-                        bgcolor: isSelected
-                          ? alpha(theme.palette.primary.main, 0.2)
-                          : alpha(theme.palette.primary.main, 0.06)
-                      },
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    <Box sx={{ color: 'inherit', display: 'flex', alignItems: 'center', minWidth: 28 }}>
-                      {menu.icon}
-                    </Box>
-                    {!menuCollapsed && (
-                      <ListItemText
-                        primary={t(menu.labelKey)}
-                        primaryTypographyProps={{
-                          fontWeight: isSelected ? 600 : 500,
-                          fontSize: '0.9rem'
+              {menuCategories.map((category) => (
+                <Box key={category.id} sx={{ mb: 2 }}>
+                  {!menuCollapsed && (
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        display: 'block',
+                        px: 2,
+                        py: 0.75,
+                        fontWeight: 700,
+                        color: 'text.secondary',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em'
+                      }}
+                    >
+                      {t(category.labelKey)}
+                    </Typography>
+                  )}
+                  {category.items.map((menu) => {
+                    const isSelected = selectedMenuId === menu.id;
+                    return (
+                      <ListItemButton
+                        key={menu.id}
+                        onClick={() => handleMenuClick(menu.id)}
+                        sx={{
+                          borderRadius: 2,
+                          mb: 0.5,
+                          bgcolor: isSelected ? alpha(theme.palette.primary.main, 0.15) : 'transparent',
+                          color: isSelected ? 'primary.main' : 'text.primary',
+                          px: menuCollapsed ? 2 : 2,
+                          py: 1.25,
+                          justifyContent: menuCollapsed ? 'center' : 'flex-start',
+                          '&:hover': {
+                            bgcolor: isSelected
+                              ? alpha(theme.palette.primary.main, 0.2)
+                              : alpha(theme.palette.primary.main, 0.06)
+                          },
+                          transition: 'all 0.2s ease'
                         }}
-                        sx={{ ml: 1.5 }}
-                      />
-                    )}
-                  </ListItemButton>
-                );
-              })}
+                      >
+                        <Box sx={{ color: 'inherit', display: 'flex', alignItems: 'center', minWidth: 28 }}>
+                          {menu.icon}
+                        </Box>
+                        {!menuCollapsed && (
+                          <ListItemText
+                            primary={t(menu.labelKey)}
+                            primaryTypographyProps={{
+                              fontWeight: isSelected ? 600 : 500,
+                              fontSize: '0.9rem'
+                            }}
+                            sx={{ ml: 1.5 }}
+                          />
+                        )}
+                      </ListItemButton>
+                    );
+                  })}
+                </Box>
+              ))}
             </List>
           </Box>
         </Paper>

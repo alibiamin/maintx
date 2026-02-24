@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -84,7 +84,9 @@ export default function LoginPage() {
   const [langAnchor, setLangAnchor] = useState(null);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const theme = useTheme();
+  const returnTo = location.state?.from?.pathname || '/app';
 
   useEffect(() => {
     const stored = sessionStorage.getItem('loginError');
@@ -107,7 +109,7 @@ export default function LoginPage() {
       if (elapsed < minDisplayMs) {
         await new Promise((r) => setTimeout(r, minDisplayMs - elapsed));
       }
-      navigate('/app');
+      navigate(returnTo, { replace: true });
     } catch (err) {
       const status = err.response?.status;
       const message = err.response?.data?.error || (status === 429

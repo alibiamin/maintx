@@ -67,3 +67,26 @@ export function getLocationFromHash() {
   const full = getPathFromHash();
   return parseDecodedPath(full);
 }
+
+/**
+ * Retourne la location pour le routeur : hash si présent, sinon pathname du navigateur.
+ * Permet d'ouvrir directement /demande-intervention (sans hash) et d'afficher la bonne page.
+ */
+export function getLocationForRouter() {
+  if (typeof window === 'undefined') return { pathname: '/', search: '' };
+  const hash = window.location.hash.replace(/^#\/?/, '').trim();
+  if (hash && /^[A-Za-z0-9_-]+$/.test(hash)) {
+    const full = decodePath(hash);
+    return parseDecodedPath(full.startsWith('/') ? full : '/' + full);
+  }
+  const pathname = window.location.pathname || '/';
+  const search = window.location.search || '';
+  if (pathname !== '/' && pathname !== '') {
+    return { pathname, search };
+  }
+  if (hash && !/^[A-Za-z0-9_-]+$/.test(hash)) {
+    const full = hash.startsWith('/') ? hash : '/' + hash;
+    return parseDecodedPath(full);
+  }
+  return { pathname: '/', search: '' };
+}

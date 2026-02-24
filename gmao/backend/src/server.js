@@ -58,6 +58,7 @@ const presenceRoutes = require('./routes/presence');
 const scheduledReportsRoutes = require('./routes/scheduledReports');
 const stockBySiteRoutes = require('./routes/stockBySite');
 const requiredDocumentTypesRoutes = require('./routes/requiredDocumentTypes');
+const standardsRoutes = require('./routes/standards');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -110,6 +111,8 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+const publicInterventionRequestRoutes = require('./routes/publicInterventionRequest');
+app.use('/api/public', publicInterventionRequestRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/equipment', equipmentRoutes);
 app.use('/api/work-orders', workOrdersRoutes);
@@ -158,6 +161,7 @@ app.use('/api/presence', presenceRoutes);
 app.use('/api/scheduled-reports', scheduledReportsRoutes);
 app.use('/api/stock-by-site', stockBySiteRoutes);
 app.use('/api/required-document-types', requiredDocumentTypesRoutes);
+app.use('/api/standards', standardsRoutes);
 
 // 404 pour toute requête /api non gérée (réponse JSON cohérente)
 app.use('/api', (req, res) => {

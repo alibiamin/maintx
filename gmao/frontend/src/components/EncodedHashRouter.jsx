@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Router } from 'react-router-dom';
-import { getLocationFromHash, encodePath, toPathString } from '../utils/encodedPath';
+import { getLocationForRouter, getLocationFromHash, encodePath, toPathString } from '../utils/encodedPath';
 
 function pathToLocation(path) {
   const p = path.replace(/\?.*$/, '') || '/';
@@ -14,13 +14,13 @@ function pathToLocation(path) {
  */
 export default function EncodedHashRouter({ children }) {
   const [location, setLocation] = useState(() => {
-    const { pathname, search } = getLocationFromHash();
+    const { pathname, search } = getLocationForRouter();
     return { pathname, search, hash: '', state: null, key: 'default' };
   });
 
   useEffect(() => {
-    const handleHashChange = () => {
-      const { pathname, search } = getLocationFromHash();
+    const updateLocation = () => {
+      const { pathname, search } = getLocationForRouter();
       setLocation(prev => ({
         pathname,
         search,
@@ -29,8 +29,12 @@ export default function EncodedHashRouter({ children }) {
         key: prev?.key ?? 'default'
       }));
     };
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    window.addEventListener('hashchange', updateLocation);
+    window.addEventListener('popstate', updateLocation);
+    return () => {
+      window.removeEventListener('hashchange', updateLocation);
+      window.removeEventListener('popstate', updateLocation);
+    };
   }, []);
 
   const navigator = useMemo(() => ({

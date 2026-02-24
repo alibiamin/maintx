@@ -75,7 +75,7 @@ const features = [
     title: 'Maintenance préventive',
     description: 'Plans de maintenance, échéances, checklists et procédures.',
     longDescription: 'Automatisez votre maintenance préventive avec des plans personnalisés, des échéances automatiques et des checklists d\'intervention standardisées.',
-    image: 'https://images.unsplash.com/photo-1581093458791-9f4146a73817?w=600&q=80&auto=format&fit=crop',
+    image: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=600&q=80&auto=format&fit=crop',
     benefits: ['Plans automatisés', 'Checklists standard', 'Rappels intelligents']
   },
   {
