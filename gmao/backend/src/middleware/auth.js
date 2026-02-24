@@ -7,6 +7,9 @@ const jwt = require('jsonwebtoken');
 const db = require('../database/db');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'xmaint-jwt-secret-change-in-production';
+if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || JWT_SECRET === 'xmaint-jwt-secret-change-in-production')) {
+  console.warn('⚠️ JWT_SECRET doit être défini en production. Risque de sécurité.');
+}
 
 /**
  * Vérifie le token JWT, détermine la base (admin vs client) et attache req.user et req.db

@@ -14,9 +14,11 @@ import {
 } from '@mui/material';
 import { Download, PictureAsPdf, TableChart } from '@mui/icons-material';
 import api from '../services/api';
+import { useSnackbar } from '../context/SnackbarContext';
 
 export default function ReportsExports() {
   const [loading, setLoading] = useState(null);
+  const snackbar = useSnackbar();
 
   const exportTypes = [
     { id: 'workorders', label: 'Ordres de travail', format: 'Excel', icon: <TableChart />, apiPath: '/reports/export/excel', filename: 'rapport-ot.xlsx' },
@@ -41,8 +43,10 @@ export default function ReportsExports() {
       a.download = item.filename;
       a.click();
       window.URL.revokeObjectURL(url);
+      snackbar.showSuccess(`${item.label} téléchargé`);
     } catch (e) {
-      console.error(e);
+      const msg = e.response?.data?.error || e.message || 'Erreur lors de l\'export';
+      snackbar.showError(msg);
     } finally {
       setLoading(null);
     }

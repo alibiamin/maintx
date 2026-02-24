@@ -177,8 +177,8 @@ router.get('/cost-per-operating-hour', (req, res) => {
     costParams.push(equipmentId);
   }
   const costs = db.prepare(`
-    SELECT e.id as equipment_id, e.code, e.name,
-           SUM(COALESCE(i.quantity_used * sp.unit_price, 0)) + SUM(COALESCE(i.hours_spent * u_tech.hourly_rate, 0)) as total_cost
+    SELECT e.id as equipment_id, e.code, e.name, e.target_cost_per_operating_hour,
+           SUM(COALESCE(i.quantity_used * sp.unit_price, 0)) + SUM(COALESCE(i.hours_spent * u_tech.hourly_rate, 0)) as maintenance_cost
     FROM work_orders wo
     JOIN equipment e ON wo.equipment_id = e.id
     LEFT JOIN interventions i ON i.work_order_id = wo.id
@@ -192,15 +192,22 @@ router.get('/cost-per-operating-hour', (req, res) => {
   `).all();
   const counterByEq = new Map(counters.map(c => [c.equipment_id, c.value]));
   const result = costs.map(row => {
-    const totalCost = row.total_cost || 0;
+    const maintenanceCost = row.maintenance_cost || 0;
     const operatingHours = counterByEq.get(row.equipment_id) || null;
-    const costPerHour = (operatingHours != null && Number(operatingHours) > 0)
-      ? totalCost / Number(operatingHours) : null;
+    const targetPerHour = row.target_cost_per_operating_hour != null ? Number(row.target_cost_per_operating_hour) : null;
+    const totalCost = (targetPerHour != null && operatingHours != null && Number(operatingHours) > 0)
+      ? targetPerHour * Number(operatingHours)
+      : null;
+    const actualCostPerHour = (operatingHours != null && Number(operatingHours) > 0)
+      ? maintenanceCost / Number(operatingHours) : null;
+    const costPerHour = targetPerHour != null ? targetPerHour : actualCostPerHour;
     return {
       equipment_id: row.equipment_id,
       code: row.code,
       name: row.name,
       total_cost: totalCost,
+      maintenance_cost: maintenanceCost,
+      target_cost_per_operating_hour: targetPerHour,
       operating_hours: operatingHours,
       cost_per_operating_hour: costPerHour
     };
@@ -256,7 +263,8 @@ router.get('/time-by-technician', (req, res) => {
            COUNT(DISTINCT i.work_order_id) as work_orders_count
     FROM users u
     INNER JOIN interventions i ON i.technician_id = u.id
-    INNER JOIN work_orders wo ON i.work_order_id = wo.id AND wo.actual_end BETWEEN ? AND ?
+    INNER JOIN work_orders wo ON i.work_order_id = wo.id
+      AND wo.status = 'completed' AND wo.actual_end IS NOT NULL AND date(wo.actual_end) BETWEEN ? AND ?
     GROUP BY u.id
     ORDER BY hours_spent DESC
   `).all(start, end);
@@ -286,7 +294,7 @@ router.get('/parts-most-used', (req, res) => {
       LEFT JOIN part_families pf ON sp.part_family_id = pf.id
       LEFT JOIN stock_locations sl ON sp.location_id = sl.id
       JOIN work_orders wo ON i.work_order_id = wo.id
-      WHERE wo.actual_end BETWEEN ? AND ? AND wo.status = 'completed'
+      WHERE wo.status = 'completed' AND wo.actual_end IS NOT NULL AND date(wo.actual_end) BETWEEN ? AND ?
       GROUP BY sp.id
       ORDER BY quantity_used DESC
       LIMIT ?
@@ -300,7 +308,7 @@ router.get('/parts-most-used', (req, res) => {
         FROM interventions i
         JOIN spare_parts sp ON i.spare_part_id = sp.id
         JOIN work_orders wo ON i.work_order_id = wo.id
-        WHERE wo.actual_end BETWEEN ? AND ? AND wo.status = 'completed'
+        WHERE wo.status = 'completed' AND wo.actual_end IS NOT NULL AND date(wo.actual_end) BETWEEN ? AND ?
         GROUP BY sp.id
         ORDER BY quantity_used DESC
         LIMIT ?

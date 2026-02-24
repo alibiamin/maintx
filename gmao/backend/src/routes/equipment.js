@@ -11,6 +11,16 @@ const auditService = require('../services/auditService');
 const router = express.Router();
 router.use(authenticate);
 
+/** Retourne true si le paramètre :id est invalide (réponse 400 déjà envoyée) */
+function validateIdParam(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ errors: errors.array() });
+    return true;
+  }
+  return false;
+}
+
 function formatEquipment(row) {
   if (!row) return null;
   return {
@@ -37,6 +47,7 @@ function formatEquipment(row) {
     depreciationYears: row.depreciation_years,
     residualValue: row.residual_value,
     depreciationStartDate: row.depreciation_start_date,
+    targetCostPerOperatingHour: row.target_cost_per_operating_hour != null ? row.target_cost_per_operating_hour : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -499,6 +510,7 @@ router.post('/:id/clone', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id')
 });
 
 router.get('/:id/history', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
   const db = req.db;
   try {
     const workOrders = db.prepare(`
@@ -559,6 +571,7 @@ router.get('/:id/warranties', (req, res) => {
  * Compteurs (heures, cycles, km) pour maintenance conditionnelle
  */
 router.get('/:id/counters', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
   const db = req.db;
   const id = req.params.id;
   const eq = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
@@ -600,6 +613,10 @@ router.put('/:id/counters', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECH
     } else {
       db.prepare('INSERT INTO equipment_counters (equipment_id, counter_type, value, unit) VALUES (?, ?, ?, ?)').run(id, counterType, value, unit || 'h');
     }
+    try {
+      db.prepare('INSERT INTO equipment_counter_history (equipment_id, counter_type, value, source) VALUES (?, ?, ?, ?)').run(id, counterType, value, 'manual');
+      if (db._save) db._save();
+    } catch (_) {}
     const row = db.prepare('SELECT * FROM equipment_counters WHERE equipment_id = ? AND counter_type = ?').get(id, counterType);
     res.json({ id: row.id, equipmentId: row.equipment_id, counterType: row.counter_type, value: row.value, unit: row.unit || 'h', updatedAt: row.updated_at });
   } catch (err) {
@@ -609,10 +626,96 @@ router.put('/:id/counters', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECH
 });
 
 /**
+ * GET /api/equipment/:id/total-cost
+ * Coût total vie de l'actif : main d'œuvre + pièces + sous-traitance (tous OT liés)
+ */
+router.get('/:id/total-cost', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
+  const db = req.db;
+  const id = req.params.id;
+  const eq = db.prepare('SELECT id, code, name FROM equipment WHERE id = ?').get(id);
+  if (!eq) return res.status(404).json({ error: 'Équipement non trouvé' });
+  const getWorkOrderCosts = require('./workOrders').getWorkOrderCosts;
+  let laborCost = 0; let partsCost = 0; let extraCost = 0; let subcontractCost = 0;
+  try {
+    const woIds = db.prepare('SELECT id FROM work_orders WHERE equipment_id = ?').all(id).map((r) => r.id);
+    for (const woId of woIds) {
+      const costs = getWorkOrderCosts(db, woId);
+      if (costs) {
+        laborCost += costs.laborCost || 0;
+        partsCost += costs.partsCost || 0;
+        extraCost += costs.extraFeesCost || 0;
+      }
+    }
+    const sub = db.prepare('SELECT COALESCE(SUM(amount), 0) as s FROM subcontract_orders WHERE work_order_id IN (SELECT id FROM work_orders WHERE equipment_id = ?)').get(id);
+    subcontractCost = sub?.s ?? 0;
+  } catch (e) {
+    if (!e.message || !e.message.includes('no such table')) throw e;
+  }
+  const total = laborCost + partsCost + extraCost + subcontractCost;
+  res.json({
+    equipmentId: id,
+    equipmentCode: eq.code,
+    equipmentName: eq.name,
+    laborCost: Math.round(laborCost * 100) / 100,
+    partsCost: Math.round(partsCost * 100) / 100,
+    extraFeesCost: Math.round(extraCost * 100) / 100,
+    subcontractCost: Math.round(subcontractCost * 100) / 100,
+    totalCost: Math.round(total * 100) / 100
+  });
+});
+
+/**
+ * GET /api/equipment/:id/counter-history
+ * Historique des compteurs pour courbes (équipement_counter_history)
+ */
+router.get('/:id/counter-history', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
+  const db = req.db;
+  const id = req.params.id;
+  const eq = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
+  if (!eq) return res.status(404).json({ error: 'Équipement non trouvé' });
+  const { counterType, limit } = req.query;
+  const lim = Math.min(parseInt(limit, 10) || 100, 500);
+  try {
+    let sql = 'SELECT id, equipment_id, counter_type, value, recorded_at, source FROM equipment_counter_history WHERE equipment_id = ?';
+    const params = [id];
+    if (counterType) { sql += ' AND counter_type = ?'; params.push(counterType); }
+    sql += ' ORDER BY recorded_at DESC LIMIT ?';
+    params.push(lim);
+    const rows = db.prepare(sql).all(...params);
+    res.json(rows.map((r) => ({ id: r.id, equipmentId: r.equipment_id, counterType: r.counter_type, value: r.value, recordedAt: r.recorded_at, source: r.source })));
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) return res.json([]);
+    throw e;
+  }
+});
+
+router.post('/:id/counter-history', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), [
+  body('counterType').notEmpty().trim(),
+  body('value').isFloat({ min: 0 })
+], (req, res) => {
+  const db = req.db;
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const id = req.params.id;
+  if (!db.prepare('SELECT id FROM equipment WHERE id = ?').get(id)) return res.status(404).json({ error: 'Équipement non trouvé' });
+  try {
+    const r = db.prepare('INSERT INTO equipment_counter_history (equipment_id, counter_type, value, source) VALUES (?, ?, ?, ?)').run(id, req.body.counterType, parseFloat(req.body.value), req.body.source || 'manual');
+    const row = db.prepare('SELECT id, equipment_id, counter_type, value, recorded_at FROM equipment_counter_history WHERE id = ?').get(r.lastInsertRowid);
+    res.status(201).json(row ? { id: row.id, equipmentId: row.equipment_id, counterType: row.counter_type, value: row.value, recordedAt: row.recorded_at } : {});
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) return res.status(501).json({ error: 'Table equipment_counter_history non disponible' });
+    throw e;
+  }
+});
+
+/**
  * GET /api/equipment/:id/thresholds
  * Seuils IoT / prévisionnel pour un équipement
  */
 router.get('/:id/thresholds', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
   const db = req.db;
   const id = req.params.id;
   const eq = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
@@ -694,6 +797,7 @@ router.delete('/:id/thresholds/:tid', authorize(ROLES.ADMIN, ROLES.RESPONSABLE),
  * GET /api/equipment/:id/bom — Nomenclature (liste des pièces liées à l'équipement)
  */
 router.get('/:id/bom', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
   const db = req.db;
   const equipmentId = req.params.id;
   const exists = db.prepare('SELECT id FROM equipment WHERE id = ?').get(equipmentId);
@@ -766,9 +870,8 @@ router.delete('/:id/bom/:sparePartId', authorize(ROLES.ADMIN, ROLES.RESPONSABLE)
 });
 
 router.get('/:id', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
   const db = req.db;
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const row = db.prepare(`
     SELECT e.*, c.name as category_name, l.name as ligne_name
     FROM equipment e
@@ -819,8 +922,8 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(
   const id = req.params.id;
   const existing = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Equipement non trouve' });
-  const fields = ['code', 'name', 'description', 'category_id', 'ligne_id', 'parent_id', 'serial_number', 'manufacturer', 'model', 'installation_date', 'location', 'criticite', 'status', 'acquisition_value', 'depreciation_years', 'residual_value', 'depreciation_start_date'];
-  const mapping = { categoryId: 'category_id', ligneId: 'ligne_id', parentId: 'parent_id', serialNumber: 'serial_number', installationDate: 'installation_date', acquisitionValue: 'acquisition_value', depreciationYears: 'depreciation_years', residualValue: 'residual_value', depreciationStartDate: 'depreciation_start_date' };
+  const fields = ['code', 'name', 'description', 'category_id', 'ligne_id', 'parent_id', 'serial_number', 'manufacturer', 'model', 'installation_date', 'location', 'criticite', 'status', 'acquisition_value', 'depreciation_years', 'residual_value', 'depreciation_start_date', 'target_cost_per_operating_hour'];
+  const mapping = { categoryId: 'category_id', ligneId: 'ligne_id', parentId: 'parent_id', serialNumber: 'serial_number', installationDate: 'installation_date', acquisitionValue: 'acquisition_value', depreciationYears: 'depreciation_years', residualValue: 'residual_value', depreciationStartDate: 'depreciation_start_date', targetCostPerOperatingHour: 'target_cost_per_operating_hour' };
   const updates = [];
   const values = [];
   for (const [key, val] of Object.entries(req.body)) {

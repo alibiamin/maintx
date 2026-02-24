@@ -39,6 +39,8 @@ const proceduresRoutes = require('./routes/procedures');
 const tenantsRoutes = require('./routes/tenants');
 const exploitationRoutes = require('./routes/exploitation');
 const partFamiliesRoutes = require('./routes/partFamilies');
+const partCategoriesRoutes = require('./routes/partCategories');
+const partSubFamiliesRoutes = require('./routes/partSubFamilies');
 const brandsRoutes = require('./routes/brands');
 const budgetsRoutes = require('./routes/budgets');
 const externalContractorsRoutes = require('./routes/externalContractors');
@@ -50,16 +52,52 @@ const rootCausesRoutes = require('./routes/rootCauses');
 const workOrderTemplatesRoutes = require('./routes/workOrderTemplates');
 const stockLocationsRoutes = require('./routes/stockLocations');
 const stockReservationsRoutes = require('./routes/stockReservations');
+const timeEntriesRoutes = require('./routes/timeEntries');
+const attendanceOverridesRoutes = require('./routes/attendanceOverrides');
+const presenceRoutes = require('./routes/presence');
+const scheduledReportsRoutes = require('./routes/scheduledReports');
+const stockBySiteRoutes = require('./routes/stockBySite');
+const requiredDocumentTypesRoutes = require('./routes/requiredDocumentTypes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors({ origin: true, credentials: true }));
+// CORS : autoriser les applications externes (origine quelconque, credentials, en-têtes courants)
+app.use(cors({
+  origin: true,
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+}));
 app.use(express.json());
+
+// Toutes les réponses /api en JSON
+app.use('/api', (req, res, next) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  next();
+});
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Point d’entrée pour les applications externes : infos API (sans authentification)
+app.get('/api', (req, res) => {
+  res.json({
+    name: 'GMAO / MAINTX API',
+    version: '1.0',
+    description: 'API REST pour la Gestion de Maintenance. Authentification requise (sauf /api/auth/login et /api/health).',
+    documentation: '/api/openapi.json',
+    integrationGuide: 'Voir docs/API_INTEGRATION_EXTERNE.md pour l\'intégration depuis applications externes.',
+    auth: { type: 'Bearer JWT', login: 'POST /api/auth/login' },
+    basePath: '/api'
+  });
+});
+
+try {
+  const openapi = require('./openapi.json');
+  app.get('/api/openapi.json', (req, res) => res.json(openapi));
+} catch (_) {}
 
 // Éviter 404 sur favicon et requêtes Chrome DevTools
 app.get('/favicon.ico', (req, res) => res.status(204).end());
@@ -101,6 +139,8 @@ app.use('/api/procedures', proceduresRoutes);
 app.use('/api/tenants', tenantsRoutes);
 app.use('/api/exploitation', exploitationRoutes);
 app.use('/api/part-families', partFamiliesRoutes);
+app.use('/api/part-categories', partCategoriesRoutes);
+app.use('/api/part-sub-families', partSubFamiliesRoutes);
 app.use('/api/brands', brandsRoutes);
 app.use('/api/budgets', budgetsRoutes);
 app.use('/api/external-contractors', externalContractorsRoutes);
@@ -112,6 +152,17 @@ app.use('/api/root-causes', rootCausesRoutes);
 app.use('/api/work-order-templates', workOrderTemplatesRoutes);
 app.use('/api/stock-locations', stockLocationsRoutes);
 app.use('/api/stock-reservations', stockReservationsRoutes);
+app.use('/api/time-entries', timeEntriesRoutes);
+app.use('/api/attendance-overrides', attendanceOverridesRoutes);
+app.use('/api/presence', presenceRoutes);
+app.use('/api/scheduled-reports', scheduledReportsRoutes);
+app.use('/api/stock-by-site', stockBySiteRoutes);
+app.use('/api/required-document-types', requiredDocumentTypesRoutes);
+
+// 404 pour toute requête /api non gérée (réponse JSON cohérente)
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Ressource non trouvée', path: req.method + ' ' + req.path });
+});
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -186,23 +237,23 @@ async function start() {
   const adminDb = db.getAdminDb();
   ensureAdminBaseSchema(adminDb);
 
-  // Migrations sur gmao.db (tenants, users.tenant_id, etc.)
+  // Migrations sur gmao.db : uniquement celles qui concernent la base admin (tenants, users.tenant_id).
+  // Les autres migrations (sites, equipment, work_orders, etc.) s'appliquent à la base client (default.db) via runClientMigrations.
+  const ADMIN_MIGRATIONS = ['026_tenants.js', '027_users_tenant_id.js', '028_tenants_license_dates.js'];
   try {
     const path = require('path');
     const fs = require('fs');
     const migrationsDir = path.join(__dirname, 'database/migrations');
 
     if (fs.existsSync(migrationsDir)) {
-      const files = fs.readdirSync(migrationsDir)
-        .filter(f => f.endsWith('.js'))
-        .sort();
-
-      for (const f of files) {
+      for (const f of ADMIN_MIGRATIONS) {
+        const fullPath = path.join(migrationsDir, f);
+        if (!fs.existsSync(fullPath)) continue;
         try {
-          const m = require(path.join(migrationsDir, f));
+          const m = require(fullPath);
           if (m.up) {
             m.up(adminDb);
-            console.log(`✅ Migration appliquée: ${f}`);
+            console.log(`✅ Migration admin (gmao.db): ${f}`);
           }
         } catch (err) {
           if (!err.message.includes('already exists') && !err.message.includes('duplicate')) {
@@ -213,7 +264,66 @@ async function start() {
       adminDb._save();
     }
   } catch (err) {
-    console.warn('⚠️  Erreur lors de l\'exécution automatique des migrations:', err.message);
+    console.warn('⚠️  Erreur lors des migrations admin:', err.message);
+  }
+
+  // gmao.db = base admin uniquement (tenants, abonnements). Données de test : tenant Démo + utilisateurs pour connexion.
+  try {
+    let tenantCount = 0;
+    try {
+      tenantCount = adminDb.prepare('SELECT COUNT(*) as c FROM tenants').get().c;
+    } catch (_) {}
+    if (tenantCount === 0) {
+      const now = new Date();
+      const licenseStart = now.toISOString().slice(0, 10);
+      const licenseEnd = new Date(now.getFullYear() + 5, 11, 31).toISOString().slice(0, 10);
+      adminDb.prepare(`
+        INSERT INTO tenants (name, db_filename, email_domain, license_start, license_end)
+        VALUES ('Démo', 'default.db', '@xmaint.org', ?, ?)
+      `).run(licenseStart, licenseEnd);
+      const tenantId = adminDb.prepare('SELECT id FROM tenants WHERE db_filename = ?').get('default.db').id;
+      const roleIds = {};
+      adminDb.prepare('SELECT id, name FROM roles').all().forEach(r => { roleIds[r.name] = r.id; });
+      const pwdHash = bcrypt.hashSync('Password123!', 10);
+      const demoUsers = [
+        { email: 'responsable@xmaint.org', firstName: 'Jean', lastName: 'Responsable', role: 'responsable_maintenance' },
+        { email: 'technicien@xmaint.org', firstName: 'Pierre', lastName: 'Technicien', role: 'technicien' },
+        { email: 'user@xmaint.org', firstName: 'Marie', lastName: 'Utilisatrice', role: 'utilisateur' }
+      ];
+      try {
+        const insUser = adminDb.prepare(`
+          INSERT OR IGNORE INTO users (email, password_hash, first_name, last_name, role_id, is_active, tenant_id)
+          VALUES (?, ?, ?, ?, ?, 1, ?)
+        `);
+        for (const u of demoUsers) {
+          insUser.run(u.email, pwdHash, u.firstName, u.lastName, roleIds[u.role] || roleIds.utilisateur, tenantId);
+        }
+      } catch (_) {}
+      adminDb._save();
+      console.log('✅ Tenant Démo (default.db) et utilisateurs de test créés dans gmao.db');
+    }
+  } catch (errAdmin) {
+    console.warn('⚠️  Seed admin (tenants):', errAdmin.message);
+  }
+
+  // Base client par défaut (démo) : schéma GMAO + données de test (sites, équipements, OT)
+  try {
+    const defaultDb = db.getClientDb(process.env.GMAO_DEFAULT_CLIENT_DB || 'default.db');
+    db.ensureClientMigrations(defaultDb);
+    let sitesCount = 0;
+    try {
+      sitesCount = defaultDb.prepare('SELECT COUNT(*) as c FROM sites').get().c;
+    } catch (_) {}
+    if (sitesCount === 0) {
+      const seedModule = require('./database/seed');
+      if (seedModule.runSeed) {
+        await seedModule.runSeed(defaultDb);
+        defaultDb._save();
+        console.log('✅ Données de test GMAO chargées dans la base client (default.db)');
+      }
+    }
+  } catch (errClient) {
+    console.warn('⚠️  Base client démo:', errClient.message);
   }
 
   function listen(port) {
@@ -251,6 +361,42 @@ async function start() {
   }
 
   listen(PORT);
+
+  // Job : rapports planifiés (toutes les heures, pour chaque base client)
+  const scheduledReportsModule = require('./routes/scheduledReports');
+  if (scheduledReportsModule.runScheduledReports) {
+    setInterval(() => {
+      try {
+        const adminDb = db.getAdminDb();
+        let tenants = [];
+        try { tenants = adminDb.prepare('SELECT id FROM tenants').all(); } catch (_) {}
+        for (const t of tenants) {
+          try {
+            const clientDb = db.getClientDb(t.id);
+            scheduledReportsModule.runScheduledReports(clientDb, t.id);
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }, 60 * 60 * 1000);
+  }
+
+  // Job : génération OT par compteur + alertes seuils (toutes les heures)
+  const scheduledJobs = require('./services/scheduledJobs');
+  if (scheduledJobs.runAll) {
+    setInterval(() => {
+      try {
+        const adminDb = db.getAdminDb();
+        let tenants = [];
+        try { tenants = adminDb.prepare('SELECT id FROM tenants').all(); } catch (_) {}
+        for (const t of tenants) {
+          try {
+            const clientDb = db.getClientDb(t.id);
+            scheduledJobs.runAll(clientDb, t.id);
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }, 60 * 60 * 1000);
+  }
 }
 
 start().catch(err => {

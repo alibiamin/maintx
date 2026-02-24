@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  Alert,
   Box,
   Card,
   Table,
@@ -21,6 +22,7 @@ import {
 import { Add, Visibility } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { useSnackbar } from '../../context/SnackbarContext';
 import InterventionFlow from '../../components/InterventionFlow';
 import { useTranslation } from 'react-i18next';
 
@@ -39,8 +41,10 @@ export default function WorkOrderList() {
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [loadError, setLoadError] = useState(null);
   const { user } = useAuth();
   const navigate = useNavigate();
+  const snackbar = useSnackbar();
   const canCreate = ['administrateur', 'responsable_maintenance', 'technicien', 'utilisateur'].includes(user?.role);
 
   useEffect(() => {
@@ -49,6 +53,7 @@ export default function WorkOrderList() {
 
   useEffect(() => {
     setLoading(true);
+    setLoadError(null);
     const params = { page: page + 1, limit: rowsPerPage, sortBy, order: sortOrder };
     if (filterStatus) params.status = filterStatus;
     api.get('/work-orders', { params })
@@ -56,15 +61,24 @@ export default function WorkOrderList() {
         setOrders(r.data?.data ?? r.data ?? []);
         setTotal(r.data?.total ?? (r.data?.length ?? 0));
       })
-      .catch(console.error)
+      .catch((err) => {
+        const msg = err.response?.data?.error || 'Erreur chargement des ordres de travail';
+        setLoadError(msg);
+        snackbar.showError(msg);
+      })
       .finally(() => setLoading(false));
-  }, [filterStatus, page, rowsPerPage, sortBy, sortOrder]);
+  }, [filterStatus, page, rowsPerPage, sortBy, sortOrder, snackbar]);
 
   const handleChangePage = (_, newPage) => setPage(newPage);
   const handleChangeRowsPerPage = (e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); };
 
   return (
     <Box>
+      {loadError && (
+        <Alert severity="error" onClose={() => setLoadError(null)} sx={{ mb: 2 }}>
+          {loadError}
+        </Alert>
+      )}
       <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={3}>
         <Box>
           <h2 style={{ margin: 0 }}>Ordres de travail</h2>

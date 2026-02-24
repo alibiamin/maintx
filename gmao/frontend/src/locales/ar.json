@@ -105,6 +105,7 @@
     "reports_0": "التقارير",
     "sites_0": "المواقع",
     "effectif_0": "الطاقم",
+    "effectif_1": "التوقيت والحضور",
     "settings_0": "الإعدادات",
     "settings_creation": "إنشاء"
   },
@@ -174,6 +175,8 @@
     "technicians_competencies": "الكفاءات",
     "technicians_rules": "قواعد التعيين",
     "technicians_team": "الفريق",
+    "effectif_presence": "الحضور",
+    "effectif_pointage": "التوقيت",
     "settings_config": "التكوين",
     "settings_alerts": "تنبيهات البريد / الرسائل",
     "settings_users": "المستخدمون",

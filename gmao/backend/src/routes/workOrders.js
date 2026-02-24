@@ -24,6 +24,16 @@ const woUpload = multer({
 });
 router.use(authenticate);
 
+/** Retourne true si le paramètre :id est invalide (réponse 400 déjà envoyée) */
+function validateIdParam(req, res) {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ errors: errors.array() });
+    return true;
+  }
+  return false;
+}
+
 function getUsersByRole(db, tenantId, roleNames) {
   const placeholders = roleNames.map(() => '?').join(',');
   if (tenantId != null) {
@@ -92,6 +102,8 @@ function formatWO(row, costs = null) {
   if (row.procedure_description !== undefined) out.procedureDescription = row.procedure_description;
   if (row.procedure_steps !== undefined) out.procedureSteps = row.procedure_steps;
   if (row.procedure_safety_notes !== undefined) out.procedureSafetyNotes = row.procedure_safety_notes;
+  // Workflow : draft | planned | in_progress | to_validate | pending_approval | closed
+  out.statusWorkflow = row.status_workflow ?? (row.status === 'completed' ? 'closed' : row.status === 'in_progress' ? 'in_progress' : row.status === 'pending' ? 'planned' : row.status === 'cancelled' || row.status === 'deferred' ? row.status : 'planned');
   return out;
 }
 
@@ -125,6 +137,15 @@ function getWorkOrderCosts(db, woId) {
       WHERE sm.work_order_id = ? AND sm.movement_type = 'out'
     `).get(woId);
     partsCost += Number(mov?.mov_cost) || 0;
+  } catch (_) {}
+  try {
+    const consumed = db.prepare(`
+      SELECT COALESCE(SUM(c.quantity * COALESCE(c.unit_cost_at_use, sp.unit_price, 0)), 0) as consumed_cost
+      FROM work_order_consumed_parts c
+      LEFT JOIN spare_parts sp ON c.spare_part_id = sp.id
+      WHERE c.work_order_id = ?
+    `).get(woId);
+    partsCost += Number(consumed?.consumed_cost) || 0;
   } catch (_) {}
 
   const wo = db.prepare('SELECT actual_start, actual_end, assigned_to FROM work_orders WHERE id = ?').get(woId);
@@ -172,6 +193,14 @@ function getWorkOrderCosts(db, woId) {
       });
     } catch (_) {}
   }
+  if (laborCost === 0) {
+    try {
+      const phaseRows = db.prepare('SELECT hours_spent FROM work_order_phase_times WHERE work_order_id = ?').all(woId);
+      phaseRows.forEach((row) => {
+        laborCost += (parseFloat(row.hours_spent) || 0) * defaultHourlyRate;
+      });
+    } catch (_) {}
+  }
 
   let reservationsCost = 0;
   try {
@@ -188,7 +217,16 @@ function getWorkOrderCosts(db, woId) {
   try {
     const extra = db.prepare('SELECT COALESCE(SUM(amount), 0) as s FROM work_order_extra_fees WHERE work_order_id = ?').get(woId);
     extraFeesCost = Number(extra?.s) || 0;
-  } catch (_) {}
+  } catch (e) {
+    if (e && e.message && (e.message.includes('no such table') || e.message.includes('work_order_extra_fees'))) {
+      try {
+        const dbModule = require('../database/db');
+        if (typeof dbModule.ensureClientMigrations === 'function') dbModule.ensureClientMigrations(db);
+        const retry = db.prepare('SELECT COALESCE(SUM(amount), 0) as s FROM work_order_extra_fees WHERE work_order_id = ?').get(woId);
+        extraFeesCost = Number(retry?.s) || 0;
+      } catch (_) {}
+    }
+  }
 
   const totalCost = laborCost + partsCost + reservationsCost + extraFeesCost;
   return {
@@ -293,6 +331,7 @@ router.get('/calendar', (req, res) => {
  * GET /api/work-orders/:id/reservations — Réservations de pièces pour cet OT
  */
 router.get('/:id/reservations', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
   const db = req.db;
   const woId = req.params.id;
   const wo = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(woId);
@@ -411,9 +450,147 @@ router.delete('/:id/reservations/:reservationId', authorize(ROLES.ADMIN, ROLES.R
 });
 
 /**
+ * GET /api/work-orders/:id/consumed-parts — Pièces consommées sur l'OT
+ */
+router.get('/:id/consumed-parts', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
+  const db = req.db;
+  const wo = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(req.params.id);
+  if (!wo) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
+  let rows = [];
+  try {
+    rows = db.prepare(`
+      SELECT c.id, c.work_order_id, c.spare_part_id, c.quantity, c.unit_cost_at_use, c.created_at, c.created_by,
+             sp.code as part_code, sp.name as part_name, sp.unit_price
+      FROM work_order_consumed_parts c
+      JOIN spare_parts sp ON c.spare_part_id = sp.id
+      WHERE c.work_order_id = ?
+      ORDER BY c.id
+    `).all(req.params.id);
+  } catch (e) {
+    if (!e.message || !e.message.includes('no such table')) throw e;
+  }
+  const out = rows.map((c) => {
+    const unitCost = c.unit_cost_at_use != null ? Number(c.unit_cost_at_use) : (c.unit_price != null ? Number(c.unit_price) : 0);
+    return {
+      id: c.id,
+      workOrderId: c.work_order_id,
+      sparePartId: c.spare_part_id,
+      partCode: c.part_code,
+      partName: c.part_name,
+      quantity: Number(c.quantity),
+      unitCostAtUse: c.unit_cost_at_use != null ? Number(c.unit_cost_at_use) : null,
+      unitPrice: c.unit_price != null ? Number(c.unit_price) : 0,
+      lineCost: Math.round(Number(c.quantity) * unitCost * 100) / 100,
+      createdAt: c.created_at,
+      createdBy: c.created_by
+    };
+  });
+  res.json(out);
+});
+
+/**
+ * POST /api/work-orders/:id/consumed-parts — Enregistrer une pièce consommée (optionnel : mouvement de stock sortie)
+ */
+router.post('/:id/consumed-parts', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), [
+  body('sparePartId').isInt(),
+  body('quantity').isFloat({ min: 0.01 }),
+  body('unitCostAtUse').optional().isFloat({ min: 0 }),
+  body('createStockExit').optional().isBoolean()
+], (req, res) => {
+  const db = req.db;
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const woId = parseInt(req.params.id, 10);
+  const { sparePartId, quantity: qty, unitCostAtUse, createStockExit } = req.body;
+  const quantity = parseFloat(qty);
+  const wo = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(woId);
+  if (!wo) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
+  const part = db.prepare('SELECT id, code, name, unit_price FROM spare_parts WHERE id = ?').get(sparePartId);
+  if (!part) return res.status(404).json({ error: 'Pièce non trouvée' });
+  let available = 0;
+  try {
+    const bal = db.prepare('SELECT quantity_accepted, quantity FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
+    available = bal?.quantity_accepted ?? bal?.quantity ?? 0;
+  } catch (_) {
+    try {
+      const bal = db.prepare('SELECT quantity FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
+      available = bal?.quantity ?? 0;
+    } catch (__) {}
+  }
+  if (createStockExit === true && available < quantity) {
+    return res.status(400).json({
+      error: `Stock insuffisant. Disponible : ${available}, demandé : ${quantity}. Enregistrez sans sortie stock ou réduisez la quantité.`
+    });
+  }
+  const unitCost = unitCostAtUse != null ? parseFloat(unitCostAtUse) : (part.unit_price != null ? parseFloat(part.unit_price) : null);
+  try {
+    const r = db.prepare(`
+      INSERT INTO work_order_consumed_parts (work_order_id, spare_part_id, quantity, unit_cost_at_use, created_by)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(woId, sparePartId, quantity, unitCost, req.user.id);
+    const lineId = r.lastInsertRowid;
+    if (createStockExit === true) {
+      const qtyOut = quantity <= 0 ? 1 : Math.abs(quantity);
+      try {
+        db.prepare(`
+          INSERT INTO stock_movements (spare_part_id, quantity, movement_type, work_order_id, user_id, notes)
+          VALUES (?, ?, 'out', ?, ?, ?)
+        `).run(sparePartId, -qtyOut, woId, req.user.id, `Consommation OT (ligne ${lineId})`);
+      } catch (movErr) {
+        if (!movErr.message || !movErr.message.includes('no such table')) console.warn('[workOrders] stock_movements:', movErr.message);
+      }
+    }
+    const row = db.prepare(`
+      SELECT c.id, c.work_order_id, c.spare_part_id, c.quantity, c.unit_cost_at_use, c.created_at,
+             sp.code as part_code, sp.name as part_name, sp.unit_price
+      FROM work_order_consumed_parts c
+      JOIN spare_parts sp ON c.spare_part_id = sp.id
+      WHERE c.id = ?
+    `).get(lineId);
+    const uc = row.unit_cost_at_use != null ? Number(row.unit_cost_at_use) : (row.unit_price != null ? Number(row.unit_price) : 0);
+    res.status(201).json({
+      id: row.id,
+      workOrderId: row.work_order_id,
+      sparePartId: row.spare_part_id,
+      partCode: row.part_code,
+      partName: row.part_name,
+      quantity: Number(row.quantity),
+      unitCostAtUse: row.unit_cost_at_use != null ? Number(row.unit_cost_at_use) : null,
+      unitPrice: row.unit_price != null ? Number(row.unit_price) : 0,
+      lineCost: Math.round(Number(row.quantity) * uc * 100) / 100,
+      createdAt: row.created_at
+    });
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) {
+      return res.status(501).json({ error: 'Table work_order_consumed_parts absente. Exécutez les migrations.' });
+    }
+    throw e;
+  }
+});
+
+/**
+ * DELETE /api/work-orders/:id/consumed-parts/:lineId
+ */
+router.delete('/:id/consumed-parts/:lineId', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), param('lineId').isInt(), (req, res) => {
+  const db = req.db;
+  const wo = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(req.params.id);
+  if (!wo) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
+  try {
+    const result = db.prepare('DELETE FROM work_order_consumed_parts WHERE id = ? AND work_order_id = ?').run(req.params.lineId, req.params.id);
+    if (result.changes === 0) return res.status(404).json({ error: 'Ligne pièce consommée non trouvée' });
+    res.status(204).send();
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) return res.status(501).json({ error: 'Table work_order_consumed_parts absente.' });
+    throw e;
+  }
+});
+
+/**
  * GET /api/work-orders/:id/operators — Liste des opérateurs affectés à l'OT
  */
 router.get('/:id/operators', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
   const db = req.db;
   const wo = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(req.params.id);
   if (!wo) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
@@ -470,6 +647,7 @@ router.delete('/:id/operators/:userId', authorize(ROLES.ADMIN, ROLES.RESPONSABLE
  * GET /api/work-orders/:id/tool-assignments — Outils affectés à cet OT (non retournés)
  */
 router.get('/:id/tool-assignments', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
   const db = req.db;
   const wo = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(req.params.id);
   if (!wo) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
@@ -501,6 +679,7 @@ router.get('/:id/tool-assignments', param('id').isInt(), (req, res) => {
  * GET /api/work-orders/:id/checklist-executions — Exécutions de checklists liées à cet OT
  */
 router.get('/:id/checklist-executions', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
   const db = req.db;
   const woId = req.params.id;
   const wo = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(woId);
@@ -536,6 +715,7 @@ router.get('/:id/checklist-executions', param('id').isInt(), (req, res) => {
  * GET /api/work-orders/:id/phase-times
  */
 router.get('/:id/phase-times', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
   const db = req.db;
   try {
     const rows = db.prepare('SELECT * FROM work_order_phase_times WHERE work_order_id = ? ORDER BY phase_name').all(req.params.id);
@@ -571,9 +751,36 @@ router.post('/:id/phase-times', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.
 });
 
 /**
+ * PUT /api/work-orders/:id/phase-times — Mise à jour en masse (diagnostic, réparation, essai)
+ * Body: { phases: [{ phaseName, hoursSpent, notes? }, ...] }
+ */
+router.put('/:id/phase-times', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), (req, res) => {
+  const db = req.db;
+  const woId = req.params.id;
+  if (!db.prepare('SELECT id FROM work_orders WHERE id = ?').get(woId)) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
+  const phases = Array.isArray(req.body.phases) ? req.body.phases : [];
+  try {
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO work_order_phase_times (work_order_id, phase_name, hours_spent, notes) VALUES (?, ?, ?, ?)
+    `);
+    for (const p of phases) {
+      const name = (p.phaseName || p.phase_name || '').trim();
+      if (!name) continue;
+      stmt.run(woId, name, Math.max(0, parseFloat(p.hoursSpent ?? p.hours_spent) || 0), p.notes || null);
+    }
+    const rows = db.prepare('SELECT id, phase_name, hours_spent, notes FROM work_order_phase_times WHERE work_order_id = ? ORDER BY phase_name').all(woId);
+    res.json(rows.map((r) => ({ id: r.id, phaseName: r.phase_name, hoursSpent: Number(r.hours_spent), notes: r.notes })));
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) return res.status(501).json({ error: 'Table work_order_phase_times non disponible' });
+    throw e;
+  }
+});
+
+/**
  * GET /api/work-orders/:id/attachments
  */
 router.get('/:id/attachments', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
   const db = req.db;
   try {
     const rows = db.prepare(`
@@ -629,6 +836,7 @@ router.delete('/:id/attachments/:attId', authorize(ROLES.ADMIN, ROLES.RESPONSABL
  * GET /api/work-orders/:id/extra-fees — liste des frais supplémentaires de l'OT
  */
 router.get('/:id/extra-fees', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
   const db = req.db;
   if (!db.prepare('SELECT id FROM work_orders WHERE id = ?').get(req.params.id)) return res.status(404).json({ error: 'OT non trouvé' });
   try {
@@ -703,6 +911,7 @@ router.delete('/:id/extra-fees/:feeId', authorize(ROLES.ADMIN, ROLES.RESPONSABLE
  * GET /api/work-orders/:id
  */
 router.get('/:id', param('id').isInt(), (req, res) => {
+  if (validateIdParam(req, res)) return;
   const db = req.db;
   const row = db.prepare(`
     SELECT wo.*, e.name as equipment_name, e.code as equipment_code, t.name as type_name,
@@ -776,6 +985,39 @@ router.get('/:id', param('id').isInt(), (req, res) => {
   } catch (_) {
     out.extraFees = [];
   }
+  try {
+    const consumed = db.prepare(`
+      SELECT c.id, c.work_order_id, c.spare_part_id, c.quantity, c.unit_cost_at_use, c.created_at,
+             sp.code as part_code, sp.name as part_name, sp.unit_price
+      FROM work_order_consumed_parts c
+      JOIN spare_parts sp ON c.spare_part_id = sp.id
+      WHERE c.work_order_id = ?
+      ORDER BY c.id
+    `).all(req.params.id);
+    out.consumedParts = (consumed || []).map((c) => {
+      const unitCost = c.unit_cost_at_use != null ? Number(c.unit_cost_at_use) : (c.unit_price != null ? Number(c.unit_price) : 0);
+      return {
+        id: c.id,
+        workOrderId: c.work_order_id,
+        sparePartId: c.spare_part_id,
+        partCode: c.part_code,
+        partName: c.part_name,
+        quantity: Number(c.quantity),
+        unitCostAtUse: c.unit_cost_at_use != null ? Number(c.unit_cost_at_use) : null,
+        unitPrice: c.unit_price != null ? Number(c.unit_price) : 0,
+        lineCost: Math.round(Number(c.quantity) * unitCost * 100) / 100,
+        createdAt: c.created_at
+      };
+    });
+  } catch (_) {
+    out.consumedParts = [];
+  }
+  try {
+    const phaseRows = db.prepare('SELECT id, phase_name, hours_spent, notes FROM work_order_phase_times WHERE work_order_id = ? ORDER BY phase_name').all(req.params.id);
+    out.phaseTimes = (phaseRows || []).map((p) => ({ id: p.id, phaseName: p.phase_name, hoursSpent: Number(p.hours_spent), notes: p.notes }));
+  } catch (_) {
+    out.phaseTimes = [];
+  }
   res.json(out);
 });
 
@@ -794,6 +1036,14 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROL
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const { title, description, equipmentId, typeId, priority, assignedTo, plannedStart, plannedEnd, maintenancePlanId, procedureId: bodyProcedureId } = req.body;
+  if (equipmentId != null) {
+    const eq = db.prepare('SELECT id, status FROM equipment WHERE id = ?').get(parseInt(equipmentId, 10));
+    if (eq && ['out_of_service', 'retired'].includes(eq.status)) {
+      return res.status(400).json({
+        error: `L'équipement est en statut « ${eq.status === 'retired' ? 'réformé' : 'hors service' } ». Création d'OT non autorisée.`
+      });
+    }
+  }
   const number = generateOTNumber(db);
   const failureDate = req.body.failureDate || (req.body.typeId === 2 ? new Date().toISOString() : null);
   const SLA_HOURS = { critical: 2, high: 8, medium: 24, low: 72 };
@@ -952,6 +1202,13 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROL
       if (!err.message || !err.message.includes('no such table')) { /* work_order_procedures non migré */ }
     }
 
+    // Workflow : brouillon si demandé
+    if (req.body.statusWorkflow === 'draft') {
+      try {
+        db.prepare('UPDATE work_orders SET status_workflow = ? WHERE id = ?').run('draft', woId);
+        row.status_workflow = 'draft';
+      } catch (_) {}
+    }
     auditService.log(db, 'work_order', woId, 'created', { userId: req.user?.id, userEmail: req.user?.email, summary: row.number });
     res.status(201).json(formatWO(row));
   } catch (e) {
@@ -966,7 +1223,8 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROL
  */
 router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), [
   param('id').isInt(),
-  body('status').optional().isIn(['pending', 'in_progress', 'completed', 'cancelled', 'deferred'])
+  body('status').optional().isIn(['pending', 'in_progress', 'completed', 'cancelled', 'deferred']),
+  body('statusWorkflow').optional().isIn(['draft', 'planned', 'in_progress', 'to_validate', 'pending_approval', 'closed'])
 ], (req, res) => {
   const db = req.db;
   const errors = validationResult(req);
@@ -975,14 +1233,70 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), 
     const canClose = [ROLES.ADMIN, ROLES.RESPONSABLE].includes(req.user.role_name);
     if (!canClose) return res.status(403).json({ error: 'Seul un responsable ou un administrateur peut clôturer l\'OT.' });
   }
+  if (req.body.statusWorkflow === 'closed') {
+    const canClose = [ROLES.ADMIN, ROLES.RESPONSABLE].includes(req.user.role_name);
+    if (!canClose) return res.status(403).json({ error: 'Seul un responsable ou un administrateur peut clôturer l\'OT.' });
+  }
   const id = req.params.id;
-  const existing = db.prepare('SELECT id FROM work_orders WHERE id = ?').get(id);
+  const existing = db.prepare('SELECT id, status, status_workflow, project_id FROM work_orders WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
+  if (req.body.equipmentId != null) {
+    const eq = db.prepare('SELECT id, status FROM equipment WHERE id = ?').get(parseInt(req.body.equipmentId, 10));
+    if (eq && ['out_of_service', 'retired'].includes(eq.status)) {
+      return res.status(400).json({
+        error: `L'équipement est en statut « ${eq.status === 'retired' ? 'réformé' : 'hors service' } ». Affectation non autorisée.`
+      });
+    }
+  }
   const hasProcedureCol = (() => { try { db.prepare('SELECT procedure_id FROM work_orders LIMIT 1').get(); return true; } catch (_) { return false; } })();
+  const hasStatusWorkflowCol = (() => { try { db.prepare('SELECT status_workflow FROM work_orders LIMIT 1').get(); return true; } catch (_) { return false; } })();
   const fields = ['title', 'description', 'equipment_id', 'type_id', 'priority', 'status', 'assigned_to', 'planned_start', 'planned_end', 'actual_start', 'actual_end', 'completed_by', 'completed_at', 'signature_name', 'project_id'].concat(hasProcedureCol ? ['procedure_id'] : []);
   const mapping = { equipmentId: 'equipment_id', typeId: 'type_id', assignedTo: 'assigned_to', plannedStart: 'planned_start', plannedEnd: 'planned_end', actualStart: 'actual_start', actualEnd: 'actual_end', completedBy: 'completed_by', completedAt: 'completed_at', signatureName: 'signature_name', projectId: 'project_id', procedureId: 'procedure_id' };
   const updates = [];
   const values = [];
+  let approvalThreshold = 0;
+  try {
+    const r = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('approval_threshold_amount');
+    if (r?.value != null) approvalThreshold = parseFloat(r.value) || 0;
+  } catch (_) {}
+  // Transitions workflow → status
+  if (req.body.statusWorkflow === 'planned') {
+    req.body.status = req.body.status || 'pending';
+    if (hasStatusWorkflowCol) { updates.push('status_workflow = ?'); values.push('planned'); }
+  } else if (req.body.statusWorkflow === 'in_progress') {
+    req.body.status = 'in_progress';
+    if (hasStatusWorkflowCol) { updates.push('status_workflow = ?'); values.push('in_progress'); }
+    if (req.body.actualStart === undefined) req.body.actualStart = new Date().toISOString().slice(0, 19);
+  } else if (req.body.statusWorkflow === 'to_validate' && hasStatusWorkflowCol) {
+    updates.push('status_workflow = ?');
+    values.push('to_validate');
+  } else if (req.body.statusWorkflow === 'closed') {
+    if (approvalThreshold > 0 && hasStatusWorkflowCol) {
+      const costs = getWorkOrderCosts(db, id);
+      if (costs && costs.totalCost >= approvalThreshold) {
+        updates.push('status_workflow = ?');
+        values.push('pending_approval');
+        if (req.body.status === 'completed') {
+          delete req.body.status;
+          req.body.completedAt = undefined;
+          req.body.completedBy = undefined;
+          req.body.signatureName = undefined;
+        }
+      } else {
+        req.body.status = 'completed';
+        if (hasStatusWorkflowCol) { updates.push('status_workflow = ?'); values.push('closed'); }
+      }
+    } else {
+      req.body.status = 'completed';
+      if (hasStatusWorkflowCol) { updates.push('status_workflow = ?'); values.push('closed'); }
+    }
+  } else if (req.body.statusWorkflow === 'draft' && hasStatusWorkflowCol) {
+    updates.push('status_workflow = ?');
+    values.push('draft');
+  } else if (req.body.statusWorkflow === 'pending_approval' && hasStatusWorkflowCol) {
+    updates.push('status_workflow = ?');
+    values.push('pending_approval');
+  }
   if (req.body.status === 'completed') {
     updates.push('completed_at = ?');
     values.push(new Date().toISOString().slice(0, 19));
@@ -1067,10 +1381,74 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), 
       number: row.number,
       title: row.title
     }, req.tenantId).catch(() => {});
+    if (row.project_id) {
+      try {
+        const budgetsRoute = require('./budgets');
+        const budgetRow = db.prepare('SELECT id, amount, name FROM maintenance_budgets WHERE project_id = ?').get(row.project_id);
+        if (budgetRow && typeof budgetsRoute.checkBudgetOverrun === 'function' && typeof budgetsRoute.getProjectCurrentCost === 'function') {
+          const currentCost = budgetsRoute.getProjectCurrentCost(db, row.project_id);
+          budgetsRoute.checkBudgetOverrun(db, budgetRow.id, currentCost, budgetRow.amount, budgetRow.name, req.tenantId);
+        }
+      } catch (_) {}
+    }
   }
 
   auditService.log(db, 'work_order', id, 'updated', { userId: req.user?.id, userEmail: req.user?.email, summary: row.number });
   res.json(formatWO(row));
+});
+
+/**
+ * PUT /api/work-orders/:id/approve — Approuver un OT en attente (coût >= seuil)
+ * Réservé aux responsables et administrateurs.
+ */
+router.put('/:id/approve', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+  const db = req.db;
+  const id = req.params.id;
+  const wo = db.prepare('SELECT id, status_workflow, project_id, number, title FROM work_orders WHERE id = ?').get(id);
+  if (!wo) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
+  const hasStatusWorkflowCol = (() => { try { db.prepare('SELECT status_workflow FROM work_orders LIMIT 1').get(); return true; } catch (_) { return false; } })();
+  if (!hasStatusWorkflowCol || wo.status_workflow !== 'pending_approval') {
+    return res.status(400).json({ error: 'Cet OT n\'est pas en attente d\'approbation.' });
+  }
+  const now = new Date().toISOString().slice(0, 19);
+  try {
+    db.prepare(`
+      UPDATE work_orders SET status = 'completed', status_workflow = 'closed',
+        completed_at = ?, completed_by = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(now, req.user.id, id);
+  } catch (e) {
+    if (e.message && e.message.includes('no such column')) {
+      db.prepare(`UPDATE work_orders SET status = 'completed', completed_at = ?, completed_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(now, req.user.id, id);
+      if (hasStatusWorkflowCol) db.prepare('UPDATE work_orders SET status_workflow = ? WHERE id = ?').run('closed', id);
+    } else throw e;
+  }
+  if (wo.project_id) {
+    try {
+      const budgetsRoute = require('./budgets');
+      if (typeof budgetsRoute.checkBudgetOverrun === 'function') {
+        const budgetRow = db.prepare('SELECT id, amount, name FROM maintenance_budgets WHERE project_id = ?').get(wo.project_id);
+        if (budgetRow) {
+          const currentCost = typeof budgetsRoute.getProjectCurrentCost === 'function' ? budgetsRoute.getProjectCurrentCost(db, wo.project_id) : 0;
+          budgetsRoute.checkBudgetOverrun(db, budgetRow.id, currentCost, budgetRow.amount, budgetRow.name, req.tenantId);
+        }
+      }
+    } catch (_) {}
+  }
+  const responsibles = getUsersByRole(db, req.tenantId, ['responsable_maintenance', 'administrateur']);
+  notificationService.notify(db, 'work_order_closed', responsibles, { number: wo.number, title: wo.title }, req.tenantId).catch(() => {});
+  auditService.log(db, 'work_order', id, 'approved', { userId: req.user?.id, userEmail: req.user?.email, summary: wo.number });
+  const row = db.prepare(`
+    SELECT wo.*, e.name as equipment_name, e.code as equipment_code, t.name as type_name,
+           u.first_name || ' ' || u.last_name as assigned_name
+    FROM work_orders wo
+    LEFT JOIN equipment e ON wo.equipment_id = e.id
+    LEFT JOIN work_order_types t ON wo.type_id = t.id
+    LEFT JOIN users u ON wo.assigned_to = u.id
+    WHERE wo.id = ?
+  `).get(id);
+  const costs = getWorkOrderCosts(db, id);
+  res.json(formatWO(row, costs));
 });
 
 /**

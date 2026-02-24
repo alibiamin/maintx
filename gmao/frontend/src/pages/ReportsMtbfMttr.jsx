@@ -43,8 +43,8 @@ export default function ReportsMtbfMttr() {
               <Table size="small" sx={{ mt: 2 }}>
                 <TableHead><TableRow><TableCell>Équipement</TableCell><TableCell>Code</TableCell><TableCell>Réparations</TableCell><TableCell>MTTR (h)</TableCell></TableRow></TableHead>
                 <TableBody>
-                  {(mttr?.byEquipment || []).slice(0, 20).map((row) => (
-                    <TableRow key={row.equipment_id}>
+                  {(mttr?.byEquipment || []).slice(0, 20).map((row, idx) => (
+                    <TableRow key={row.equipment_id ?? idx}>
                       <TableCell>{row.name}</TableCell><TableCell>{row.code}</TableCell><TableCell>{row.repair_count}</TableCell><TableCell>{row.mttr_hours != null ? Number(row.mttr_hours).toFixed(2) : '—'}</TableCell>
                     </TableRow>
                   ))}
@@ -59,8 +59,8 @@ export default function ReportsMtbfMttr() {
               <Table size="small" sx={{ mt: 2 }}>
                 <TableHead><TableRow><TableCell>Équipement</TableCell><TableCell>Code</TableCell><TableCell>Intervalles</TableCell><TableCell>MTBF (h)</TableCell></TableRow></TableHead>
                 <TableBody>
-                  {(mtbf?.byEquipment || []).slice(0, 20).map((row) => (
-                    <TableRow key={row.equipment_id}>
+                  {(mtbf?.byEquipment || []).slice(0, 20).map((row, idx) => (
+                    <TableRow key={row.equipment_id ?? idx}>
                       <TableCell>{row.name}</TableCell><TableCell>{row.code}</TableCell><TableCell>{row.intervals}</TableCell><TableCell>{row.mtbf_hours != null ? Number(row.mtbf_hours).toFixed(2) : '—'}</TableCell>
                     </TableRow>
                   ))}

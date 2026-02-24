@@ -109,7 +109,7 @@ const WIDGET_LABELS = {
   woByEntity: 'Répartition OT par Site / Département / Ligne / Équipement',
   costByEntity: 'Répartition du coût par Site / Département / Ligne / Équipement',
   charts: 'Graphiques (statuts, priorités, évolution)',
-  analytics: 'BI : Coûts par équipement et MTTR',
+  analytics: 'BI : Répartition du coût période',
   technicianPerformance: 'Performance des techniciens',
   recent: 'Activité récente (OT)',
   topFailures: 'Équipements les plus en panne'
@@ -158,17 +158,29 @@ export default function Dashboard() {
       api.get('/dashboard/wo-by-entity').catch(() => ({ data: null })),
       api.get('/dashboard/cost-by-entity', { params: { period } }).catch(() => ({ data: null }))
     ]).then(([k, c, r, a, t, perf, s, ax, wo, costEnt]) => {
-      setKpis(k.data);
-      setCharts(c.data);
-      setRecent(r.data);
-      setAlerts(a.data);
-      setTopFailures(t.data || []);
-      setTechnicianPerformance(perf.data || []);
-      setSummary(s.data);
-      setAnalytics(ax?.data || null);
-      setWoByEntity(wo?.data || null);
-      setCostByEntity(costEnt?.data || null);
-    }).catch(console.error).finally(() => setLoading(false));
+      setKpis(k?.data ?? null);
+      setCharts(c?.data ?? null);
+      setRecent(Array.isArray(r?.data) ? r.data : []);
+      setAlerts(a?.data ?? { stock: [], sla: [], overduePlans: [] });
+      setTopFailures(Array.isArray(t?.data) ? t.data : []);
+      setTechnicianPerformance(Array.isArray(perf?.data) ? perf.data : []);
+      setSummary(s?.data ?? null);
+      setAnalytics(ax?.data ?? null);
+      setWoByEntity(wo?.data ?? null);
+      setCostByEntity(costEnt?.data ?? null);
+    }).catch((err) => {
+      console.error(err);
+      setKpis(null);
+      setCharts(null);
+      setRecent([]);
+      setAlerts({ stock: [], sla: [], overduePlans: [] });
+      setTopFailures([]);
+      setTechnicianPerformance([]);
+      setSummary(null);
+      setAnalytics(null);
+      setWoByEntity(null);
+      setCostByEntity(null);
+    }).finally(() => setLoading(false));
   }, [period]);
 
   // Layout affiché : uniquement le layout sauvegardé (pas de ré-ajout des widgets par défaut), pour que les widgets décochés restent masqués
@@ -1107,42 +1119,41 @@ export default function Dashboard() {
             <CardContent>
               <Typography variant="h6" fontWeight={700} sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Assessment sx={{ color: 'primary.main', fontSize: 26 }} />
-                BI : Coûts par équipement
+                BI : Répartition du coût période
               </Typography>
-              {(analytics.costsByEquipment || []).length === 0 ? (
-                <Typography color="text.secondary">Aucun coût sur la période</Typography>
-              ) : (
-                <Box sx={{ height: 280 }}>
-                  <ReactApexChart
-                    type="bar"
-                    height={280}
-                    series={[{ name: 'Coût total', data: (analytics.costsByEquipment || []).map((e) => Number(e.totalCost ?? 0)) }]}
-                    options={{
-                      ...apexTheme,
-                      chart: { ...apexTheme.chart, animations: { enabled: true, speed: 600 }, toolbar: { show: false } },
-                      colors: [CHART_COLORS[2]],
-                      plotOptions: {
-                        bar: {
-                          horizontal: true,
-                          borderRadius: 6,
-                          barHeight: '70%',
-                          dataLabels: { position: 'bottom' }
-                        }
-                      },
-                      dataLabels: { enabled: true, formatter: (v) => `${Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} ${currency}` },
-                      xaxis: {
-                        categories: (analytics.costsByEquipment || []).map((e) => (e.code || e.name || '').slice(0, 14)),
-                        ...apexTheme.xaxis,
-                        labels: { formatter: (v) => `${Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} ${currency}` }
-                      },
-                      yaxis: { ...apexTheme.yaxis, labels: { maxWidth: 90 } },
-                      grid: { ...apexTheme.grid, padding: { top: 8, right: 24, left: 8, bottom: 8 } },
-                      tooltip: { ...apexTheme.tooltip, y: { formatter: (v) => `${Number(v).toFixed(2)} ${currency}` } },
-                      legend: { show: false }
-                    }}
-                  />
-                </Box>
-              )}
+              {(() => {
+                const b = analytics.costBreakdown || {};
+                const labor = Number(b.labor) || 0;
+                const parts = Number(b.parts) || 0;
+                const reservations = Number(b.reservations) || 0;
+                const extraFees = Number(b.extraFees) || 0;
+                const subcontract = Number(b.subcontract) || 0;
+                const total = labor + parts + reservations + extraFees + subcontract;
+                const hasData = total > 0;
+                const series = [labor, parts, reservations, extraFees, subcontract];
+                const labels = ['Main d\'œuvre', 'Pièces', 'Réservations', 'Frais divers', 'Sous-traitance'];
+                return !hasData ? (
+                  <Typography color="text.secondary">Aucun coût sur la période</Typography>
+                ) : (
+                  <Box sx={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ReactApexChart
+                      type="donut"
+                      height={280}
+                      series={series}
+                      options={{
+                        ...apexTheme,
+                        chart: { ...apexTheme.chart, animations: { enabled: true, speed: 600 } },
+                        colors: [CHART_COLORS[0], CHART_COLORS[1], CHART_COLORS[2], CHART_COLORS[3], CHART_COLORS[4]],
+                        labels,
+                        legend: { position: 'bottom', horizontalAlign: 'center', fontSize: '12px' },
+                        dataLabels: { formatter: (v, { seriesIndex }) => (total > 0 ? `${((series[seriesIndex] / total) * 100).toFixed(0)} %` : '') },
+                        plotOptions: { pie: { donut: { size: '55%', labels: { show: true, total: { show: true, label: 'Total', formatter: () => `${total.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} ${currency}` } } } } },
+                        tooltip: { ...apexTheme.tooltip, y: { formatter: (v) => `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} ${currency} (${total > 0 ? ((v / total) * 100).toFixed(1) : 0} %)` } }
+                      }}
+                    />
+                  </Box>
+                );
+              })()}
             </CardContent>
           </Card>
         </Grid>

@@ -25,6 +25,7 @@ import { Search, AccountTree } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useActionPanel } from '../../context/ActionPanelContext';
+import { useSnackbar } from '../../context/SnackbarContext';
 
 const statusColors = { operational: 'success', maintenance: 'warning', out_of_service: 'error', retired: 'default' };
 
@@ -47,7 +48,9 @@ export default function EquipmentList() {
   const [searchParams] = useSearchParams();
   const view = searchParams.get('view'); // 'history' | 'documents' | 'warranties' depuis le menu Gestion
   const { setContext } = useActionPanel();
+  const snackbar = useSnackbar();
   const [selectedId, setSelectedId] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
 
   useEffect(() => {
@@ -75,8 +78,10 @@ export default function EquipmentList() {
     ]).then(([c, l]) => {
       setCategories(c.data);
       setLignes(l.data);
-    }).catch(console.error);
-  }, []);
+    }).catch((err) => {
+      snackbar.showError(err.response?.data?.error || 'Erreur chargement des filtres');
+    });
+  }, [snackbar]);
 
   useEffect(() => {
     setLoading(true);
@@ -85,21 +90,30 @@ export default function EquipmentList() {
     if (filterStatus) params.status = filterStatus;
     if (filterCategory) params.categoryId = filterCategory;
     if (filterLigne) params.ligneId = filterLigne;
+    setLoadError(null);
     api.get('/equipment', { params })
       .then(r => {
         const res = r.data;
         setEquipment(res?.data ?? res ?? []);
         setTotal(res?.total ?? (res?.length ?? 0));
       })
-      .catch(console.error)
+      .catch((err) => {
+        setLoadError(err.response?.data?.error || 'Erreur chargement des équipements');
+        snackbar.showError(err.response?.data?.error || 'Erreur chargement des équipements');
+      })
       .finally(() => setLoading(false));
-  }, [search, filterStatus, filterCategory, filterLigne, page, rowsPerPage, sortBy, sortOrder]);
+  }, [search, filterStatus, filterCategory, filterLigne, page, rowsPerPage, sortBy, sortOrder, snackbar]);
 
   const handleChangePage = (_, newPage) => setPage(newPage);
   const handleChangeRowsPerPage = (e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); };
 
   return (
     <Box>
+      {loadError && (
+        <Alert severity="error" onClose={() => setLoadError(null)} sx={{ mb: 2 }}>
+          {loadError}
+        </Alert>
+      )}
       <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={3}>
         <Box>
           <h2 style={{ margin: 0 }}>Équipements</h2>

@@ -81,6 +81,8 @@ export default function EquipmentDetail() {
   const [lignes, setLignes] = useState([]);
   const [parentEquipmentList, setParentEquipmentList] = useState([]);
   const [editMainSubmitting, setEditMainSubmitting] = useState(false);
+  const [costPerHourInput, setCostPerHourInput] = useState('');
+  const [costPerHourSubmitting, setCostPerHourSubmitting] = useState(false);
   const { user } = useAuth();
   const currency = useCurrency();
   const canEditEquipment = ['administrateur', 'responsable_maintenance'].includes(user?.role);
@@ -134,6 +136,11 @@ export default function EquipmentDetail() {
       })
       .finally(() => setLoading(false));
   }, [id, numId, navigate]);
+
+  useEffect(() => {
+    if (equipment?.targetCostPerOperatingHour != null) setCostPerHourInput(String(equipment.targetCostPerOperatingHour));
+    else setCostPerHourInput('');
+  }, [equipment?.targetCostPerOperatingHour]);
 
   const updateCounter = (counterType, value) => {
     if (!numId) return;
@@ -403,6 +410,61 @@ export default function EquipmentDetail() {
               <Grid item xs={12}>
                 <Typography variant="subtitle2" color="text.secondary">Valeur nette comptable (estimée)</Typography>
                 <Typography fontWeight={600}>{bookValue.toLocaleString('fr-FR')} {currency}</Typography>
+              </Grid>
+            )}
+          </Grid>
+        </CardContent>
+      </Card>
+
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
+            <Typography variant="h6">Coût par heure de fonctionnement</Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Objectif de coût par heure d&apos;utilisation (utilisé dans le rapport Coût / h fonctionnement pour comparer au coût réel).
+          </Typography>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} sm={6} md={4}>
+              <Typography variant="subtitle2" color="text.secondary">Objectif actuel</Typography>
+              <Typography>{equipment.targetCostPerOperatingHour != null ? `${Number(equipment.targetCostPerOperatingHour).toLocaleString('fr-FR')} ${currency} / h` : '—'}</Typography>
+            </Grid>
+            {canEditEquipment && (
+              <Grid item xs={12} sm={6} md={4}>
+                <TextField
+                  type="number"
+                  size="small"
+                  label="Objectif (coût / h)"
+                  value={costPerHourInput}
+                  onChange={(e) => setCostPerHourInput(e.target.value)}
+                  inputProps={{ min: 0, step: 0.01 }}
+                  sx={{ width: 200 }}
+                  placeholder={`${currency} / h`}
+                />
+              </Grid>
+            )}
+            {canEditEquipment && (
+              <Grid item xs={12} sm={6} md={4}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  disabled={costPerHourSubmitting}
+                  onClick={() => {
+                    const v = costPerHourInput.trim();
+                    const num = v === '' ? null : parseFloat(v);
+                    if (num !== null && (Number.isNaN(num) || num < 0)) {
+                      snackbar.showError('Valeur invalide');
+                      return;
+                    }
+                    setCostPerHourSubmitting(true);
+                    api.put(`/equipment/${numId}`, { targetCostPerOperatingHour: num })
+                      .then((r) => { setEquipment(r.data); snackbar.showSuccess('Objectif coût / h enregistré'); setCostPerHourInput(r.data.targetCostPerOperatingHour != null ? String(r.data.targetCostPerOperatingHour) : ''); })
+                      .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'))
+                      .finally(() => setCostPerHourSubmitting(false));
+                  }}
+                >
+                  Enregistrer
+                </Button>
               </Grid>
             )}
           </Grid>

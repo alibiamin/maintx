@@ -16,11 +16,13 @@ import {
 } from '@mui/material';
 import { Assignment, Build, CheckCircle, Schedule, ArrowBack, List as ListIcon } from '@mui/icons-material';
 import api from '../services/api';
+import { useSnackbar } from '../context/SnackbarContext';
 
 export default function DashboardActivity() {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const snackbar = useSnackbar();
 
   useEffect(() => {
     loadActivities();
@@ -29,9 +31,10 @@ export default function DashboardActivity() {
   const loadActivities = async () => {
     try {
       const res = await api.get('/dashboard/activity');
-      setActivities(res.data || []);
+      setActivities(Array.isArray(res.data) ? res.data : []);
     } catch (error) {
-      console.error(error);
+      setActivities([]);
+      snackbar.showError('Erreur chargement de l\'activité');
     } finally {
       setLoading(false);
     }

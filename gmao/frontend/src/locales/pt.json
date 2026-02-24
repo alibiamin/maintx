@@ -105,6 +105,7 @@
     "reports_0": "Relatórios",
     "sites_0": "Sítios",
     "effectif_0": "Efetivo",
+    "effectif_1": "Assiduidade e ponto",
     "settings_0": "Configuração",
     "settings_creation": "Criação"
   },
@@ -174,6 +175,8 @@
     "technicians_competencies": "Competências",
     "technicians_rules": "Regras de afetação",
     "technicians_team": "Equipa",
+    "effectif_presence": "Presença",
+    "effectif_pointage": "Ponto",
     "settings_config": "Configuração",
     "settings_alerts": "Alertas email / SMS",
     "settings_users": "Utilizadores",

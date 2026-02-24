@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { Snackbar, Alert } from '@mui/material';
 
 const SnackbarContext = createContext(null);
@@ -17,6 +17,15 @@ export function SnackbarProvider({ children }) {
   const showSuccess = useCallback((msg) => show(msg, 'success'), [show]);
   const showError = useCallback((msg) => show(msg, 'error'), [show]);
   const showInfo = useCallback((msg) => show(msg, 'info'), [show]);
+
+  useEffect(() => {
+    const on403 = (e) => {
+      const msg = e?.detail?.error || 'Accès refusé - permissions insuffisantes';
+      showError(msg);
+    };
+    window.addEventListener('api-403', on403);
+    return () => window.removeEventListener('api-403', on403);
+  }, [showError]);
 
   const handleClose = (_, reason) => {
     if (reason === 'clickaway') return;

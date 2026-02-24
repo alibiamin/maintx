@@ -90,6 +90,28 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), [
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const { workOrderId, sparePartId, quantity } = req.body;
   try {
+    // Vérifier le stock disponible (aligné avec work_order_reservations)
+    let available = 0;
+    try {
+      const bal = db.prepare('SELECT quantity_accepted, quantity FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
+      available = bal?.quantity_accepted ?? bal?.quantity ?? 0;
+    } catch (_) {
+      const bal = db.prepare('SELECT quantity FROM stock_balance WHERE spare_part_id = ?').get(sparePartId);
+      available = bal?.quantity ?? 0;
+    }
+    let alreadyReserved = 0;
+    try {
+      const sum = db.prepare(`
+        SELECT COALESCE(SUM(quantity), 0) as total FROM stock_reservations
+        WHERE spare_part_id = ? AND status = 'reserved'
+      `).get(sparePartId);
+      alreadyReserved = sum?.total ?? 0;
+    } catch (_) {}
+    if (available < alreadyReserved + quantity) {
+      return res.status(400).json({
+        error: `Stock insuffisant. Disponible : ${available}, déjà réservé : ${alreadyReserved}, demandé : ${quantity}.`
+      });
+    }
     const r = db.prepare(`
       INSERT INTO stock_reservations (spare_part_id, work_order_id, quantity, status, reserved_by)
       VALUES (?, ?, ?, 'reserved', ?)

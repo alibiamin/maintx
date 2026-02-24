@@ -10,7 +10,8 @@ const ENTITY_CONFIG_KEYS = {
   piece: 'codification_piece',
   outil: 'codification_outil',
   fournisseur: 'codification_fournisseur',
-  code_defaut: 'codification_code_defaut'
+  code_defaut: 'codification_code_defaut',
+  demande_intervention: 'codification_demande_intervention'
 };
 
 const ENTITY_TABLE = {
@@ -21,7 +22,8 @@ const ENTITY_TABLE = {
   piece: { table: 'spare_parts', codeCol: 'code' },
   outil: { table: 'tools', codeCol: 'code' },
   fournisseur: { table: 'suppliers', codeCol: 'code' },
-  code_defaut: { table: 'failure_codes', codeCol: 'code' }
+  code_defaut: { table: 'failure_codes', codeCol: 'code' },
+  demande_intervention: { table: 'intervention_requests', codeCol: 'number' }
 };
 
 const DEFAULT_CONFIG = {
@@ -32,7 +34,8 @@ const DEFAULT_CONFIG = {
   piece: { prefix: 'P', length: 5 },
   outil: { prefix: 'O', length: 4 },
   fournisseur: { prefix: 'F', length: 4 },
-  code_defaut: { prefix: 'CD', length: 3 }
+  code_defaut: { prefix: 'CD', length: 3 },
+  demande_intervention: { prefix: 'DI', length: 4 }
 };
 
 function ensureAppSettingsTable(db) {

@@ -8,12 +8,14 @@ import {
   Button,
   MenuItem,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Select,
   Grid,
   Alert,
   Typography,
-  IconButton
+  IconButton,
+  Checkbox
 } from '@mui/material';
 import { ArrowBack, Save, Add, Delete } from '@mui/icons-material';
 import api from '../../services/api';
@@ -49,7 +51,8 @@ export default function WorkOrderForm() {
     projectId: '',
     checklistIds: [],
     reservations: [{ sparePartId: '', quantity: 1, notes: '' }],
-    toolIds: []
+    toolIds: [],
+    createAsDraft: false
   });
 
   useEffect(() => {
@@ -127,7 +130,8 @@ export default function WorkOrderForm() {
       procedureIds: (form.procedureIds && form.procedureIds.length) ? form.procedureIds.map(id => parseInt(id, 10)) : undefined,
       reservations: reservationsPayload.length ? reservationsPayload : undefined,
       toolIds: (form.toolIds && form.toolIds.length) ? form.toolIds.map(id => parseInt(id, 10)) : undefined,
-      checklistIds: (form.checklistIds && form.checklistIds.length) ? form.checklistIds.map(id => parseInt(id, 10)) : undefined
+      checklistIds: (form.checklistIds && form.checklistIds.length) ? form.checklistIds.map(id => parseInt(id, 10)) : undefined,
+      statusWorkflow: form.createAsDraft ? 'draft' : undefined
     };
     api.post('/work-orders', payload)
       .then(r => navigate(`/app/work-orders/${r.data.id}`))
@@ -321,6 +325,17 @@ export default function WorkOrderForm() {
                     ))}
                   </Select>
                 </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={!!form.createAsDraft}
+                      onChange={(e) => setForm((f) => ({ ...f, createAsDraft: e.target.checked }))}
+                    />
+                  }
+                  label={t('workOrder.createAsDraft', 'Créer en brouillon (à planifier plus tard)')}
+                />
               </Grid>
             </Grid>
             <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>

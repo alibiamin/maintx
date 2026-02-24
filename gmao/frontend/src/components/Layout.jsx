@@ -62,10 +62,8 @@ import {
   Warning as WarningIcon,
   Info as InfoIcon,
   ImportExport as ImportExportIcon,
-  Category as CategoryIcon,
   AccountBalance as BudgetIcon,
   BusinessCenter as SubcontractIcon,
-  School as TrainingIcon,
   Lightbulb as LightbulbIcon
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
@@ -184,13 +182,6 @@ function getMenuStructure() {
         { labelKey: 'item.creation_assignation_outil', path: `${APP_BASE}/tools/creation/assignment` }
       ]}
     ]},
-    { id: 'catalogue', labelKey: 'menu.catalogue', icon: <CategoryIcon />, path: `${APP_BASE}/catalogue/part-families`, sections: [
-      { titleKey: 'section.catalogue_0', items: [
-        { labelKey: 'item.part_families', path: `${APP_BASE}/catalogue/part-families` },
-        { labelKey: 'item.brands', path: `${APP_BASE}/catalogue/brands` },
-        { labelKey: 'item.wo_templates', path: `${APP_BASE}/catalogue/wo-templates` }
-      ]}
-    ]},
     { id: 'budget', labelKey: 'menu.budget', icon: <BudgetIcon />, path: `${APP_BASE}/budgets`, sections: [
       { titleKey: 'section.budget_0', items: [
         { labelKey: 'item.budgets_list', path: `${APP_BASE}/budgets` }
@@ -200,12 +191,6 @@ function getMenuStructure() {
       { titleKey: 'section.subcontracting_0', items: [
         { labelKey: 'item.external_contractors', path: `${APP_BASE}/subcontracting/contractors` },
         { labelKey: 'item.subcontract_orders', path: `${APP_BASE}/subcontracting/orders` }
-      ]}
-    ]},
-    { id: 'training', labelKey: 'menu.training', icon: <TrainingIcon />, path: `${APP_BASE}/training/catalog`, sections: [
-      { titleKey: 'section.training_0', items: [
-        { labelKey: 'item.training_catalog', path: `${APP_BASE}/training/catalog` },
-        { labelKey: 'item.training_plans', path: `${APP_BASE}/training/plans` }
       ]}
     ]},
     { id: 'reports', labelKey: 'menu.reports', icon: <ReportsIcon />, path: `${APP_BASE}/reports`, sections: [
@@ -234,6 +219,14 @@ function getMenuStructure() {
         { labelKey: 'item.technicians_competencies', path: `${APP_BASE}/technicians/competencies` },
         { labelKey: 'item.technicians_rules', path: `${APP_BASE}/technicians/type-competencies` },
         { labelKey: 'item.technicians_team', path: `${APP_BASE}/technicians/team` }
+      ]},
+      { titleKey: 'section.training_0', items: [
+        { labelKey: 'item.training_catalog', path: `${APP_BASE}/training/catalog` },
+        { labelKey: 'item.training_plans', path: `${APP_BASE}/training/plans` }
+      ]},
+      { titleKey: 'section.effectif_1', items: [
+        { labelKey: 'item.effectif_presence', path: `${APP_BASE}/effectif/presence` },
+        { labelKey: 'item.effectif_pointage', path: `${APP_BASE}/effectif/pointage` }
       ]}
     ]},
     { id: 'exploitation', labelKey: 'menu.exploitation', icon: <ImportExportIcon />, path: `${APP_BASE}/exploitation/export`, sections: [
@@ -247,6 +240,9 @@ function getMenuStructure() {
         { labelKey: 'item.settings_config', path: `${APP_BASE}/settings` },
         { labelKey: 'item.settings_alerts', path: `${APP_BASE}/settings?tab=alertes` },
         { labelKey: 'item.failure_codes', path: `${APP_BASE}/failure-codes` },
+        { labelKey: 'item.part_families', path: `${APP_BASE}/catalogue/part-families` },
+        { labelKey: 'item.brands', path: `${APP_BASE}/catalogue/brands` },
+        { labelKey: 'item.wo_templates', path: `${APP_BASE}/catalogue/wo-templates` },
         { labelKey: 'item.settings_users', path: `${APP_BASE}/users` },
         { labelKey: 'item.settings_roles', path: `${APP_BASE}/settings/roles` },
         { labelKey: 'item.settings_tenants', path: `${APP_BASE}/settings/tenants` },
@@ -459,8 +455,8 @@ export default function Layout() {
     setDetailPanelOpen(true);
     const menu = menuStructure.find(m => m.id === menuId);
     if (menu) {
-      navigate(menu.path);
-      // Développer toutes les sections par défaut
+      // Ne pas naviguer ici : afficher uniquement le panneau des sous-menus.
+      // La navigation se fait au clic sur un sous-élément.
       const expanded = {};
       menu.sections.forEach((_, index) => {
         expanded[`${menuId}-${index}`] = true;
@@ -502,12 +498,8 @@ export default function Layout() {
 
   const selectedMenu = menuStructure.find(m => m.id === selectedMenuId);
 
-  // Filtrer les menus selon la recherche
-  const filteredMenus = menuStructure.filter(menu =>
-    t(menu.labelKey).toLowerCase().includes(menuSearch.toLowerCase())
-  );
-
-  // Filtrer les items dans les sections selon la recherche
+  // Ne pas filtrer les menus principaux par la recherche : la recherche ne s'applique qu'aux items du sous-menu ouvert.
+  // Filtrer uniquement les items dans les sections du sous-menu selon la recherche
   const filterItems = (items) => {
     if (!menuSearch) return items;
     return items.filter(item =>
@@ -982,7 +974,7 @@ export default function Layout() {
           </Box>
           <Box sx={{ flex: 1, overflow: 'auto' }}>
             <List disablePadding sx={{ py: 1, px: 1 }}>
-              {filteredMenus.map((menu) => {
+              {menuStructure.map((menu) => {
                 const isSelected = selectedMenuId === menu.id;
                 return (
                   <ListItemButton

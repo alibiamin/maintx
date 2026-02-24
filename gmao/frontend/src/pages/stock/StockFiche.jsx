@@ -70,7 +70,10 @@ export default function StockFiche() {
   const [part, setPart] = useState(null);
   const [movements, setMovements] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [partCategories, setPartCategories] = useState([]);
   const [partFamilies, setPartFamilies] = useState([]);
+  const [partSubFamilies, setPartSubFamilies] = useState([]);
+  const [units, setUnits] = useState([]);
   const [stockLocations, setStockLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -79,12 +82,20 @@ export default function StockFiche() {
   const [form, setForm] = useState({
     name: '',
     description: '',
+    unitId: '',
     unit: 'unit',
     unitPrice: 0,
     minStock: 0,
     supplierId: '',
     location: '',
+    categoryId: '',
     partFamilyId: '',
+    family: '',
+    subFamily1: '',
+    subFamily2: '',
+    subFamily3: '',
+    subFamily4: '',
+    subFamily5: '',
     locationId: '',
     manufacturerReference: '',
     imageData: null
@@ -105,25 +116,42 @@ export default function StockFiche() {
       api.get(`/stock/parts/${id}`),
       api.get(`/stock/parts/${id}/movements`).catch(() => ({ data: [] })),
       api.get('/suppliers').catch(() => ({ data: [] })),
+      api.get('/part-categories').catch(() => ({ data: [] })),
       api.get('/part-families').catch(() => ({ data: [] })),
-      api.get('/stock-locations').catch(() => ({ data: [] }))
+      api.get('/part-sub-families').catch(() => ({ data: [] })),
+      api.get('/stock-locations').catch(() => ({ data: [] })),
+      api.get('/settings/units').catch(() => ({ data: [] }))
     ])
-      .then(([partRes, movRes, supRes, famRes, locRes]) => {
+      .then(([partRes, movRes, supRes, catRes, famRes, subFamRes, locRes, unitsRes]) => {
         const p = partRes.data;
         setPart(p);
         setMovements(Array.isArray(movRes.data) ? movRes.data : []);
         setSuppliers(Array.isArray(supRes.data) ? supRes.data : []);
+        setPartCategories(Array.isArray(catRes?.data) ? catRes.data : []);
         setPartFamilies(Array.isArray(famRes?.data) ? famRes.data : []);
+        setPartSubFamilies(Array.isArray(subFamRes?.data) ? subFamRes.data : []);
         setStockLocations(Array.isArray(locRes?.data) ? locRes.data : []);
+        setUnits(Array.isArray(unitsRes?.data) ? unitsRes.data : []);
+        const selectedFamily = (famRes?.data && Array.isArray(famRes.data) && p.part_family_id)
+          ? famRes.data.find((f) => f.id === p.part_family_id) : null;
+        const selectedUnit = (unitsRes?.data && Array.isArray(unitsRes.data) && p.unit_id) ? unitsRes.data.find((u) => u.id === p.unit_id) : null;
         setForm({
           name: p.name || '',
           description: p.description || '',
-          unit: p.unit || 'unit',
+          unitId: p.unit_id ?? '',
+          unit: p.unit || selectedUnit?.name || 'unit',
           unitPrice: p.unit_price ?? 0,
           minStock: p.min_stock ?? 0,
           supplierId: p.supplier_id ?? '',
           location: p.location || '',
+          categoryId: selectedFamily?.category_id ?? '',
           partFamilyId: p.part_family_id ?? '',
+          family: p.family ?? selectedFamily?.name ?? '',
+          subFamily1: p.sub_family_1 ?? '',
+          subFamily2: p.sub_family_2 ?? '',
+          subFamily3: p.sub_family_3 ?? '',
+          subFamily4: p.sub_family_4 ?? '',
+          subFamily5: p.sub_family_5 ?? '',
           locationId: p.location_id ?? '',
           manufacturerReference: p.manufacturer_reference || '',
           imageData: p.image_data || null
@@ -137,8 +165,34 @@ export default function StockFiche() {
   }, [id, navigate]);
 
   const handleChange = (field, value) => {
-    setForm((f) => ({ ...f, [field]: value }));
+    setForm((f) => {
+      const next = { ...f, [field]: value };
+      if (field === 'categoryId') {
+        next.partFamilyId = '';
+        next.family = '';
+        next.subFamily1 = ''; next.subFamily2 = ''; next.subFamily3 = ''; next.subFamily4 = ''; next.subFamily5 = '';
+      }
+      if (field === 'partFamilyId') {
+        if (value) {
+          const fam = partFamilies.find((x) => String(x.id) === String(value));
+          if (fam) {
+            next.family = fam.name || '';
+            next.categoryId = fam.category_id ?? '';
+          }
+        } else next.family = '';
+        next.subFamily1 = ''; next.subFamily2 = ''; next.subFamily3 = ''; next.subFamily4 = ''; next.subFamily5 = '';
+      }
+      return next;
+    });
   };
+
+  const familiesFilteredByCategory = form.categoryId
+    ? partFamilies.filter((f) => String(f.category_id) === String(form.categoryId))
+    : partFamilies;
+
+  const subFamiliesForSelectedFamily = form.partFamilyId
+    ? partSubFamilies.filter((s) => String(s.part_family_id) === String(form.partFamilyId))
+    : [];
 
   const handleImageFile = (e) => {
     const file = e.target.files?.[0];
@@ -213,12 +267,19 @@ export default function StockFiche() {
       .put(`/stock/parts/${id}`, {
         name: (form.name || '').trim(),
         description: (form.description || '').trim() || null,
+        unitId: form.unitId ? parseInt(form.unitId, 10) : null,
         unit: (form.unit || 'unit').trim(),
         unitPrice: parseFloat(form.unitPrice) || 0,
         minStock: parseInt(form.minStock, 10) || 0,
         supplierId: form.supplierId ? parseInt(form.supplierId, 10) : null,
         location: (form.location || '').trim() || null,
         partFamilyId: form.partFamilyId ? parseInt(form.partFamilyId, 10) : null,
+        family: (form.family || '').trim() || null,
+        subFamily1: (form.subFamily1 || '').trim() || null,
+        subFamily2: (form.subFamily2 || '').trim() || null,
+        subFamily3: (form.subFamily3 || '').trim() || null,
+        subFamily4: (form.subFamily4 || '').trim() || null,
+        subFamily5: (form.subFamily5 || '').trim() || null,
         locationId: form.locationId ? parseInt(form.locationId, 10) : null,
         manufacturerReference: (form.manufacturerReference || '').trim() || null,
         imageData: form.imageData || null
@@ -229,12 +290,20 @@ export default function StockFiche() {
           ...f,
           name: r.data.name || '',
           description: r.data.description || '',
+          unitId: r.data.unit_id ?? '',
           unit: r.data.unit || 'unit',
           unitPrice: r.data.unit_price ?? 0,
           minStock: r.data.min_stock ?? 0,
           supplierId: r.data.supplier_id ?? '',
           location: r.data.location || '',
+          categoryId: (() => { const fam = partFamilies.find((x) => x.id === r.data.part_family_id); return fam?.category_id ?? ''; })(),
           partFamilyId: r.data.part_family_id ?? '',
+          family: r.data.family ?? '',
+          subFamily1: r.data.sub_family_1 ?? '',
+          subFamily2: r.data.sub_family_2 ?? '',
+          subFamily3: r.data.sub_family_3 ?? '',
+          subFamily4: r.data.sub_family_4 ?? '',
+          subFamily5: r.data.sub_family_5 ?? '',
           locationId: r.data.location_id ?? '',
           manufacturerReference: r.data.manufacturer_reference || '',
           imageData: r.data.image_data || null
@@ -412,13 +481,25 @@ export default function StockFiche() {
                     />
                   </Grid>
                   <Grid item xs={12} sm={4}>
-                    <TextField
-                      fullWidth
-                      label="Unité"
-                      value={form.unit}
-                      onChange={(e) => handleChange('unit', e.target.value)}
-                      size="small"
-                    />
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Unité</InputLabel>
+                      <Select
+                        value={form.unitId ?? ''}
+                        label="Unité"
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          const u = units.find((x) => String(x.id) === String(id));
+                          setForm((f) => ({ ...f, unitId: id, unit: u ? u.name : (f.unit || 'unit') }));
+                        }}
+                      >
+                        <MenuItem value="">— Aucune —</MenuItem>
+                        {units.map((u) => (
+                          <MenuItem key={u.id} value={u.id}>
+                            {u.symbol ? `${u.name} (${u.symbol})` : u.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                   </Grid>
                   <Grid item xs={12} sm={4}>
                     <TextField
@@ -461,6 +542,21 @@ export default function StockFiche() {
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <FormControl fullWidth size="small">
+                      <InputLabel>Catégorie</InputLabel>
+                      <Select
+                        value={form.categoryId ?? ''}
+                        label="Catégorie"
+                        onChange={(e) => handleChange('categoryId', e.target.value)}
+                      >
+                        <MenuItem value="">— Toutes —</MenuItem>
+                        {partCategories.map((c) => (
+                          <MenuItem key={c.id} value={c.id}>{c.code} – {c.name}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth size="small">
                       <InputLabel>Famille de pièce</InputLabel>
                       <Select
                         value={form.partFamilyId ?? ''}
@@ -468,11 +564,45 @@ export default function StockFiche() {
                         onChange={(e) => handleChange('partFamilyId', e.target.value)}
                       >
                         <MenuItem value="">— Aucune —</MenuItem>
-                        {partFamilies.map((f) => (
+                        {familiesFilteredByCategory.map((f) => (
                           <MenuItem key={f.id} value={f.id}>{f.code} – {f.name}</MenuItem>
                         ))}
                       </Select>
                     </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Famille (répartition)"
+                      value={form.family}
+                      onChange={(e) => handleChange('family', e.target.value)}
+                      placeholder="Aligné avec le catalogue"
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>Sous-familles (sélection dans la base des sous-familles de la famille)</Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                      {[1, 2, 3, 4, 5].map((i) => {
+                        const key = `subFamily${i}`;
+                        return (
+                          <FormControl key={key} size="small" sx={{ minWidth: 180, flex: 1 }}>
+                            <InputLabel>Sous-famille {i}</InputLabel>
+                            <Select
+                              value={form[key] ?? ''}
+                              label={`Sous-famille ${i}`}
+                              onChange={(e) => handleChange(key, e.target.value)}
+                              disabled={!form.partFamilyId}
+                            >
+                              <MenuItem value="">— Aucune —</MenuItem>
+                              {subFamiliesForSelectedFamily.map((s) => (
+                                <MenuItem key={s.id} value={s.name}>{s.code} – {s.name}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        );
+                      })}
+                    </Box>
                   </Grid>
                   <Grid item xs={12} sm={6}>
                     <FormControl fullWidth size="small">
@@ -554,9 +684,25 @@ export default function StockFiche() {
                       <Typography variant="body1">{part.min_stock ?? 0}</Typography>
                     </Grid>
                     <Grid item xs={12} sm={6}>
+                      <Typography variant="caption" color="text.secondary">Catégorie</Typography>
+                      <Typography variant="body1">{partFamilies.find((f) => f.id === part.part_family_id)?.category_name || '—'}</Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
                       <Typography variant="caption" color="text.secondary">Famille de pièce</Typography>
                       <Typography variant="body1">{part.part_family_name || part.part_family_code || '—'}</Typography>
                     </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="caption" color="text.secondary">Famille (répartition)</Typography>
+                      <Typography variant="body1">{part.family || '—'}</Typography>
+                    </Grid>
+                    {(part.sub_family_1 || part.sub_family_2 || part.sub_family_3 || part.sub_family_4 || part.sub_family_5) && (
+                      <Grid item xs={12}>
+                        <Typography variant="caption" color="text.secondary">Sous-familles</Typography>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 0.5 }}>
+                          {[1, 2, 3, 4, 5].map((i) => (part[`sub_family_${i}`] ? <Chip key={i} size="small" label={`${i}: ${part[`sub_family_${i}`]}`} variant="outlined" /> : null))}
+                        </Box>
+                      </Grid>
+                    )}
                     <Grid item xs={12} sm={6}>
                       <Typography variant="caption" color="text.secondary">Emplacement</Typography>
                       <Typography variant="body1">{part.location_name || part.location_code || part.location || '—'}</Typography>

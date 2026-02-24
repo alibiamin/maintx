@@ -39,7 +39,7 @@ import { useSnackbar } from '../../context/SnackbarContext';
 import { useCurrency } from '../../context/CurrencyContext';
 import { useTranslation } from 'react-i18next';
 
-const statusColors = { pending: 'warning', in_progress: 'info', completed: 'success', cancelled: 'default', deferred: 'default' };
+const statusColors = { pending: 'warning', in_progress: 'info', completed: 'success', cancelled: 'default', deferred: 'default', draft: 'default', planned: 'warning', to_validate: 'info', closed: 'success' };
 
 export default function WorkOrderDetail() {
   const { t } = useTranslation();
@@ -65,6 +65,8 @@ export default function WorkOrderDetail() {
   const [spareParts, setSpareParts] = useState([]);
   const [reservationForm, setReservationForm] = useState({ sparePartId: '', quantity: 1 });
   const [reservationSubmitting, setReservationSubmitting] = useState(false);
+  const [consumedPartForm, setConsumedPartForm] = useState({ sparePartId: '', quantity: 1, unitCostAtUse: '', createStockExit: true });
+  const [consumedPartSaving, setConsumedPartSaving] = useState(false);
   const [toolAssignments, setToolAssignments] = useState([]);
   const [tools, setTools] = useState([]);
   const [selectedToolId, setSelectedToolId] = useState('');
@@ -360,10 +362,11 @@ export default function WorkOrderDetail() {
   };
 
   const handleStartWork = () => {
-    if (!canEdit || !order?.id || order.status !== 'pending') return;
+    if (!canEdit || !order?.id) return;
+    if (order.status !== 'pending' && order.statusWorkflow !== 'planned') return;
     setActionLoading(true);
-    const now = new Date().toISOString();
-    api.put(`/work-orders/${order.id}`, { ...order, status: 'in_progress', actualStart: now })
+    const now = new Date().toISOString().slice(0, 19);
+    api.put(`/work-orders/${order.id}`, { statusWorkflow: 'in_progress', status: 'in_progress', actualStart: now })
       .then(r => { setOrder(r.data); snackbar.showSuccess('Travail démarré'); })
       .catch(() => snackbar.showError('Erreur'))
       .finally(() => setActionLoading(false));
@@ -419,7 +422,10 @@ export default function WorkOrderDetail() {
               <Typography variant="h5">{order.number}</Typography>
               <Typography variant="h6">{order.title}</Typography>
               <Box sx={{ mt: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                <Chip label={t(`status.${order.status}`, order.status)} color={statusColors[order.status]} size="small" />
+                {(order.statusWorkflow === 'draft' || order.statusWorkflow === 'to_validate') ? (
+                <Chip label={order.statusWorkflow === 'draft' ? (t('status.draft', 'Brouillon')) : (t('status.to_validate', 'À valider'))} color={statusColors[order.statusWorkflow]} size="small" variant="outlined" />
+              ) : null}
+              <Chip label={t(`status.${order.status}`, order.status)} color={statusColors[order.status]} size="small" />
                 <Chip label={t(`priority.${order.priority}`, order.priority)} size="small" variant="outlined" />
                 {order.typeName && <Chip label={order.typeName} size="small" variant="outlined" />}
               </Box>
@@ -440,7 +446,18 @@ export default function WorkOrderDetail() {
                   </Select>
                 </FormControl>
               )}
-              {canEdit && order.status === 'pending' && (
+              {canEdit && order.statusWorkflow === 'draft' && (
+                <Button variant="outlined" size="small" disabled={actionLoading} onClick={() => {
+                  setActionLoading(true);
+                  api.put(`/work-orders/${order.id}`, { statusWorkflow: 'planned' })
+                    .then(() => { snackbar.showSuccess(t('workOrder.planned', 'OT planifié')); loadOrder(); })
+                    .catch((e) => snackbar.showError(e.response?.data?.error || 'Erreur'))
+                    .finally(() => setActionLoading(false));
+                }}>
+                  {t('workOrder.plan', 'Planifier l\'OT')}
+                </Button>
+              )}
+              {canEdit && (order.status === 'pending' || order.statusWorkflow === 'planned') && (
                 <Button variant="contained" startIcon={<PlayArrow />} onClick={handleStartWork} disabled={actionLoading} size="small">
                   Démarrer le travail
                 </Button>
@@ -796,6 +813,97 @@ export default function WorkOrderDetail() {
                   </Typography>
                 )}
               </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pièces consommées — enregistrement des pièces réellement utilisées sur l'OT */}
+      {canEdit && (
+        <Card sx={{ mt: 2 }}>
+          <CardContent>
+            <Typography variant="subtitle1" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <Inventory /> {t('workOrder.consumedParts', 'Pièces consommées')}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {t('workOrder.consumedPartsHint', 'Enregistrez les pièces réellement utilisées sur cet OT. Optionnel : créer une sortie stock.')}
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+              <FormControl size="small" sx={{ minWidth: 220 }}>
+                <InputLabel>{t('workOrder.part', 'Pièce')}</InputLabel>
+                <Select
+                  value={consumedPartForm.sparePartId}
+                  label={t('workOrder.part', 'Pièce')}
+                  onChange={(e) => setConsumedPartForm((f) => ({ ...f, sparePartId: e.target.value }))}
+                >
+                  <MenuItem value="">{t('workOrder.selectPart', 'Sélectionner')}</MenuItem>
+                  {spareParts.map((p) => (
+                    <MenuItem key={p.id} value={p.id}>{p.code} – {p.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField type="number" size="small" label={t('workOrder.quantity', 'Quantité')} value={consumedPartForm.quantity} onChange={(e) => setConsumedPartForm((f) => ({ ...f, quantity: e.target.value }))} inputProps={{ min: 0.01, step: 0.01 }} sx={{ width: 100 }} />
+              <TextField type="number" size="small" label={t('workOrder.unitCost', 'Coût unit. (optionnel)')} value={consumedPartForm.unitCostAtUse} onChange={(e) => setConsumedPartForm((f) => ({ ...f, unitCostAtUse: e.target.value }))} inputProps={{ min: 0, step: 0.01 }} sx={{ width: 120 }} />
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <Select
+                  value={consumedPartForm.createStockExit ? 'yes' : 'no'}
+                  onChange={(e) => setConsumedPartForm((f) => ({ ...f, createStockExit: e.target.value === 'yes' }))}
+                >
+                  <MenuItem value="yes">{t('workOrder.createStockExit', 'Créer sortie stock')}</MenuItem>
+                  <MenuItem value="no">{t('workOrder.noStockExit', 'Sans sortie stock')}</MenuItem>
+                </Select>
+              </FormControl>
+              <Button variant="outlined" size="small" startIcon={<Add />} disabled={consumedPartSaving || !consumedPartForm.sparePartId || !consumedPartForm.quantity || Number(consumedPartForm.quantity) <= 0} onClick={() => {
+                if (!consumedPartForm.sparePartId || !consumedPartForm.quantity) return;
+                setConsumedPartSaving(true);
+                const payload = { sparePartId: Number(consumedPartForm.sparePartId), quantity: Number(consumedPartForm.quantity), createStockExit: consumedPartForm.createStockExit };
+                if (consumedPartForm.unitCostAtUse !== '' && !Number.isNaN(Number(consumedPartForm.unitCostAtUse))) payload.unitCostAtUse = Number(consumedPartForm.unitCostAtUse);
+                api.post(`/work-orders/${order.id}/consumed-parts`, payload)
+                  .then(() => { snackbar.showSuccess(t('workOrder.consumedPartAdded', 'Pièce consommée enregistrée')); setConsumedPartForm({ sparePartId: '', quantity: 1, unitCostAtUse: '', createStockExit: true }); loadOrder(); })
+                  .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'))
+                  .finally(() => setConsumedPartSaving(false));
+              }}>
+                {consumedPartSaving ? t('common.loading', 'Ajout…') : t('workOrder.addConsumed', 'Ajouter')}
+              </Button>
+            </Box>
+            {(order.consumedParts && order.consumedParts.length > 0) ? (
+              <>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>{t('workOrder.code', 'Code')}</TableCell>
+                      <TableCell>{t('workOrder.designation', 'Désignation')}</TableCell>
+                      <TableCell align="right">{t('workOrder.quantity', 'Quantité')}</TableCell>
+                      <TableCell align="right">{t('workOrder.unitCost', 'Coût unit.')}</TableCell>
+                      <TableCell align="right">{t('workOrder.lineCost', 'Coût ligne')}</TableCell>
+                      <TableCell align="right">{t('common.actions', 'Action')}</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {order.consumedParts.map((c) => (
+                      <TableRow key={c.id}>
+                        <TableCell>{c.partCode}</TableCell>
+                        <TableCell>{c.partName}</TableCell>
+                        <TableCell align="right">{c.quantity}</TableCell>
+                        <TableCell align="right">{(c.unitCostAtUse != null ? c.unitCostAtUse : c.unitPrice) != null ? `${Number(c.unitCostAtUse ?? c.unitPrice).toFixed(2)} ${currency}` : '—'}</TableCell>
+                        <TableCell align="right">{c.lineCost != null ? `${Number(c.lineCost).toFixed(2)} ${currency}` : '—'}</TableCell>
+                        <TableCell align="right">
+                          <IconButton size="small" color="error" onClick={() => {
+                            api.delete(`/work-orders/${order.id}/consumed-parts/${c.id}`)
+                              .then(() => { snackbar.showSuccess(t('workOrder.consumedPartDeleted', 'Ligne supprimée')); loadOrder(); })
+                              .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'));
+                          }} title={t('common.delete', 'Supprimer')}><Delete /></IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <Typography variant="body2" sx={{ mt: 1, fontWeight: 600 }}>
+                  {t('workOrder.totalConsumedParts', 'Total pièces consommées')} : {currency} {(order.consumedParts || []).reduce((sum, c) => sum + (Number(c.lineCost) || 0), 0).toFixed(2)}
+                </Typography>
+              </>
+            ) : (
+              <Typography color="text.secondary" variant="body2">{t('workOrder.noConsumedParts', 'Aucune pièce consommée enregistrée.')}</Typography>
             )}
           </CardContent>
         </Card>

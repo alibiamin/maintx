@@ -20,9 +20,11 @@
     "loading": "Chargement...",
     "cancel": "Annuler",
     "save": "Enregistrer",
+    "saved": "Enregistré",
     "saving": "Enregistrement...",
     "download": "Télécharger",
-    "downloading": "Téléchargement…"
+    "downloading": "Téléchargement…",
+    "delete": "Supprimer"
   },
   "exploitation": {
     "exportHint": "Téléchargez un modèle Excel (structure avec en-têtes) pour la table choisie. Remplissez-le puis importez-le via « Importation des données ».",
@@ -44,6 +46,7 @@
     "newRequest": "Nouvelle demande",
     "tabs": { "pending": "En attente", "validated": "Validées", "rejected": "Rejetées" },
     "table": {
+      "number": "N°",
       "title": "Titre",
       "equipment": "Équipement",
       "priority": "Priorité",
@@ -201,6 +204,7 @@
     "decisionSupport_0": "Assistance et aide à la décision",
     "sites_0": "Sites",
     "effectif_0": "Effectif",
+    "effectif_1": "Pointage et présence",
     "exploitation_0": "Données",
     "settings_0": "Paramétrage",
     "settings_creation": "Création"
@@ -291,6 +295,8 @@
     "technicians_competencies": "Compétences",
     "technicians_rules": "Règles d'affectation",
     "technicians_team": "Équipe",
+    "effectif_presence": "Présence",
+    "effectif_pointage": "Pointage",
     "settings_config": "Configuration",
     "settings_alerts": "Alertes email / SMS",
     "failure_codes": "Thésaurus défaillances",
@@ -319,6 +325,7 @@
     "cancelled": "Annulé",
     "deferred": "Reporté",
     "draft": "Brouillon",
+    "to_validate": "À valider",
     "completed_closed": "Terminé (clôturé)"
   },
   "priority": {
@@ -346,7 +353,26 @@
   },
   "workOrder": {
     "costPartsConsumed": "Coût pièces (consommé – interventions)",
-    "totalReservationsForecast": "Total coût réservations (prévision)"
+    "totalReservationsForecast": "Total coût réservations (prévision)",
+    "consumedParts": "Pièces consommées",
+    "consumedPartsHint": "Enregistrez les pièces réellement utilisées sur cet OT. Optionnel : créer une sortie stock.",
+    "part": "Pièce",
+    "selectPart": "Sélectionner",
+    "quantity": "Quantité",
+    "unitCost": "Coût unit.",
+    "createStockExit": "Créer sortie stock",
+    "noStockExit": "Sans sortie stock",
+    "addConsumed": "Ajouter",
+    "consumedPartAdded": "Pièce consommée enregistrée",
+    "consumedPartDeleted": "Ligne supprimée",
+    "code": "Code",
+    "designation": "Désignation",
+    "lineCost": "Coût ligne",
+    "totalConsumedParts": "Total pièces consommées",
+    "noConsumedParts": "Aucune pièce consommée enregistrée.",
+    "createAsDraft": "Créer en brouillon (à planifier plus tard)",
+    "plan": "Planifier l'OT",
+    "planned": "OT planifié"
   },
   "equipmentManagement": {
     "historyTitle": "Historique des interventions",
@@ -381,5 +407,32 @@
     "warrantyStatusExpired": "Expirée",
     "warrantyStatusHeader": "Statut",
     "creationHint": "Création dans le menu Création"
+  },
+  "effectif": {
+    "presenceDescription": "Gestion de la présence de l'effectif. Saisissez les congés, formations ou arrêts pour une date donnée.",
+    "pointageDescription": "Saisie des entrées et sorties (manuel). Le lien avec une machine pointeuse sera disponible ultérieurement.",
+    "date": "Date",
+    "dateFrom": "Du",
+    "dateTo": "Au",
+    "dateTime": "Date / heure",
+    "addOverride": "Saisir congé / formation / absence",
+    "technician": "Technicien",
+    "status": "Statut",
+    "firstIn": "Entrée",
+    "lastOut": "Sortie",
+    "minutesWorked": "Heures",
+    "comment": "Commentaire",
+    "noTechnicians": "Aucun technicien dans l'effectif.",
+    "selectTechnician": "Sélectionnez un technicien",
+    "loadTechnicians": "Charger les techniciens",
+    "entryIn": "Entrée",
+    "entryOut": "Sortie",
+    "noEntries": "Aucun pointage sur la période.",
+    "pointeuse": "Pointeuse",
+    "manual": "Manuel",
+    "type": "Type",
+    "source": "Source",
+    "confirmDeleteEntry": "Supprimer ce pointage ?",
+    "rowsPerPage": "Lignes par page"
   }
 }

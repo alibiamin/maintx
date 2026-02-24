@@ -1,0 +1,93 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "GMAO / MAINTX API",
+    "description": "API REST pour la Gestion de Maintenance (ordres de travail, équipements, stock, effectif, rapports). Multi-tenant. Documentation détaillée intégration externe : docs/API_INTEGRATION_EXTERNE.md",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "/api", "description": "API relative" }
+  ],
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "summary": "Connexion",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "email": { "type": "string" }, "password": { "type": "string" } }, "required": ["email", "password"] } } } },
+        "responses": { "200": { "description": "Token JWT" } }
+      }
+    },
+    "/work-orders": {
+      "get": { "summary": "Liste des OT", "parameters": [{ "name": "status", "in": "query", "schema": { "type": "string" } }, { "name": "page", "in": "query", "schema": { "type": "integer" } }], "responses": { "200": { "description": "Liste ou pagination" } } },
+      "post": { "summary": "Créer un OT", "responses": { "201": { "description": "OT créé" } } }
+    },
+    "/work-orders/{id}": {
+      "get": { "summary": "Détail OT (coûts, pièces consommées, phase-times)" },
+      "put": { "summary": "Modifier OT (workflow, statut)" }
+    },
+    "/work-orders/{id}/approve": {
+      "put": { "summary": "Approuver un OT en attente (seuil montant)" }
+    },
+    "/work-orders/{id}/phase-times": {
+      "get": { "summary": "Temps par phase (diagnostic, réparation, essai)" },
+      "post": { "summary": "Enregistrer temps par phase" }
+    },
+    "/work-orders/{id}/consumed-parts": {
+      "get": { "summary": "Pièces consommées" },
+      "post": { "summary": "Ajouter pièce consommée" }
+    },
+    "/budgets": {
+      "get": { "summary": "Budgets (avec current_cost, alerte dépassement)" }
+    },
+    "/equipment": {
+      "get": { "summary": "Liste équipements" }
+    },
+    "/equipment/{id}/total-cost": {
+      "get": { "summary": "Coût total vie de l'actif" }
+    },
+    "/equipment/{id}/counter-history": {
+      "get": { "summary": "Historique compteurs (courbes)" }
+    },
+    "/scheduled-reports": {
+      "get": { "summary": "Rapports planifiés" },
+      "post": { "summary": "Créer rapport planifié" }
+    },
+    "/time-entries": {
+      "get": { "summary": "Pointages" },
+      "post": { "summary": "Créer pointage" }
+    },
+    "/time-entries/import": {
+      "post": { "summary": "Import pointages (CSV/JSON, mapping badge)" }
+    },
+    "/time-entries/badges": {
+      "get": { "summary": "Mapping badge → technicien" },
+      "post": { "summary": "Associer badge à un technicien" }
+    },
+    "/planning/workload": {
+      "get": { "summary": "Plan de charge (charge vs capacité par technicien)" }
+    },
+    "/stock-by-site": {
+      "get": { "summary": "Stock par site/emplacement" }
+    },
+    "/required-document-types": {
+      "get": { "summary": "Types de documents obligatoires" },
+      "post": { "summary": "Définir document obligatoire" }
+    },
+    "/required-document-types/check": {
+      "get": { "summary": "Vérifier documents manquants/expirés (equipmentId ou siteId)" }
+    },
+    "/settings/budget-alert-threshold": {
+      "get": { "summary": "Seuil % alerte dépassement budget" },
+      "post": { "summary": "Modifier seuil" }
+    },
+    "/settings/approval-threshold-amount": {
+      "get": { "summary": "Seuil montant approbation OT" },
+      "post": { "summary": "Modifier seuil" }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    }
+  },
+  "security": [{ "bearerAuth": [] }]
+}

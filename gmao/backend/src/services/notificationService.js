@@ -25,7 +25,8 @@ const EVENT_LABELS = {
   work_order_closed: 'OT clôturé',
   plan_overdue: 'Plan de maintenance en retard',
   stock_alert: 'Alerte stock',
-  sla_breached: 'SLA dépassé (escalade)'
+  sla_breached: 'SLA dépassé (escalade)',
+  budget_overrun: 'Dépassement budget'
 };
 
 function getTransporter() {
@@ -140,6 +141,8 @@ function buildMessage(eventType, data) {
       return `[${appName}] Alerte stock : ${data.part_name || data.code || ''} — stock actuel sous le minimum.`;
     case 'sla_breached':
       return `[${appName}] SLA dépassé — OT ${data.number || ''} : ${data.title || ''} (priorité ${data.priority || ''}). À traiter en priorité.`;
+    case 'budget_overrun':
+      return `[${appName}] Dépassement budget : ${data.budget_name || ''} — consommé ${data.current_cost != null ? data.current_cost : ''} / budget ${data.amount != null ? data.amount : ''} (${data.percent != null ? data.percent : ''}%).`;
     default:
       return `[${appName}] Notification : ${data.title || eventType}`;
   }
@@ -159,6 +162,8 @@ function buildSubject(eventType, data) {
       return `[xmaint] Alerte stock`;
     case 'sla_breached':
       return `[xmaint] SLA dépassé — ${data.number || ''}`;
+    case 'budget_overrun':
+      return `[xmaint] Dépassement budget — ${data.budget_name || ''}`;
     default:
       return `[xmaint] Notification`;
   }

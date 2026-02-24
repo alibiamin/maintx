@@ -30,12 +30,18 @@ import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { CHART_COLORS } from '../shared/chartTheme';
 import { useCurrency } from '../context/CurrencyContext';
+import { useSnackbar } from '../context/SnackbarContext';
 
 const TAB_IDS = ['costs', 'availability', 'technician', 'parts', 'mttr', 'costPerHour'];
 const TAB_ID_TO_INDEX = Object.fromEntries(TAB_IDS.map((id, i) => [id, i]));
 
+function ensureArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 export default function Reports() {
   const currency = useCurrency();
+  const snackbar = useSnackbar();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab') || '';
   const tab = TAB_ID_TO_INDEX[tabParam] !== undefined ? TAB_ID_TO_INDEX[tabParam] : 0;
@@ -66,47 +72,51 @@ export default function Reports() {
 
   useEffect(() => {
     setLoading(true);
-    const params = { startDate, endDate };
+    const start = startDate || endDate;
+    const end = endDate || startDate;
+    const effectiveStart = start && end && start > end ? end : start;
+    const effectiveEnd = start && end && start > end ? start : end;
+    const params = { startDate: effectiveStart, endDate: effectiveEnd };
     if (siteId) params.siteId = siteId;
     if (equipmentId) params.equipmentId = equipmentId;
     if (tab === 0) {
       api.get('/reports/maintenance-costs', { params })
-        .then(r => setCosts(r.data))
-        .catch(console.error)
+        .then(r => setCosts(ensureArray(r.data)))
+        .catch(() => { setCosts([]); snackbar.showError('Erreur chargement coûts'); })
         .finally(() => setLoading(false));
     } else if (tab === 1) {
       api.get('/reports/availability', { params })
-        .then(r => setAvailability(r.data))
-        .catch(console.error)
+        .then(r => setAvailability(ensureArray(r.data)))
+        .catch(() => { setAvailability([]); snackbar.showError('Erreur chargement disponibilité'); })
         .finally(() => setLoading(false));
     } else if (tab === 2) {
-      api.get('/reports/time-by-technician', { params: { startDate, endDate } })
-        .then(r => setTimeByTech(r.data))
-        .catch(console.error)
+      api.get('/reports/time-by-technician', { params: { startDate: effectiveStart, endDate: effectiveEnd } })
+        .then(r => setTimeByTech(ensureArray(r.data)))
+        .catch(() => { setTimeByTech([]); snackbar.showError('Erreur chargement temps techniciens'); })
         .finally(() => setLoading(false));
     } else if (tab === 4) {
-      const params = { startDate, endDate };
+      const params = { startDate: effectiveStart, endDate: effectiveEnd };
       if (siteId) params.siteId = siteId;
       if (equipmentId) params.equipmentId = equipmentId;
       api.get('/reports/mttr', { params })
         .then(r => setMttrData(r.data || { global: {}, byEquipment: [] }))
-        .catch(() => setMttrData({ global: {}, byEquipment: [] }))
+        .catch(() => { setMttrData({ global: {}, byEquipment: [] }); snackbar.showError('Erreur chargement MTTR'); })
         .finally(() => setLoading(false));
     } else if (tab === 5) {
-      const params = { startDate, endDate };
+      const params = { startDate: effectiveStart, endDate: effectiveEnd };
       if (siteId) params.siteId = siteId;
       if (equipmentId) params.equipmentId = equipmentId;
       api.get('/reports/cost-per-operating-hour', { params })
-        .then(r => setCostPerHourData(r.data || []))
-        .catch(() => setCostPerHourData([]))
+        .then(r => setCostPerHourData(ensureArray(r.data)))
+        .catch(() => { setCostPerHourData([]); snackbar.showError('Erreur chargement coût/h'); })
         .finally(() => setLoading(false));
     } else {
-      api.get('/reports/parts-most-used', { params: { startDate, endDate, limit: 20 } })
-        .then(r => setPartsMostUsed(r.data))
-        .catch(console.error)
+      api.get('/reports/parts-most-used', { params: { startDate: effectiveStart, endDate: effectiveEnd, limit: 20 } })
+        .then(r => setPartsMostUsed(ensureArray(r.data)))
+        .catch(() => { setPartsMostUsed([]); snackbar.showError('Erreur chargement pièces'); })
         .finally(() => setLoading(false));
     }
-  }, [tab, startDate, endDate, siteId, equipmentId]);
+  }, [tab, startDate, endDate, siteId, equipmentId, snackbar]);
 
   const handleExportExcel = async () => {
     try {
@@ -117,8 +127,9 @@ export default function Reports() {
       a.download = 'rapport-ot.xlsx';
       a.click();
       window.URL.revokeObjectURL(url);
+      snackbar.showSuccess('Export téléchargé');
     } catch (e) {
-      console.error(e);
+      snackbar.showError(e.response?.data?.error || 'Erreur lors de l\'export');
     }
   };
 
@@ -134,8 +145,9 @@ export default function Reports() {
       a.download = 'rapport-detaille.xlsx';
       a.click();
       window.URL.revokeObjectURL(url);
+      snackbar.showSuccess('Export détaillé téléchargé');
     } catch (e) {
-      console.error(e);
+      snackbar.showError(e.response?.data?.error || 'Erreur lors de l\'export');
     }
   };
 
@@ -170,32 +182,46 @@ export default function Reports() {
         </Box>
       </Box>
 
-      <Box display="flex" gap={2} flexWrap="wrap" sx={{ mb: 3 }}>
-        <Card sx={{ flex: 1, minWidth: 160, borderRadius: 2 }}>
-          <CardContent>
-            <Typography variant="body2" color="text.secondary" gutterBottom>Coût total ({currency})</Typography>
-            <Typography variant="h5" fontWeight={700} color="primary.main">
-              {costs.reduce((s, c) => s + parseFloat(c.parts_cost || 0) + parseFloat(c.labor_cost || 0), 0).toFixed(2)}
-            </Typography>
-          </CardContent>
-        </Card>
-        <Card sx={{ flex: 1, minWidth: 160, borderRadius: 2 }}>
-          <CardContent>
-            <Typography variant="body2" color="text.secondary" gutterBottom>Temps arrêt total (h)</Typography>
-            <Typography variant="h5" fontWeight={700} sx={{ color: '#FFBF00' }}>
-              {availability.reduce((s, a) => s + parseFloat(a.total_downtime_hours || 0), 0).toFixed(1)}
-            </Typography>
-          </CardContent>
-        </Card>
-        <Card sx={{ flex: 1, minWidth: 160, borderRadius: 2 }}>
-          <CardContent>
-            <Typography variant="body2" color="text.secondary" gutterBottom>Équipements suivis</Typography>
-            <Typography variant="h5" fontWeight={700}>
-              {tab === 0 ? costs.length : availability.length}
-            </Typography>
-          </CardContent>
-        </Card>
-      </Box>
+      {(tab === 0 || tab === 1) && (
+        <Box display="flex" gap={2} flexWrap="wrap" sx={{ mb: 3 }}>
+          {tab === 0 && (
+            <>
+              <Card sx={{ flex: 1, minWidth: 160, borderRadius: 2 }}>
+                <CardContent>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>Coût total ({currency})</Typography>
+                  <Typography variant="h5" fontWeight={700} color="primary.main">
+                    {costs.reduce((s, c) => s + parseFloat(c.parts_cost || 0) + parseFloat(c.labor_cost || 0), 0).toFixed(2)}
+                  </Typography>
+                </CardContent>
+              </Card>
+              <Card sx={{ flex: 1, minWidth: 160, borderRadius: 2 }}>
+                <CardContent>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>Équipements avec coûts</Typography>
+                  <Typography variant="h5" fontWeight={700}>{costs.length}</Typography>
+                </CardContent>
+              </Card>
+            </>
+          )}
+          {tab === 1 && (
+            <>
+              <Card sx={{ flex: 1, minWidth: 160, borderRadius: 2 }}>
+                <CardContent>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>Temps arrêt total (h)</Typography>
+                  <Typography variant="h5" fontWeight={700} sx={{ color: '#FFBF00' }}>
+                    {availability.reduce((s, a) => s + parseFloat(a.total_downtime_hours || 0), 0).toFixed(1)}
+                  </Typography>
+                </CardContent>
+              </Card>
+              <Card sx={{ flex: 1, minWidth: 160, borderRadius: 2 }}>
+                <CardContent>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>Équipements suivis</Typography>
+                  <Typography variant="h5" fontWeight={700}>{availability.length}</Typography>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </Box>
+      )}
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto" sx={{ mb: 2 }}>
         <Tab label="Coûts par équipement" />
@@ -393,8 +419,8 @@ export default function Reports() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {timeByTech.map((row) => (
-                    <TableRow key={row.id}>
+                  {timeByTech.map((row, idx) => (
+                    <TableRow key={row.technician_id ?? row.id ?? idx}>
                       <TableCell>{row.technician_name}</TableCell>
                       <TableCell align="right">{row.hours_spent ? parseFloat(row.hours_spent).toFixed(2) : '0.00'}</TableCell>
                       <TableCell align="right">{row.work_orders_count ?? 0}</TableCell>
@@ -537,8 +563,8 @@ export default function Reports() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {costPerHourData.map((row) => (
-                    <TableRow key={row.equipment_id}>
+                  {(Array.isArray(costPerHourData) ? costPerHourData : []).map((row, idx) => (
+                    <TableRow key={row.equipment_id ?? idx}>
                       <TableCell>{row.code}</TableCell>
                       <TableCell>{row.name}</TableCell>
                       <TableCell align="right">{row.total_cost != null ? Number(row.total_cost).toFixed(2) : '—'}</TableCell>

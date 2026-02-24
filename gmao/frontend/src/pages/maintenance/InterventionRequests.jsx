@@ -147,7 +147,7 @@ export default function InterventionRequests() {
         <Table size="small">
           <TableHead>
             <TableRow>
-              <TableCell>#</TableCell>
+              <TableCell>{t('interventionRequests.table.number')}</TableCell>
               <TableCell>{t('interventionRequests.table.title')}</TableCell>
               <TableCell>{t('interventionRequests.table.equipment')}</TableCell>
               <TableCell>{t('interventionRequests.table.priority')}</TableCell>
@@ -165,7 +165,7 @@ export default function InterventionRequests() {
             ) : (
               requests.map((req) => (
                 <TableRow key={req.id}>
-                  <TableCell>{req.id}</TableCell>
+                  <TableCell>{req.number || req.id}</TableCell>
                   <TableCell>{req.title}</TableCell>
                   <TableCell>{req.equipmentName ? `${req.equipmentCode || ''} ${req.equipmentName}`.trim() : '—'}</TableCell>
                   <TableCell><Chip size="small" label={t(`priority.${req.priority}`)} color={req.priority === 'critical' ? 'error' : req.priority === 'high' ? 'warning' : 'default'} /></TableCell>

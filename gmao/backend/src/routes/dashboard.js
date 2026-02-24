@@ -1309,7 +1309,7 @@ router.get('/analytics', (req, res) => {
   const period = parseInt(req.query.period, 10) || 30;
   const since = `date('now', '-${period} days')`;
   let mttrByWeek = [];
-  let costsByEquipment = [];
+  let costBreakdown = { labor: 0, parts: 0, reservations: 0, extraFees: 0, subcontract: 0 };
   try {
     const { repairOnlyCondition } = require('../services/mttrMtbf');
     mttrByWeek = db.prepare(`
@@ -1324,28 +1324,62 @@ router.get('/analytics', (req, res) => {
     `).all();
   } catch (_) {}
   try {
-    costsByEquipment = db.prepare(`
-      SELECT e.id, e.code, e.name,
-             COALESCE(SUM(COALESCE(i.quantity_used, 0) * COALESCE(sp.unit_price, 0)), 0) as parts_cost,
-             COALESCE(SUM(i.hours_spent * 45), 0) as labor_cost
-      FROM work_orders wo
-      JOIN equipment e ON wo.equipment_id = e.id
-      LEFT JOIN interventions i ON i.work_order_id = wo.id
-      LEFT JOIN spare_parts sp ON i.spare_part_id = sp.id
-      WHERE wo.status = 'completed' AND date(wo.actual_end) >= ${since}
-      GROUP BY wo.equipment_id
-      HAVING (parts_cost + labor_cost) > 0
-      ORDER BY (parts_cost + labor_cost) DESC LIMIT 10
-    `).all();
+    let woIds = [];
+    try {
+      woIds = db.prepare(`
+        SELECT id FROM work_orders
+        WHERE status = 'completed'
+          AND ((actual_end IS NOT NULL AND date(actual_end) >= ${since}) OR (completed_at IS NOT NULL AND date(completed_at) >= ${since}))
+      `).all();
+    } catch (e) {
+      if (e.message && e.message.includes('completed_at')) {
+        woIds = db.prepare(`SELECT id FROM work_orders WHERE status = 'completed' AND actual_end IS NOT NULL AND date(actual_end) >= ${since}`).all();
+      }
+    }
+    const processed = new Set();
+    for (const row of woIds || []) {
+      const woId = row.id ?? row.ID;
+      if (woId == null || processed.has(Number(woId))) continue;
+      processed.add(Number(woId));
+      try {
+        const c = getWorkOrderCosts(db, woId);
+        if (c) {
+          costBreakdown.labor += Number(c.laborCost) || 0;
+          costBreakdown.parts += Number(c.partsCost) || 0;
+          costBreakdown.reservations += Number(c.reservationsCost) || 0;
+          costBreakdown.extraFees += Number(c.extraFeesCost) || 0;
+        }
+      } catch (_) {}
+    }
+    const subRow = db.prepare(`
+      SELECT COALESCE(SUM(so.amount), 0) as sub
+      FROM subcontract_orders so
+      INNER JOIN work_orders wo ON so.work_order_id = wo.id
+      WHERE wo.status = 'completed' AND (date(wo.actual_end) >= ${since} OR (wo.completed_at IS NOT NULL AND date(wo.completed_at) >= ${since}))
+        AND COALESCE(so.amount, 0) > 0
+    `).get();
+    try {
+      costBreakdown.subcontract = Number(subRow?.sub) || 0;
+    } catch (_) {
+      try {
+        const subRow2 = db.prepare(`
+          SELECT COALESCE(SUM(so.amount), 0) as sub FROM subcontract_orders so
+          INNER JOIN work_orders wo ON so.work_order_id = wo.id
+          WHERE wo.status = 'completed' AND wo.actual_end IS NOT NULL AND date(wo.actual_end) >= ${since} AND COALESCE(so.amount, 0) > 0
+        `).get();
+        costBreakdown.subcontract = Number(subRow2?.sub) || 0;
+      } catch (__) {}
+    }
   } catch (_) {}
   res.json({
     mttrByWeek: mttrByWeek.map((r) => ({ week: r.week, mttrHours: r.mttr_hours != null ? parseFloat(Number(r.mttr_hours).toFixed(2)) : null })),
-    costsByEquipment: costsByEquipment.map((r) => ({
-      equipmentId: r.id, code: r.code, name: r.name,
-      partsCost: parseFloat(Number(r.parts_cost).toFixed(2)),
-      laborCost: parseFloat(Number(r.labor_cost).toFixed(2)),
-      totalCost: parseFloat(Number(Number(r.parts_cost) + Number(r.labor_cost)).toFixed(2))
-    }))
+    costBreakdown: {
+      labor: Math.round(costBreakdown.labor * 100) / 100,
+      parts: Math.round(costBreakdown.parts * 100) / 100,
+      reservations: Math.round(costBreakdown.reservations * 100) / 100,
+      extraFees: Math.round(costBreakdown.extraFees * 100) / 100,
+      subcontract: Math.round(costBreakdown.subcontract * 100) / 100
+    }
   });
 });
 

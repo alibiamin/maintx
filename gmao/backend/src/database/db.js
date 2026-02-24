@@ -1,7 +1,9 @@
 /**
  * Connexion SQLite - sql.js
- * gmao.db = base MAINTX (admins, paramétrage, liste des clients, comptes utilisateurs).
- * À la première connexion d'un client, sa base .db est créée vierge (schéma GMAO).
+ * gmao.db = base centrale admin MAINTX : roles, users, tenants (liste des clients + abonnements).
+ * Pas de données GMAO opérationnelles (sites, équipements, OT) dans gmao.db.
+ * Chaque tenant a sa base client (db_filename) avec schéma GMAO complet.
+ * Connexion sans tenant (admin) → base client par défaut (default.db) pour la démo.
  */
 
 const path = require('path');
@@ -25,7 +27,7 @@ const _clientDbCache = new Map(); // db_filename -> { raw, wrapper }
 function createDbWrapper(sqliteDb, filePath) {
   if (!sqliteDb || !filePath) return null;
 
-  function saveDb() {
+  function saveDbImmediate() {
     try {
       const data = sqliteDb.export();
       const buffer = Buffer.from(data);
@@ -33,6 +35,17 @@ function createDbWrapper(sqliteDb, filePath) {
     } catch (e) {
       console.error('[DB] Erreur sauvegarde:', e.message);
     }
+  }
+
+  // Debounce : une seule sauvegarde disque après une rafale d'écritures (évite N sauvegardes par requête)
+  let saveTimer = null;
+  const SAVE_DEBOUNCE_MS = 300;
+  function scheduleSave() {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      saveDbImmediate();
+    }, SAVE_DEBOUNCE_MS);
   }
 
   function createPrepareWrapper(sql) {
@@ -46,7 +59,7 @@ function createDbWrapper(sqliteDb, filePath) {
         stmt.free();
         const lastInsertRowid = result.length && result[0].values[0] ? result[0].values[0][0] : 0;
         const changes = result.length && result[0].values[0] ? result[0].values[0][1] : 0;
-        if (!isSelect) saveDb();
+        if (!isSelect) scheduleSave();
         return { lastInsertRowid, changes };
       },
       get: (...params) => {
@@ -71,15 +84,17 @@ function createDbWrapper(sqliteDb, filePath) {
     prepare: (sql) => createPrepareWrapper(sql),
     exec: (sql) => {
       sqliteDb.exec(sql);
-      saveDb();
+      scheduleSave();
     },
     pragma: (sql) => sqliteDb.exec(`PRAGMA ${sql}`),
     close: () => {
-      saveDb();
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = null;
+      saveDbImmediate();
       sqliteDb.close();
     },
     _raw: () => sqliteDb,
-    _save: saveDb,
+    _save: saveDbImmediate,
     getPath: () => filePath
   };
 }
@@ -92,27 +107,40 @@ function getAdminDb() {
   return _adminWrapper;
 }
 
+/** Fichiers de migration à ne pas exécuter sur la base client (réservés à gmao.db admin) */
+const CLIENT_SKIP_MIGRATIONS = ['026_tenants.js', '027_users_tenant_id.js', '028_tenants_license_dates.js'];
+
 /**
- * Migrations à appliquer sur les bases client (tables OT, stock, etc.) lorsqu'elles sont ouvertes.
- * Garantit que work_order_extra_fees et autres tables client existent.
+ * Migrations à appliquer sur les bases client : schéma GMAO complet (001-056 sauf tenants).
+ * Garantit que default.db a toutes les tables pour tester l'application.
  */
 function runClientMigrations(wrapper) {
   if (!wrapper) return;
-  const clientMigrations = [
-    () => require('./migrations/043_work_order_extra_fees.js')
-  ];
-  for (const load of clientMigrations) {
-    try {
-      const m = load();
-      if (m && m.up) {
-        m.up(wrapper);
-        if (wrapper._save) wrapper._save();
-      }
-    } catch (e) {
-      if (!e.message || (!e.message.includes('already exists') && !e.message.includes('duplicate'))) {
-        console.warn('[DB] Migration client:', e.message);
+  try {
+    const path = require('path');
+    const fs = require('fs');
+    const migrationsDir = path.join(__dirname, 'migrations');
+    if (!fs.existsSync(migrationsDir)) return;
+    const files = fs.readdirSync(migrationsDir)
+      .filter(f => f.endsWith('.js'))
+      .sort();
+    for (const f of files) {
+      if (CLIENT_SKIP_MIGRATIONS.includes(f)) continue;
+      try {
+        const m = require(path.join(migrationsDir, f));
+        const run = m.up || m.migrate;
+        if (run && typeof run === 'function') {
+          run(wrapper);
+          if (wrapper._save) wrapper._save();
+        }
+      } catch (e) {
+        if (!e.message || (!e.message.includes('already exists') && !e.message.includes('duplicate') && !e.message.includes('duplicate column'))) {
+          console.warn('[DB] Migration client:', f, e.message);
+        }
       }
     }
+  } catch (err) {
+    console.warn('[DB] runClientMigrations:', err.message);
   }
 }
 
@@ -129,11 +157,9 @@ function getClientDb(tenantIdOrKey) {
   } else {
     dbFilename = tenantIdOrKey.endsWith('.db') ? tenantIdOrKey : `${tenantIdOrKey}.db`;
   }
+  // Cache hit : retourner la base sans rejouer les migrations ni sauvegarder (évite lenteur à chaque requête)
   if (_clientDbCache.has(dbFilename)) {
-    const cached = _clientDbCache.get(dbFilename).wrapper;
-    runClientMigrations(cached);
-    if (cached._save) cached._save();
-    return cached;
+    return _clientDbCache.get(dbFilename).wrapper;
   }
   const clientPath = path.join(dataDir, dbFilename);
   if (!_SQL) throw new Error('DB non initialisée');
@@ -184,11 +210,21 @@ function resolveTenantByEmail(email) {
   }
 }
 
+/** Base client par défaut pour connexion sans tenant (admin ou démo). */
+const DEFAULT_CLIENT_DB = process.env.GMAO_DEFAULT_CLIENT_DB || 'default.db';
+
 /**
- * Retourne la db à utiliser : gmao.db pour admin, base client pour un tenant.
+ * Retourne la db à utiliser :
+ * - gmao.db = base centrale admin MAINTX (tenants, abonnements, utilisateurs) — pas de données GMAO opérationnelles.
+ * - Sans tenant (admin) → base client par défaut (default.db) pour utiliser l’app en démo.
+ * - Avec tenant_id → base client du tenant (db_filename).
  */
 function getDbForRequest(tenantIdFromJwt) {
-  if (tenantIdFromJwt == null || tenantIdFromJwt === undefined) return getAdminDb();
+  if (tenantIdFromJwt == null || tenantIdFromJwt === undefined) {
+    // En démo : utiliser gmao.db (même base que le seed) pour que coût période et OT soient visibles
+    if (!process.env.GMAO_DEFAULT_CLIENT_DB) return getAdminDb();
+    return getClientDb(DEFAULT_CLIENT_DB);
+  }
   return getClientDb(tenantIdFromJwt);
 }
 
@@ -237,9 +273,18 @@ const db = {
   resolveTenantByEmail
 };
 
+/** Appelle les migrations client sur une base (ex. après "no such table" pour work_order_extra_fees). */
+function ensureClientMigrations(wrapper) {
+  if (wrapper) {
+    runClientMigrations(wrapper);
+    if (typeof wrapper._save === 'function') wrapper._save();
+  }
+}
+
 module.exports = db;
 module.exports.init = init;
 module.exports.getAdminDb = getAdminDb;
 module.exports.getClientDb = getClientDb;
 module.exports.getDbForRequest = getDbForRequest;
 module.exports.resolveTenantByEmail = resolveTenantByEmail;
+module.exports.ensureClientMigrations = ensureClientMigrations;

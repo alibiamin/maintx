@@ -17,7 +17,12 @@
     "language": "Language",
     "all": "All",
     "download": "Download",
-    "downloading": "Downloading…"
+    "downloading": "Downloading…",
+    "cancel": "Cancel",
+    "save": "Save",
+    "saved": "Saved",
+    "saving": "Saving…",
+    "delete": "Delete"
   },
   "exploitation": {
     "exportHint": "Download an Excel template (headers only) for the chosen table. Fill it in then import it via \"Import data\".",
@@ -170,6 +175,7 @@
     "decisionSupport_0": "Assistance and decision support",
     "sites_0": "Sites",
     "effectif_0": "Workforce",
+    "effectif_1": "Time & attendance",
     "exploitation_0": "Data",
     "settings_0": "Settings",
     "settings_creation": "Creation"
@@ -258,6 +264,8 @@
     "technicians_competencies": "Competencies",
     "technicians_rules": "Assignment rules",
     "technicians_team": "Team",
+    "effectif_presence": "Presence",
+    "effectif_pointage": "Time tracking",
     "settings_config": "Configuration",
     "settings_alerts": "Email / SMS alerts",
     "failure_codes": "Failure thesaurus",
@@ -313,7 +321,23 @@
   },
   "workOrder": {
     "costPartsConsumed": "Parts cost (consumed – interventions)",
-    "totalReservationsForecast": "Total reservations cost (forecast)"
+    "totalReservationsForecast": "Total reservations cost (forecast)",
+    "consumedParts": "Consumed parts",
+    "consumedPartsHint": "Record parts actually used on this work order. Optional: create a stock exit.",
+    "part": "Part",
+    "selectPart": "Select",
+    "quantity": "Quantity",
+    "unitCost": "Unit cost",
+    "createStockExit": "Create stock exit",
+    "noStockExit": "No stock exit",
+    "addConsumed": "Add",
+    "consumedPartAdded": "Consumed part recorded",
+    "consumedPartDeleted": "Line deleted",
+    "code": "Code",
+    "designation": "Designation",
+    "lineCost": "Line cost",
+    "totalConsumedParts": "Total consumed parts",
+    "noConsumedParts": "No consumed parts recorded."
   },
   "equipmentManagement": {
     "historyTitle": "Intervention history",
@@ -348,5 +372,32 @@
     "warrantyStatusExpired": "Expired",
     "warrantyStatusHeader": "Status",
     "creationHint": "Create from Creation menu"
+  },
+  "effectif": {
+    "presenceDescription": "Workforce presence. Enter leave, training or sick days for a given date.",
+    "pointageDescription": "Time clock entries (manual). Link with a time clock device will be available later.",
+    "date": "Date",
+    "dateFrom": "From",
+    "dateTo": "To",
+    "dateTime": "Date / time",
+    "addOverride": "Enter leave / training / absence",
+    "technician": "Technician",
+    "status": "Status",
+    "firstIn": "First in",
+    "lastOut": "Last out",
+    "minutesWorked": "Hours",
+    "comment": "Comment",
+    "noTechnicians": "No technicians in workforce.",
+    "selectTechnician": "Select a technician",
+    "loadTechnicians": "Load technicians",
+    "entryIn": "Clock in",
+    "entryOut": "Clock out",
+    "noEntries": "No time entries for this period.",
+    "pointeuse": "Time clock",
+    "manual": "Manual",
+    "type": "Type",
+    "source": "Source",
+    "confirmDeleteEntry": "Delete this time entry?",
+    "rowsPerPage": "Rows per page"
   }
 }

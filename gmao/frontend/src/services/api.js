@@ -65,6 +65,8 @@ api.interceptors.response.use(
       if (data?.error) sessionStorage.setItem('loginError', data.error);
       const enc = encodePath('/login', '');
       window.location.href = window.location.pathname + window.location.search + (enc ? `#/${enc}` : '#/');
+    } else if (status === 403) {
+      window.dispatchEvent(new CustomEvent('api-403', { detail: data }));
     }
     return Promise.reject(err);
   }

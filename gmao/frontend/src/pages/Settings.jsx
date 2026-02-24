@@ -42,7 +42,8 @@ const CODIFICATION_ENTITIES = [
   { key: 'piece', label: 'Pièce détachée' },
   { key: 'outil', label: 'Outil' },
   { key: 'fournisseur', label: 'Fournisseur' },
-  { key: 'code_defaut', label: 'Code défaut' }
+  { key: 'code_defaut', label: 'Code défaut' },
+  { key: 'demande_intervention', label: 'Demande d\'intervention' }
 ];
 
 export default function Settings() {

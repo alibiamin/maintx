@@ -105,6 +105,7 @@
     "reports_0": "Berichte",
     "sites_0": "Standorte",
     "effectif_0": "Mitarbeiter",
+    "effectif_1": "Zeiterfassung und Anwesenheit",
     "settings_0": "Einstellungen",
     "settings_creation": "Erstellung"
   },
@@ -174,6 +175,8 @@
     "technicians_competencies": "Kompetenzen",
     "technicians_rules": "Zuweisungsregeln",
     "technicians_team": "Team",
+    "effectif_presence": "Anwesenheit",
+    "effectif_pointage": "Zeiterfassung",
     "settings_config": "Konfiguration",
     "settings_alerts": "E-Mail-/SMS-Benachrichtigungen",
     "settings_users": "Benutzer",

@@ -9,6 +9,7 @@
     "init-db": "node src/database/init.js",
     "migrate": "node src/database/migrate.js",
     "seed": "node src/database/seed.js",
+    "reset-db": "node src/database/reset-db.js",
     "install:all": "npm install && cd ../frontend && npm install"
   },
   "keywords": [

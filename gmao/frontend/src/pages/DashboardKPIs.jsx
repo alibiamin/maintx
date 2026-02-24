@@ -15,6 +15,7 @@ import {
 import { TrendingUp, Build, Euro, Schedule, Speed, Warning, ArrowBack, BarChart } from '@mui/icons-material';
 import api from '../services/api';
 import { useCurrency } from '../context/CurrencyContext';
+import { useSnackbar } from '../context/SnackbarContext';
 
 const ICON_MAP = { Speed, Schedule, Euro, Build, TrendingUp, Warning };
 
@@ -67,6 +68,7 @@ const DEFAULT_CARDS = [
 
 export default function DashboardKPIs() {
   const currency = useCurrency();
+  const snackbar = useSnackbar();
   const [kpis, setKpis] = useState(null);
   const [definitions, setDefinitions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -84,10 +86,11 @@ export default function DashboardKPIs() {
         api.get('/dashboard/kpis', { params: { period } }),
         api.get('/settings/kpi-definitions').catch(() => ({ data: [] }))
       ]);
-      setKpis(kpiRes.data);
-      setDefinitions(Array.isArray(defRes.data) ? defRes.data : []);
+      setKpis(kpiRes?.data ?? null);
+      setDefinitions(Array.isArray(defRes?.data) ? defRes.data : []);
     } catch (error) {
-      console.error(error);
+      setKpis(null);
+      snackbar.showError('Erreur chargement des indicateurs');
     } finally {
       setLoading(false);
     }

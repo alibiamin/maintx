@@ -105,6 +105,7 @@
     "reports_0": "Informes",
     "sites_0": "Sitios",
     "effectif_0": "Personal",
+    "effectif_1": "Control de presencia y fichaje",
     "settings_0": "Configuración",
     "settings_creation": "Creación"
   },
@@ -174,6 +175,8 @@
     "technicians_competencies": "Competencias",
     "technicians_rules": "Reglas de asignación",
     "technicians_team": "Equipo",
+    "effectif_presence": "Presencia",
+    "effectif_pointage": "Fichaje",
     "settings_config": "Configuración",
     "settings_alerts": "Alertas email / SMS",
     "settings_users": "Usuarios",

@@ -1,12 +1,14 @@
 /**
  * API Demandes d'intervention (portail Open type COSWIN)
  * Workflow : demande → validation/rejet par responsable → création OT si validé
+ * Numéro : généré automatiquement via codification (paramétrage > préfixe + compteur).
  */
 
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
 const { authenticate, authorize, ROLES } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
+const codification = require('../services/codification');
 const dbModule = require('../database/db');
 
 const router = express.Router();
@@ -41,6 +43,7 @@ function formatRequest(row) {
   if (!row) return null;
   return {
     id: row.id,
+    number: row.number,
     title: row.title,
     description: row.description,
     equipmentId: row.equipment_id,
@@ -105,11 +108,22 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROL
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const { title, description, equipmentId, priority } = req.body;
+  let number = codification.getNextCode(db, 'demande_intervention');
+  if (!number || !String(number).trim()) {
+    number = null;
+  }
   const result = db.prepare(`
-    INSERT INTO intervention_requests (title, description, equipment_id, requested_by, priority, status)
-    VALUES (?, ?, ?, ?, ?, 'pending')
-  `).run(title || '', description || null, equipmentId || null, req.user.id, priority || 'medium');
+    INSERT INTO intervention_requests (number, title, description, equipment_id, requested_by, priority, status)
+    VALUES (?, ?, ?, ?, ?, ?, 'pending')
+  `).run(number || '', title || '', description || null, equipmentId || null, req.user.id, priority || 'medium');
   const id = result.lastInsertRowid;
+  if (!number) {
+    const pad = (n, len) => String(n).padStart(len, '0');
+    number = 'DI-' + pad(id, 4);
+    try {
+      db.prepare('UPDATE intervention_requests SET number = ? WHERE id = ?').run(number, id);
+    } catch (_) {}
+  }
   const row = db.prepare(`
     SELECT ir.*, e.name as equipment_name, e.code as equipment_code,
            u.first_name || ' ' || u.last_name as requested_by_name
@@ -118,9 +132,9 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROL
     LEFT JOIN users u ON ir.requested_by = u.id
     WHERE ir.id = ?
   `).get(id);
-  const responsibles = getResponsibles(db, req.tenantId).filter((id) => id !== req.user.id);
+  const responsibles = getResponsibles(db, req.tenantId).filter((uid) => uid !== req.user.id);
   notificationService.notify(db, 'work_order_created', responsibles, {
-    number: `Demande #${id}`,
+    number: row.number || `Demande #${id}`,
     title: `Nouvelle demande d'intervention : ${title}`,
     equipment_name: row.equipment_name ? `${row.equipment_code || ''} ${row.equipment_name}`.trim() : null,
     priority: row.priority

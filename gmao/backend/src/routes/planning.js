@@ -157,6 +157,56 @@ router.get('/assignments', (req, res) => {
 });
 
 /**
+ * GET /api/planning/workload
+ * Plan de charge : par technicien, charge (heures OT + formations + absences) vs capacité (heures dispo)
+ * Query: startDate, endDate (défaut: semaine courante)
+ */
+router.get('/workload', (req, res) => {
+  const db = req.db;
+  const { startDate, endDate } = req.query;
+  const start = startDate || new Date().toISOString().split('T')[0];
+  const end = endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  try {
+    const technicians = db.prepare(`
+      SELECT u.id, u.first_name, u.last_name
+      FROM users u
+      INNER JOIN roles r ON u.role_id = r.id
+      WHERE r.name IN ('technicien', 'responsable_maintenance') AND u.is_active = 1
+      ORDER BY u.last_name, u.first_name
+    `).all();
+    const days = Math.max(1, Math.ceil((new Date(end) - new Date(start)) / (24 * 60 * 60 * 1000)));
+    const capacityHoursPerDay = 8;
+    const totalCapacityHours = days * capacityHoursPerDay;
+    const workload = technicians.map((t) => {
+      const woHours = db.prepare(`
+        SELECT COALESCE(SUM(
+          CASE
+            WHEN wo.actual_start IS NOT NULL AND wo.actual_end IS NOT NULL
+            THEN (julianday(wo.actual_end) - julianday(wo.actual_start)) * 24
+            ELSE 2
+          END
+        ), 0) as h
+        FROM work_orders wo
+        WHERE wo.assigned_to = ? AND wo.status IN ('pending', 'in_progress', 'completed')
+          AND (date(wo.planned_start) BETWEEN date(?) AND date(?)) OR (date(wo.actual_start) BETWEEN date(?) AND date(?)) OR (date(wo.actual_end) BETWEEN date(?) AND date(?))
+      `).get(t.id, start, end, start, end, start, end);
+      const chargeHours = (woHours && woHours.h != null ? parseFloat(woHours.h) : 0);
+      return {
+        technicianId: t.id,
+        technicianName: `${t.first_name || ''} ${t.last_name || ''}`.trim(),
+        chargeHours: Math.round(chargeHours * 100) / 100,
+        capacityHours: totalCapacityHours,
+        utilizationPercent: totalCapacityHours > 0 ? Math.round((chargeHours / totalCapacityHours) * 100) : 0
+      };
+    });
+    res.json({ start, end, workload });
+  } catch (err) {
+    if (err.message && err.message.includes('no such table')) return res.json({ start, end, workload: [] });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * GET /api/planning/resources
  * Ressources disponibles (techniciens, équipements) pour le planning
  */

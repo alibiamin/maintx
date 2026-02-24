@@ -414,6 +414,50 @@ router.delete('/email-templates/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE),
   res.status(204).send();
 });
 
+// ——— Seuil alerte dépassement budget (%) ———
+router.get('/budget-alert-threshold', (req, res) => {
+  const db = req.db;
+  try {
+    const r = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('budget_alert_threshold_percent');
+    res.json({ value: r?.value != null ? parseFloat(r.value) : 90 });
+  } catch (e) {
+    res.json({ value: 90 });
+  }
+});
+router.post('/budget-alert-threshold', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
+  const v = Math.min(100, Math.max(0, parseFloat(req.body?.value) || 90));
+  try {
+    db.prepare('INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)').run('budget_alert_threshold_percent', String(v));
+  } catch (e) {
+    try { db.exec('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)'); } catch (_) {}
+    db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run('budget_alert_threshold_percent', String(v));
+  }
+  res.json({ value: v });
+});
+
+// ——— Seuil approbation OT (montant en €) ———
+router.get('/approval-threshold-amount', (req, res) => {
+  const db = req.db;
+  try {
+    const r = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('approval_threshold_amount');
+    res.json({ value: r?.value != null ? parseFloat(r.value) : 0 });
+  } catch (e) {
+    res.json({ value: 0 });
+  }
+});
+router.post('/approval-threshold-amount', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
+  const v = Math.max(0, parseFloat(req.body?.value) || 0);
+  try {
+    db.prepare('INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)').run('approval_threshold_amount', String(v));
+  } catch (e) {
+    try { db.exec('CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)'); } catch (_) {}
+    db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run('approval_threshold_amount', String(v));
+  }
+  res.json({ value: v });
+});
+
 // ——— Sauvegarde base de données (réservé aux administrateurs) ———
 router.get('/backup', authorize(ROLES.ADMIN), (req, res) => {
   const db = req.db;

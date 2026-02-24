@@ -67,6 +67,8 @@ const TechnicianDetail = lazy(() => import('./pages/technicians/TechnicianDetail
 const TeamPage = lazy(() => import('./pages/technicians/TeamPage'));
 const CompetenciesPage = lazy(() => import('./pages/technicians/CompetenciesPage'));
 const TypeCompetenciesPage = lazy(() => import('./pages/technicians/TypeCompetenciesPage'));
+const PresencePage = lazy(() => import('./pages/effectif/PresencePage'));
+const PointagePage = lazy(() => import('./pages/effectif/PointagePage'));
 const ExploitationExport = lazy(() => import('./pages/ExploitationExport'));
 const ExploitationImport = lazy(() => import('./pages/ExploitationImport'));
 const PartFamiliesList = lazy(() => import('./pages/catalogue/PartFamiliesList'));
@@ -198,6 +200,8 @@ export default function App() {
         <Route path="technicians/competencies" element={<CompetenciesPage />} />
         <Route path="technicians/type-competencies" element={<TypeCompetenciesPage />} />
         <Route path="technicians/:id" element={<TechnicianDetail />} />
+        <Route path="effectif/presence" element={<PresencePage />} />
+        <Route path="effectif/pointage" element={<PointagePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

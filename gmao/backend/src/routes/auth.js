@@ -56,67 +56,86 @@ router.post('/login', [
   body('email').isEmail().normalizeEmail(),
   body('password').notEmpty()
 ], (req, res) => {
-  if (isLoginRateLimited(req)) {
-    return res.status(429).json({ error: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.' });
-  }
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-  const { email, password } = req.body;
-  const resolved = dbModule.resolveTenantByEmail(email);
-  if (!resolved) {
-    return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
-  }
-  const mainDb = dbModule.getAdminDb();
-  const user = mainDb.prepare(`
-    SELECT u.id, u.email, u.password_hash, u.first_name, u.last_name, u.role_id, r.name as role_name
-    FROM users u
-    JOIN roles r ON u.role_id = r.id
-    WHERE u.email = ? AND u.is_active = 1
-  `).get(email);
-  const tenantId = resolved.isAdmin ? null : resolved.tenantId;
-  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
-    return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
-  }
-  if (tenantId != null) {
-    let tenant;
+  try {
+    if (isLoginRateLimited(req)) {
+      return res.status(429).json({ error: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.' });
+    }
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    const { email, password } = req.body;
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const resolved = dbModule.resolveTenantByEmail(normalizedEmail);
+    if (!resolved) {
+      return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
+    }
+    const mainDb = dbModule.getAdminDb();
+    const user = mainDb.prepare(`
+      SELECT u.id, u.email, u.password_hash, u.first_name, u.last_name, u.role_id, r.name as role_name
+      FROM users u
+      JOIN roles r ON u.role_id = r.id
+      WHERE LOWER(TRIM(u.email)) = ? AND u.is_active = 1
+    `).get(normalizedEmail);
+    const tenantId = resolved.isAdmin ? null : resolved.tenantId;
+    if (!user) {
+      return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
+    }
+    let passwordOk = false;
     try {
-      tenant = mainDb.prepare('SELECT id, license_start, license_end FROM tenants WHERE id = ?').get(tenantId);
+      passwordOk = bcrypt.compareSync(password, user.password_hash || '');
     } catch (e) {
-      if (e.message && e.message.includes('no such table')) tenant = null;
-      else throw e;
+      console.error('[auth/login] bcrypt.compareSync error:', e.message);
+      return res.status(500).json({ error: 'Erreur de vérification du mot de passe. Contactez l\'administrateur.' });
     }
-    if (!tenant) {
-      return res.status(403).json({
-        error: 'Compte client désactivé ou supprimé. Contactez l\'administrateur.',
-        code: 'TENANT_INVALID'
-      });
+    if (!passwordOk) {
+      return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
     }
-    const today = new Date().toISOString().slice(0, 10);
-    if (tenant.license_end && String(tenant.license_end).trim() && today > tenant.license_end) {
-      return res.status(403).json({ error: 'Licence expirée. Contactez l\'administrateur pour une nouvelle activation.', code: 'LICENSE_EXPIRED' });
+    if (tenantId != null) {
+      let tenant;
+      try {
+        tenant = mainDb.prepare('SELECT id, license_start, license_end FROM tenants WHERE id = ?').get(tenantId);
+      } catch (e) {
+        if (e.message && e.message.includes('no such table')) tenant = null;
+        else throw e;
+      }
+      if (!tenant) {
+        return res.status(403).json({
+          error: 'Compte client désactivé ou supprimé. Contactez l\'administrateur.',
+          code: 'TENANT_INVALID'
+        });
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      if (tenant.license_end && String(tenant.license_end).trim() && today > tenant.license_end) {
+        return res.status(403).json({ error: 'Licence expirée. Contactez l\'administrateur pour une nouvelle activation.', code: 'LICENSE_EXPIRED' });
+      }
+      if (tenant.license_start && String(tenant.license_start).trim() && today < tenant.license_start) {
+        return res.status(403).json({ error: 'Licence pas encore active. La date de début d\'utilisation n\'est pas encore atteinte.', code: 'LICENSE_NOT_ACTIVE' });
+      }
     }
-    if (tenant.license_start && String(tenant.license_start).trim() && today < tenant.license_start) {
-      return res.status(403).json({ error: 'Licence pas encore active. La date de début d\'utilisation n\'est pas encore atteinte.', code: 'LICENSE_NOT_ACTIVE' });
-    }
+    const token = jwt.sign(
+      { userId: user.id, role: user.role_name, tenantId },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES }
+    );
+    return res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: user.role_name
+      },
+      tenantId: tenantId ?? undefined
+    });
+  } catch (err) {
+    console.error('[auth/login]', err);
+    res.status(500).json({
+      error: 'Erreur serveur lors de la connexion',
+      message: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
-  const token = jwt.sign(
-    { userId: user.id, role: user.role_name, tenantId },
-    JWT_SECRET,
-    { expiresIn: JWT_EXPIRES }
-  );
-  res.json({
-    token,
-    user: {
-      id: user.id,
-      email: user.email,
-      firstName: user.first_name,
-      lastName: user.last_name,
-      role: user.role_name
-    },
-    tenantId: tenantId ?? undefined
-  });
 });
 
 /**
