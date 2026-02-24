@@ -21,6 +21,7 @@ import { Save, Image, ArrowBack } from '@mui/icons-material';
 import api from '../services/api';
 import { useCurrency } from '../context/CurrencyContext';
 import { useTranslation } from 'react-i18next';
+import { useConfirmLeave } from '../hooks/useConfirmLeave';
 
 const CATEGORIES = [
   { id: 'hierarchie', label: 'Hiérarchie' },
@@ -146,6 +147,7 @@ export default function Creation() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
   const [nextCode, setNextCode] = useState('');
   const [codificationConfig, setCodificationConfig] = useState({});
 
@@ -272,9 +274,13 @@ export default function Creation() {
     setForm(getDefaultForm(creationType));
     setError('');
     setSuccess('');
+    setIsDirty(false);
   }, [creationType]);
 
+  useConfirmLeave(isDirty);
+
   const handleChange = (field, value) => {
+    setIsDirty(true);
     setForm(prev => {
       const next = { ...prev, [field]: value };
       if (field === 'siteId') {
@@ -336,6 +342,7 @@ export default function Creation() {
     e.preventDefault();
     setError('');
     setSuccess('');
+    setIsDirty(false);
     setLoading(true);
 
     const run = () => {
@@ -597,8 +604,13 @@ export default function Creation() {
             )}
             {creationType === 'machine' && (
               <Grid container spacing={2}>
+                {sites.length === 0 && (
+                  <Grid item xs={12}>
+                    <Alert severity="warning">Créez d&apos;abord un site (menu Équipements → Création → Site) pour pouvoir ajouter une machine.</Alert>
+                  </Grid>
+                )}
                 <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Hiérarchie : sélectionnez d&apos;abord le site, puis le département et la ligne.</Typography></Grid>
-                <Grid item xs={12}><FormControl fullWidth required><InputLabel>Site</InputLabel><Select value={safeSelectValue(sites, form.siteId)} label="Site" onChange={(e) => handleChange('siteId', e.target.value)}><MenuItem value="">—</MenuItem>{sites.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
+                <Grid item xs={12}><FormControl fullWidth required disabled={sites.length === 0}><InputLabel>Site</InputLabel><Select value={safeSelectValue(sites, form.siteId)} label="Site" onChange={(e) => handleChange('siteId', e.target.value)}><MenuItem value="">—</MenuItem>{sites.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
                 <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Département</InputLabel><Select value={safeSelectValue(departementsFiltered, form.departmentId)} label="Département" onChange={(e) => handleChange('departmentId', e.target.value)} disabled={!form.siteId}><MenuItem value="">—</MenuItem>{departementsFiltered.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}</Select></FormControl></Grid>
                 <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Ligne</InputLabel><Select value={safeSelectValue(lignesFiltered, form.ligneId)} label="Ligne" onChange={(e) => handleChange('ligneId', e.target.value)} disabled={!form.siteId}><MenuItem value="">—</MenuItem>{lignesFiltered.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}</Select></FormControl></Grid>
                 {nextCode && <Grid item xs={12}><Typography variant="body2" color="text.secondary">Code : attribué automatiquement (ex. {nextCode})</Typography></Grid>}

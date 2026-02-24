@@ -24,6 +24,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   FormControlLabel,
   Checkbox
@@ -83,6 +84,8 @@ export default function EquipmentDetail() {
   const [editMainSubmitting, setEditMainSubmitting] = useState(false);
   const [costPerHourInput, setCostPerHourInput] = useState('');
   const [costPerHourSubmitting, setCostPerHourSubmitting] = useState(false);
+  const [thresholdToDelete, setThresholdToDelete] = useState(null);
+  const [bomLineToDelete, setBomLineToDelete] = useState(null); // { sparePartId, partName } | null
   const { user } = useAuth();
   const currency = useCurrency();
   const canEditEquipment = ['administrateur', 'responsable_maintenance'].includes(user?.role);
@@ -188,6 +191,7 @@ export default function EquipmentDetail() {
       .then(() => {
         snackbar.showSuccess('Seuil supprimé');
         fetchThresholds();
+        setThresholdToDelete(null);
       })
       .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'));
   };
@@ -211,8 +215,12 @@ export default function EquipmentDetail() {
       .then(() => {
         snackbar.showSuccess('Pièce retirée de la nomenclature');
         fetchBom();
+        setBomLineToDelete(null);
       })
       .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'));
+  };
+  const confirmRemoveBomLine = () => {
+    if (bomLineToDelete?.sparePartId) removeBomLine(bomLineToDelete.sparePartId);
   };
 
   const openCloneDialog = () => {
@@ -552,7 +560,7 @@ export default function EquipmentDetail() {
                     <TableCell>{t.thresholdValue}</TableCell>
                     <TableCell>{t.lastTriggeredAt ? new Date(t.lastTriggeredAt).toLocaleString('fr-FR') : '—'}</TableCell>
                     <TableCell align="right">
-                      <IconButton size="small" color="error" onClick={() => deleteThreshold(t.id)} title="Supprimer"><Delete /></IconButton>
+                      <IconButton size="small" color="error" onClick={() => setThresholdToDelete(t.id)} title="Supprimer"><Delete /></IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -607,7 +615,7 @@ export default function EquipmentDetail() {
                     <TableCell align="right">{row.unitPrice != null ? `${Number(row.unitPrice).toFixed(2)} ${currency}` : '—'}</TableCell>
                     <TableCell align="right">{row.stockQuantity ?? '—'}</TableCell>
                     <TableCell align="right">
-                      <IconButton size="small" color="error" onClick={() => removeBomLine(row.sparePartId)} title="Retirer"><Delete /></IconButton>
+                      <IconButton size="small" color="error" onClick={() => setBomLineToDelete({ sparePartId: row.sparePartId, partName: row.partName || row.partCode })} title="Retirer"><Delete /></IconButton>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -732,6 +740,30 @@ export default function EquipmentDetail() {
         <DialogActions>
           <Button onClick={() => setEditMainOpen(false)}>Annuler</Button>
           <Button variant="contained" onClick={handleSaveEditMain} disabled={editMainSubmitting || !editMainForm.code.trim() || !editMainForm.name.trim()}>Enregistrer</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={thresholdToDelete != null} onClose={() => setThresholdToDelete(null)}>
+        <DialogTitle>Confirmer la suppression</DialogTitle>
+        <DialogContent>
+          <DialogContentText>Supprimer ce seuil d&apos;alerte ? Cette action est irréversible.</DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setThresholdToDelete(null)}>Annuler</Button>
+          <Button color="error" variant="contained" onClick={() => { deleteThreshold(thresholdToDelete); setThresholdToDelete(null); }}>Supprimer</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={bomLineToDelete != null} onClose={() => setBomLineToDelete(null)}>
+        <DialogTitle>Retirer de la nomenclature</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Retirer la pièce « {bomLineToDelete?.partName || 'cette pièce'} » de la nomenclature de cet équipement ?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBomLineToDelete(null)}>Annuler</Button>
+          <Button color="error" variant="contained" onClick={confirmRemoveBomLine}>Retirer</Button>
         </DialogActions>
       </Dialog>
     </Box>

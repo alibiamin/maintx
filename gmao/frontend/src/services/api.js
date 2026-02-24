@@ -72,4 +72,19 @@ api.interceptors.response.use(
   }
 );
 
+/**
+ * Retourne un message d'erreur lisible à partir d'une erreur axios (réponses 400/404/500).
+ * Gère { error: "..." } et { errors: [{ msg: "..." }] } (express-validator).
+ */
+export function getApiErrorMessage(err, fallback = 'Erreur') {
+  const data = err?.response?.data;
+  if (!data) return err?.message || fallback;
+  if (typeof data.error === 'string') return data.error;
+  if (Array.isArray(data.errors) && data.errors.length > 0) {
+    const first = data.errors[0];
+    return (typeof first === 'object' && first?.msg) ? first.msg : String(first);
+  }
+  return fallback;
+}
+
 export default api;

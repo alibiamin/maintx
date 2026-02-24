@@ -1018,16 +1018,31 @@ router.post('/parts', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 /**
  * POST /api/stock/movements
  * Entrée (in) : option status 'A' (accepté) ou 'Q' (quarantaine). Sortie (out/transfer) : uniquement depuis stock Accepté.
+ * quantity : pour in/out/transfer doit être >= 1 ; pour adjustment c'est le nouveau total (>= 0).
  */
 router.post('/movements', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), [
   body('sparePartId').isInt(),
   body('quantity').isInt(),
   body('movementType').isIn(['in', 'out', 'adjustment', 'transfer']),
-  body('status').optional().isIn(['A', 'Q'])
+  body('status').optional().isIn(['A', 'Q']),
+  body('quantity').custom((val, { req }) => {
+    const type = req.body.movementType;
+    if (type === 'in' || type === 'out' || type === 'transfer') {
+      const q = Number(val);
+      if (q < 1) throw new Error('La quantité doit être au moins 1 pour une entrée, sortie ou transfert.');
+    } else if (type === 'adjustment') {
+      const q = Number(val);
+      if (q < 0 || !Number.isFinite(q)) throw new Error('La quantité (nouveau total) doit être un nombre >= 0 pour un réglage.');
+    }
+    return true;
+  })
 ], (req, res) => {
   const db = req.db;
   const errors = validationResult(req);
-  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  if (!errors.isEmpty()) {
+    const msg = errors.array().map(e => e.msg).join(' ');
+    return res.status(400).json({ error: msg || 'Données invalides' });
+  }
   const { sparePartId, quantity, movementType, reference, workOrderId, notes, status } = req.body;
   const entryStatus = (status === STOCK_STATUS.Q ? STOCK_STATUS.Q : STOCK_STATUS.A);
   try {

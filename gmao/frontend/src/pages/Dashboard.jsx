@@ -622,7 +622,7 @@ export default function Dashboard() {
                 { label: 'Stock', value: summary.stockPartsCount, path: '/app/stock', icon: Inventory, sub: summary.stockAlertsCount > 0 ? `${summary.stockAlertsCount} alerte(s)` : null },
                 { label: 'Fournisseurs', value: summary.suppliersCount, path: '/app/suppliers', icon: People },
                 { label: 'Outils', value: summary.toolsCount, path: '/app/tools', icon: Handyman },
-                { label: 'Création', value: null, path: '/app/maintenance/creation/work-order', icon: Add, sub: 'Nouvel OT, équipement…' },
+                { label: 'Création', value: null, path: '/app/work-orders/new', icon: Add, sub: 'Nouvel OT, équipement…' },
                 { label: 'Rapports', value: null, path: '/app/reports', icon: Assessment, sub: 'Coûts, disponibilité' }
               ].map(({ label, value, path, icon: Icon, sub }) => (
                 <Grid item xs={6} sm={4} md={2} key={label}>

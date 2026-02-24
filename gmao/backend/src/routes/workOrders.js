@@ -1300,10 +1300,9 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), 
   if (req.body.status === 'completed') {
     updates.push('completed_at = ?');
     values.push(new Date().toISOString().slice(0, 19));
-    if (req.body.completedBy != null) {
-      updates.push('completed_by = ?');
-      values.push(req.body.completedBy);
-    }
+    // Ne jamais faire confiance au frontend : completed_by = utilisateur qui clôture
+    updates.push('completed_by = ?');
+    values.push(req.user.id);
     if (req.body.signatureName != null && String(req.body.signatureName).trim()) {
       updates.push('signature_name = ?');
       values.push(String(req.body.signatureName).trim());

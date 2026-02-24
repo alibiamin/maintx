@@ -396,7 +396,7 @@ export default function WorkOrderDetail() {
       .finally(() => setActionLoading(false));
   };
 
-  if (id === 'new') return <Navigate to="/app/maintenance/creation/work-order" replace />;
+  if (id === 'new') return <Navigate to="/app/work-orders/new" replace />;
   if (loading || !order) return <Box p={4}><CircularProgress /></Box>;
 
   const statusOptions = [
@@ -458,13 +458,13 @@ export default function WorkOrderDetail() {
                 </Button>
               )}
               {canEdit && (order.status === 'pending' || order.statusWorkflow === 'planned') && (
-                <Button variant="contained" startIcon={<PlayArrow />} onClick={handleStartWork} disabled={actionLoading} size="small">
-                  Démarrer le travail
+                <Button variant="contained" startIcon={<PlayArrow />} onClick={handleStartWork} disabled={actionLoading} size="small" title="Lancer l’intervention sur le terrain">
+                  Démarrer l’intervention
                 </Button>
               )}
               {canEdit && order.status === 'in_progress' && (
-                <Button variant="outlined" color="primary" startIcon={<Stop />} onClick={handleMarkEnd} disabled={actionLoading} size="small">
-                  Marquer la fin du travail
+                <Button variant="outlined" color="primary" startIcon={<Stop />} onClick={handleMarkEnd} disabled={actionLoading} size="small" title="Enregistrer la fin des travaux (un responsable clôturera l’OT)">
+                  Terminer l’intervention
                 </Button>
               )}
               {canEdit && !canClose && order.status === 'in_progress' && order.actualEnd && (
@@ -1260,7 +1260,7 @@ export default function WorkOrderDetail() {
         <DialogActions>
           <Button onClick={() => setCloseDialogOpen(false)}>Annuler</Button>
           <Button variant="contained" onClick={handleConfirmClose} disabled={actionLoading}>
-            {actionLoading ? 'Enregistrement...' : 'Confirmer la clôture'}
+            {actionLoading ? 'Enregistrement...' : 'Clôturer l’OT'}
           </Button>
         </DialogActions>
       </Dialog>

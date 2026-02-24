@@ -949,21 +949,42 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(
 
 router.delete('/:id', authorize(ROLES.ADMIN), param('id').isInt(), (req, res) => {
   const db = req.db;
-  const id = req.params.id;
-  const hasRefs = db.prepare('SELECT 1 FROM work_orders WHERE equipment_id = ? LIMIT 1').get(id);
-  if (hasRefs) return res.status(400).json({ error: 'Impossible de supprimer : équipement référencé par des ordres de travail' });
+  const id = parseInt(req.params.id, 10);
+  const eq = db.prepare('SELECT code, name FROM equipment WHERE id = ?').get(id);
+  if (!eq) return res.status(404).json({ error: 'Équipement non trouvé' });
+
+  const hasWo = db.prepare('SELECT 1 FROM work_orders WHERE equipment_id = ? LIMIT 1').get(id);
+  if (hasWo) return res.status(400).json({ error: 'Impossible de supprimer : cet équipement est référencé par un ou plusieurs ordres de travail. Supprimez ou réaffectez les OT avant suppression.' });
   const hasPlans = db.prepare('SELECT 1 FROM maintenance_plans WHERE equipment_id = ? LIMIT 1').get(id);
-  if (hasPlans) return res.status(400).json({ error: 'Impossible de supprimer : équipement référencé par des plans de maintenance' });
+  if (hasPlans) return res.status(400).json({ error: 'Impossible de supprimer : cet équipement est référencé par des plans de maintenance. Supprimez ou réaffectez les plans avant suppression.' });
+  try {
+    const hasContracts = db.prepare('SELECT 1 FROM maintenance_contracts WHERE equipment_id = ? LIMIT 1').get(id);
+    if (hasContracts) return res.status(400).json({ error: 'Impossible de supprimer : cet équipement est lié à un ou plusieurs contrats de maintenance.' });
+  } catch (t) {
+    if (!t.message || !t.message.includes('no such table')) throw t;
+  }
+  try {
+    const hasWarranties = db.prepare('SELECT 1 FROM warranties WHERE equipment_id = ? LIMIT 1').get(id);
+    if (hasWarranties) return res.status(400).json({ error: 'Impossible de supprimer : cet équipement possède des garanties enregistrées.' });
+  } catch (t) {
+    if (!t.message || !t.message.includes('no such table')) throw t;
+  }
+  try {
+    const hasIntervention = db.prepare('SELECT 1 FROM intervention_requests WHERE equipment_id = ? LIMIT 1').get(id);
+    if (hasIntervention) return res.status(400).json({ error: 'Impossible de supprimer : cet équipement est référencé par des demandes d\'intervention.' });
+  } catch (t) {
+    if (!t.message || !t.message.includes('no such table')) throw t;
+  }
+
   try {
     db.prepare('UPDATE equipment SET parent_id = NULL WHERE parent_id = ?').run(id);
-    const eq = db.prepare('SELECT code, name FROM equipment WHERE id = ?').get(id);
     const result = db.prepare('DELETE FROM equipment WHERE id = ?').run(id);
     if (result.changes === 0) return res.status(404).json({ error: 'Équipement non trouvé' });
     auditService.log(db, 'equipment', id, 'deleted', { userId: req.user?.id, userEmail: req.user?.email, summary: eq ? `${eq.code} ${eq.name}` : null });
     res.status(204).send();
   } catch (e) {
     if (e.message && e.message.includes('FOREIGN KEY')) {
-      return res.status(400).json({ error: 'Impossible de supprimer : équipement encore référencé (contrats, pièces, documents, etc.)' });
+      return res.status(400).json({ error: 'Impossible de supprimer : équipement encore référencé (documents, nomenclature, seuils, etc.). Supprimez d\'abord les éléments associés.' });
     }
     throw e;
   }

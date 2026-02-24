@@ -178,7 +178,7 @@ export default function Planning() {
           >
             30 j
           </Button>
-          <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/app/maintenance/creation/work-order')}>
+          <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/app/work-orders/new')}>
             Déclarer panne
           </Button>
         </Box>

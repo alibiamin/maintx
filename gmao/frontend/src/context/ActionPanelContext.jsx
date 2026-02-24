@@ -13,8 +13,17 @@ import {
   ListItemText,
   Divider,
   Paper,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Button,
 } from '@mui/material';
 import { Close, PushPin, PushPinOutlined, Add, Edit, Delete, Print, Download, Visibility, FileCopy, Settings } from '@mui/icons-material';
+import api from '../services/api';
+import { getApiErrorMessage } from '../services/api';
+import { useSnackbar } from './SnackbarContext';
 
 const STORAGE_KEY = 'gmao-action-bar-pinned';
 const PANEL_WIDTH = 280;
@@ -41,7 +50,7 @@ const APP_BASE = '/app';
 /** Page de création dédiée par type d'entité (chaque création dans son module, pas le menu Création). */
 function getCreationPath(entityType) {
   switch (entityType) {
-    case 'work-orders': return `${APP_BASE}/maintenance/creation/work-order`;
+    case 'work-orders': return `${APP_BASE}/work-orders/new`;
     case 'maintenance-plans': return `${APP_BASE}/maintenance/creation/plan`;
     case 'checklists': return `${APP_BASE}/maintenance/creation/checklist`;
     case 'stock': return `${APP_BASE}/stock/creation/piece`;
@@ -83,8 +92,18 @@ function getPathsForEntity(entityType, ent) {
   }
 }
 
+/** Configuration suppression par type d'entité : { apiPath, listPath }. listPath = où rediriger après suppression. */
+const DELETE_CONFIG = {
+  equipment: { apiPath: '/equipment', listPath: `${APP_BASE}/equipment` },
+  'work-orders': { apiPath: '/work-orders', listPath: `${APP_BASE}/work-orders` },
+  contracts: { apiPath: '/contracts', listPath: `${APP_BASE}/contracts` },
+  tools: { apiPath: '/tools', listPath: `${APP_BASE}/tools` },
+  checklists: { apiPath: '/checklists', listPath: `${APP_BASE}/checklists` },
+  'maintenance-projects': { apiPath: '/maintenance-projects', listPath: `${APP_BASE}/maintenance-projects` },
+};
+
 /** Construit titre + actions à partir du contexte page (liste / détail / entité sélectionnée). */
-function buildFromPageContext(pageContext, navigate) {
+function buildFromPageContext(pageContext, navigate, { onDeleteRequest } = {}) {
   if (!pageContext || !pageContext.entityType) {
     return { title: 'Actions', actions: [], entity: null };
   }
@@ -93,10 +112,14 @@ function buildFromPageContext(pageContext, navigate) {
   const label = ENTITY_LABELS[entityType] || entityType;
   const hasEditRoute = entityType === 'maintenance-projects';
   const { detailPath, editPath, detailNavigate } = getPathsForEntity(entityType, ent);
+  const canDelete = onDeleteRequest && DELETE_CONFIG[entityType] && ent?.id != null;
 
   const goDetail = detailNavigate ? () => detailNavigate(navigate) : (detailPath ? () => navigate(detailPath) : null);
   const hasDistinctEdit = editPath && editPath !== detailPath;
   const goEdit = hasDistinctEdit ? () => navigate(editPath) : (detailNavigate ? () => detailNavigate(navigate) : (editPath ? () => navigate(editPath) : goDetail));
+  const deleteAction = canDelete
+    ? { id: 'delete', label: 'Supprimer', icon: <Delete />, display: 'button', variant: 'contained', color: 'error', onClick: () => onDeleteRequest(entityType, ent) }
+    : null;
 
   if (type === 'detail' && ent && (detailPath || detailNavigate)) {
     const actions = [
@@ -106,8 +129,7 @@ function buildFromPageContext(pageContext, navigate) {
       { divider: true },
       { id: 'print', label: 'Imprimer', icon: <Print />, display: 'standalone', onClick: () => window.print() },
       { id: 'export', label: 'Exporter', icon: <Download />, display: 'standalone', onClick: () => {} },
-      { divider: true },
-      { id: 'delete', label: 'Supprimer', icon: <Delete />, display: 'button', variant: 'contained', onClick: () => { if (window.confirm(`Supprimer ${ent.name || ent.code || 'cet élément'} ?`)) {} } }
+      ...(deleteAction ? [{ divider: true }, deleteAction] : [])
     ];
     return { title: ent.name || ent.code || label, actions, entity: ent };
   }
@@ -119,8 +141,7 @@ function buildFromPageContext(pageContext, navigate) {
       { divider: true },
       { id: 'print', label: 'Imprimer', icon: <Print />, display: 'standalone', onClick: () => window.print() },
       { id: 'export', label: 'Exporter', icon: <Download />, display: 'standalone', onClick: () => {} },
-      { divider: true },
-      { id: 'delete', label: 'Supprimer', icon: <Delete />, display: 'button', variant: 'contained', onClick: () => { if (window.confirm(`Supprimer ${ent.name || ent.code || 'cet élément'} ?`)) {} } }
+      ...(deleteAction ? [{ divider: true }, deleteAction] : [])
     ];
     return { title: ent.name || ent.code || label, actions, entity: ent };
   }
@@ -217,13 +238,45 @@ export function ActionBar() {
   const { pinned, setPinned, pageContext, setContext, override, closePanel } = useActionPanel();
   const navigate = useNavigate();
   const location = useLocation();
+  const snackbar = useSnackbar();
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, entityType: null, entity: null });
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const handleDeleteRequest = useCallback((entityType, entity) => {
+    setDeleteDialog({ open: true, entityType, entity });
+  }, []);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    const { entityType, entity } = deleteDialog;
+    const config = entityType && entity && DELETE_CONFIG[entityType];
+    if (!config || !entity?.id) {
+      setDeleteDialog({ open: false, entityType: null, entity: null });
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      await api.delete(`${config.apiPath}/${entity.id}`);
+      snackbar.showSuccess('Élément supprimé');
+      setDeleteDialog({ open: false, entityType: null, entity: null });
+      setContext({ type: 'list', entityType });
+      navigate(config.listPath);
+    } catch (err) {
+      snackbar.showError(getApiErrorMessage(err, 'Erreur lors de la suppression'));
+    } finally {
+      setDeleteLoading(false);
+    }
+  }, [deleteDialog, navigate, setContext, snackbar]);
+
+  const handleDeleteDialogClose = useCallback(() => {
+    if (!deleteLoading) setDeleteDialog({ open: false, entityType: null, entity: null });
+  }, [deleteLoading]);
 
   const effectiveContext = pageContext ?? getDefaultPageContext(location.pathname);
-  const fromContext = buildFromPageContext(effectiveContext, navigate);
+  const fromContext = buildFromPageContext(effectiveContext, navigate, { onDeleteRequest: handleDeleteRequest });
   const title = override ? override.title : fromContext.title;
   let actions = override ? (override.actions || []) : (fromContext.actions || []);
   if (!Array.isArray(actions) || actions.length === 0) {
-    const fallback = buildFromPageContext({ type: 'list', entityType: 'equipment' }, navigate);
+    const fallback = buildFromPageContext({ type: 'list', entityType: 'equipment' }, navigate, { onDeleteRequest: handleDeleteRequest });
     actions = fallback.actions || [];
   }
   const entity = override ? override.entity : fromContext.entity;
@@ -246,9 +299,13 @@ export function ActionBar() {
   const hoverPrimary = alpha(theme.palette.primary.main, isDark ? 0.2 : 0.08);
   const textSecondary = theme.palette.text.secondary;
 
+  const deleteDialogEntity = deleteDialog.entity;
+  const deleteDialogLabel = deleteDialogEntity ? (deleteDialogEntity.name || deleteDialogEntity.code || 'cet élément') : '';
+
   // ——— État replié : bandeau étroit avec bouton pour ouvrir ———
   if (!pinned) {
     return (
+      <>
       <Paper
         elevation={0}
         component="aside"
@@ -280,11 +337,27 @@ export function ActionBar() {
           </IconButton>
         </Tooltip>
       </Paper>
+      <Dialog open={deleteDialog.open} onClose={handleDeleteDialogClose}>
+        <DialogTitle>Confirmer la suppression</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Supprimer définitivement {deleteDialogLabel} ? Cette action est irréversible.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteDialogClose} disabled={deleteLoading}>Annuler</Button>
+          <Button color="error" variant="contained" onClick={handleDeleteConfirm} disabled={deleteLoading}>
+            {deleteLoading ? 'Suppression...' : 'Supprimer'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      </>
     );
   }
 
   // ——— Panneau déployé : en-tête + liste d'actions avec libellés ———
   return (
+    <>
     <Paper
       elevation={0}
       component="aside"
@@ -391,5 +464,20 @@ export function ActionBar() {
         })}
       </List>
     </Paper>
+    <Dialog open={deleteDialog.open} onClose={handleDeleteDialogClose}>
+      <DialogTitle>Confirmer la suppression</DialogTitle>
+      <DialogContent>
+        <DialogContentText>
+          Supprimer définitivement {deleteDialogLabel} ? Cette action est irréversible.
+        </DialogContentText>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleDeleteDialogClose} disabled={deleteLoading}>Annuler</Button>
+        <Button color="error" variant="contained" onClick={handleDeleteConfirm} disabled={deleteLoading}>
+          {deleteLoading ? 'Suppression...' : 'Supprimer'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 }

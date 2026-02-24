@@ -3,6 +3,7 @@
  */
 
 const express = require('express');
+const { param, validationResult } = require('express-validator');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
 const multer = require('multer');
@@ -78,9 +79,33 @@ router.get('/', (req, res) => {
   }
 });
 
-router.get('/:id', (req, res) => {
+// GET /api/documents/:id/download — déclaré avant /:id pour que "download" ne soit pas capturé comme id
+router.get('/:id/download', param('id').isInt({ min: 1 }), (req, res) => {
   const db = req.db;
   if (!db) return res.status(401).json({ error: 'Authentification requise' });
+  const err = validationResult(req);
+  if (!err.isEmpty()) return res.status(400).json({ errors: err.array() });
+  try {
+    const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(req.params.id);
+    if (!doc) {
+      return res.status(404).json({ error: 'Document non trouvé' });
+    }
+
+    if (!fs.existsSync(doc.file_path)) {
+      return res.status(404).json({ error: 'Fichier non trouvé sur le serveur' });
+    }
+
+    res.download(doc.file_path, doc.original_filename);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/:id', param('id').isInt({ min: 1 }), (req, res) => {
+  const db = req.db;
+  if (!db) return res.status(401).json({ error: 'Authentification requise' });
+  const err = validationResult(req);
+  if (!err.isEmpty()) return res.status(400).json({ errors: err.array() });
   try {
     const doc = db.prepare('SELECT d.*, u.first_name, u.last_name FROM documents d LEFT JOIN users u ON d.uploaded_by = u.id WHERE d.id = ?').get(req.params.id);
     if (!doc) {
@@ -127,30 +152,12 @@ router.post('/', upload.single('file'), (req, res) => {
   }
 });
 
-// GET /api/documents/:id/download
-router.get('/:id/download', (req, res) => {
-  const db = req.db;
-  if (!db) return res.status(401).json({ error: 'Authentification requise' });
-  try {
-    const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(req.params.id);
-    if (!doc) {
-      return res.status(404).json({ error: 'Document non trouvé' });
-    }
-
-    if (!fs.existsSync(doc.file_path)) {
-      return res.status(404).json({ error: 'Fichier non trouvé sur le serveur' });
-    }
-
-    res.download(doc.file_path, doc.original_filename);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // DELETE /api/documents/:id
-router.delete('/:id', (req, res) => {
+router.delete('/:id', param('id').isInt({ min: 1 }), (req, res) => {
   const db = req.db;
   if (!db) return res.status(401).json({ error: 'Authentification requise' });
+  const err = validationResult(req);
+  if (!err.isEmpty()) return res.status(400).json({ errors: err.array() });
   try {
     const doc = db.prepare('SELECT * FROM documents WHERE id = ?').get(req.params.id);
     if (!doc) {

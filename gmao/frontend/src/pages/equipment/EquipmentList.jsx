@@ -21,7 +21,7 @@ import {
   InputLabel,
   CircularProgress
 } from '@mui/material';
-import { Search, AccountTree } from '@mui/icons-material';
+import { Search, AccountTree, Add } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useActionPanel } from '../../context/ActionPanelContext';
@@ -119,9 +119,14 @@ export default function EquipmentList() {
           <h2 style={{ margin: 0 }}>Équipements</h2>
           <p style={{ margin: '4px 0 0', color: '#64748b' }}>Gestion des actifs et fiches techniques</p>
         </Box>
-        <Button variant="outlined" startIcon={<AccountTree />} onClick={() => navigate('/app/equipment/map')}>
-          Carte hiérarchie
-        </Button>
+        <Box display="flex" gap={2}>
+          <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/app/equipment/creation/machine')}>
+            Nouvel équipement
+          </Button>
+          <Button variant="outlined" startIcon={<AccountTree />} onClick={() => navigate('/app/equipment/map')}>
+            Carte hiérarchie
+          </Button>
+        </Box>
       </Box>
 
       {view && ['history', 'documents', 'warranties'].includes(view) && (

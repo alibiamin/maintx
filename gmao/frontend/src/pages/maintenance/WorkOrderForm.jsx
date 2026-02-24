@@ -20,6 +20,7 @@ import {
 import { ArrowBack, Save, Add, Delete } from '@mui/icons-material';
 import api from '../../services/api';
 import { useTranslation } from 'react-i18next';
+import { useConfirmLeave } from '../../hooks/useConfirmLeave';
 
 export default function WorkOrderForm() {
   const { t } = useTranslation();
@@ -36,6 +37,7 @@ export default function WorkOrderForm() {
   const [tools, setTools] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -96,17 +98,19 @@ export default function WorkOrderForm() {
     if (planId?.procedure_id && (!form.procedureIds || form.procedureIds.length === 0)) setForm(prev => ({ ...prev, procedureIds: [String(planId.procedure_id)] }));
   }, [form.maintenancePlanId, maintenancePlans]);
 
-  const handleChange = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
+  useConfirmLeave(isDirty);
 
-  const addReservationRow = () => setForm(prev => ({ ...prev, reservations: [...prev.reservations, { sparePartId: '', quantity: 1, notes: '' }] }));
+  const handleChange = (field, value) => { setIsDirty(true); setForm(prev => ({ ...prev, [field]: value })); };
+
+  const addReservationRow = () => { setIsDirty(true); setForm(prev => ({ ...prev, reservations: [...prev.reservations, { sparePartId: '', quantity: 1, notes: '' }] })); };
   const removeReservationRow = (index) => setForm(prev => ({
     ...prev,
     reservations: prev.reservations.filter((_, i) => i !== index)
   }));
-  const updateReservation = (index, key, value) => setForm(prev => ({
+  const updateReservation = (index, key, value) => { setIsDirty(true); setForm(prev => ({
     ...prev,
     reservations: prev.reservations.map((r, i) => i === index ? { ...r, [key]: value } : r)
-  }));
+  })); };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -134,7 +138,7 @@ export default function WorkOrderForm() {
       statusWorkflow: form.createAsDraft ? 'draft' : undefined
     };
     api.post('/work-orders', payload)
-      .then(r => navigate(`/app/work-orders/${r.data.id}`))
+      .then(r => { setIsDirty(false); navigate(`/app/work-orders/${r.data.id}`); })
       .catch(err => setError(err.response?.data?.error || 'Erreur'))
       .finally(() => setLoading(false));
   };
@@ -145,7 +149,7 @@ export default function WorkOrderForm() {
       <Card sx={{ maxWidth: 640, borderRadius: 2 }}>
         <CardContent>
           <Box component="form" onSubmit={handleSubmit}>
-            <h3 style={{ margin: '0 0 16px' }}>Declarer une panne / Creer un OT</h3>
+            <h3 style={{ margin: '0 0 16px' }}>Déclarer une panne / Créer un OT</h3>
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
             <Grid container spacing={2}>
               <Grid item xs={12}>
@@ -244,10 +248,10 @@ export default function WorkOrderForm() {
                 </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField fullWidth type="datetime-local" label="Debut prevu" value={form.plannedStart} onChange={(e) => handleChange('plannedStart', e.target.value)} InputLabelProps={{ shrink: true }} />
+                <TextField fullWidth type="datetime-local" label="Début prévu" value={form.plannedStart} onChange={(e) => handleChange('plannedStart', e.target.value)} InputLabelProps={{ shrink: true }} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField fullWidth type="datetime-local" label="Fin prevue" value={form.plannedEnd} onChange={(e) => handleChange('plannedEnd', e.target.value)} InputLabelProps={{ shrink: true }} />
+                <TextField fullWidth type="datetime-local" label="Fin prévue" value={form.plannedEnd} onChange={(e) => handleChange('plannedEnd', e.target.value)} InputLabelProps={{ shrink: true }} />
               </Grid>
 
               <Grid item xs={12}>
@@ -331,7 +335,7 @@ export default function WorkOrderForm() {
                   control={
                     <Checkbox
                       checked={!!form.createAsDraft}
-                      onChange={(e) => setForm((f) => ({ ...f, createAsDraft: e.target.checked }))}
+                      onChange={(e) => { setIsDirty(true); setForm((f) => ({ ...f, createAsDraft: e.target.checked })); }}
                     />
                   }
                   label={t('workOrder.createAsDraft', 'Créer en brouillon (à planifier plus tard)')}
@@ -339,7 +343,7 @@ export default function WorkOrderForm() {
               </Grid>
             </Grid>
             <Box sx={{ mt: 3, display: 'flex', gap: 2 }}>
-              <Button type="submit" variant="contained" startIcon={<Save />} disabled={loading || !form.title}>Creer</Button>
+              <Button type="submit" variant="contained" startIcon={<Save />} disabled={loading || !form.title}>Créer</Button>
               <Button onClick={() => navigate('/app/work-orders')}>Annuler</Button>
             </Box>
           </Box>

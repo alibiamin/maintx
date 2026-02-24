@@ -15,6 +15,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   TextField,
   FormControl,
@@ -36,6 +37,7 @@ export default function EquipmentCategories() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ name: '', description: '', parentId: '' });
   const [saving, setSaving] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const { setContext } = useActionPanel();
   const snackbar = useSnackbar();
 
@@ -115,16 +117,22 @@ export default function EquipmentCategories() {
     }
   };
 
-  const handleDelete = (cat, e) => {
+  const openDeleteConfirm = (cat, e) => {
     if (e) e.stopPropagation();
-    if (!window.confirm(`Supprimer la catégorie « ${cat.name } » ?`)) return;
-    api.delete(`/equipment/categories/${cat.id}`)
-      .then(() => {
-        snackbar.showSuccess('Catégorie supprimée');
-        loadCategories();
-        if (selectedId === cat.id) setSelectedId(null);
-      })
-      .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'));
+    setDeleteConfirm(cat);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirm) return;
+    try {
+      await api.delete(`/equipment/categories/${deleteConfirm.id}`);
+      snackbar.showSuccess('Catégorie supprimée');
+      loadCategories();
+      if (selectedId === deleteConfirm.id) setSelectedId(null);
+      setDeleteConfirm(null);
+    } catch (err) {
+      snackbar.showError(err.response?.data?.error || 'Erreur');
+    }
   };
 
   const parentOptions = categories.filter((c) => !editingId || c.id !== editingId);
@@ -184,7 +192,7 @@ export default function EquipmentCategories() {
                       <IconButton size="small" onClick={(e) => openEdit(cat, e)} title="Modifier">
                         <Edit />
                       </IconButton>
-                      <IconButton size="small" color="error" onClick={(e) => handleDelete(cat, e)} title="Supprimer" disabled={(cat.equipmentCount ?? 0) > 0}>
+                      <IconButton size="small" color="error" onClick={(e) => openDeleteConfirm(cat, e)} title="Supprimer" disabled={(cat.equipmentCount ?? 0) > 0}>
                         <Delete />
                       </IconButton>
                     </TableCell>
@@ -235,6 +243,19 @@ export default function EquipmentCategories() {
           <Button variant="contained" onClick={handleSave} disabled={saving || !form.name.trim()}>
             {saving ? 'Enregistrement…' : 'Enregistrer'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)}>
+        <DialogTitle>Confirmer la suppression</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Supprimer la catégorie « {deleteConfirm?.name} » ? Les équipements qui y sont rattachés ne seront pas supprimés (leur catégorie sera vidée).
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirm(null)}>Annuler</Button>
+          <Button color="error" variant="contained" onClick={handleDeleteConfirm}>Supprimer</Button>
         </DialogActions>
       </Dialog>
     </Box>

@@ -111,7 +111,7 @@ function getMenuStructure() {
       { titleKey: 'section.maintenance_0', items: [
         { labelKey: 'item.wo_list', path: `${APP_BASE}/work-orders` },
         { labelKey: 'item.my_wo_today', path: `${APP_BASE}/my-work-orders` },
-        { labelKey: 'item.wo_declare', path: `${APP_BASE}/maintenance/creation/work-order` },
+        { labelKey: 'item.wo_declare', path: `${APP_BASE}/work-orders/new` },
         { labelKey: 'item.intervention_requests', path: `${APP_BASE}/intervention-requests` },
         { labelKey: 'item.wo_in_progress', path: `${APP_BASE}/work-orders?status=in_progress` },
         { labelKey: 'item.wo_pending', path: `${APP_BASE}/work-orders?status=pending` }
@@ -128,7 +128,7 @@ function getMenuStructure() {
       { titleKey: 'section.maintenance_creation', items: [
         { labelKey: 'item.creation_plan_maintenance', path: `${APP_BASE}/maintenance/creation/plan` },
         { labelKey: 'item.creation_checklist', path: `${APP_BASE}/maintenance/creation/checklist` },
-        { labelKey: 'item.creation_ordre_travail', path: `${APP_BASE}/maintenance/creation/work-order` }
+        { labelKey: 'item.creation_ordre_travail', path: `${APP_BASE}/work-orders/new` }
       ]},
       { titleKey: 'section.maintenance_2', items: [
         { labelKey: 'item.planning_calendar', path: `${APP_BASE}/planning` },
