@@ -940,7 +940,7 @@ export default function Dashboard() {
           </Card>
         </Grid>
 
-        {/* Évolution des OT — courbes par statut (lignes) */}
+        {/* Évolution des OT — barres empilées par période */}
         <Grid item xs={12}>
           <Card sx={{ borderRadius: 2, border: `1px solid ${alpha(muiTheme.palette.divider, 0.6)}`, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
             <CardContent sx={{ pb: 0 }}>
@@ -951,7 +951,7 @@ export default function Dashboard() {
                     Évolution des OT
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Nombre d’OT par statut dans le temps (les {period} derniers jours)
+                    Nombre d’OT par période (les {period} derniers jours)
                     {evolutionData.length > 0 && (
                       <> · Total : <strong>{evolutionData.reduce((s, r) => s + (r.total || 0), 0)}</strong> OT</>
                     )}
@@ -962,10 +962,10 @@ export default function Dashboard() {
                 )}
               </Box>
               {periodKeys.length > 0 ? (
-                <Box sx={{ height: 340 }}>
+                <Box sx={{ height: 320 }}>
                   <ReactApexChart
-                    type="line"
-                    height={340}
+                    type="bar"
+                    height={320}
                     series={statuses.map((status) => ({
                       name: t(`status.${status}`, status),
                       data: evolutionData.map((r) => r[status] ?? 0)
@@ -974,28 +974,34 @@ export default function Dashboard() {
                       ...apexTheme,
                       chart: {
                         ...apexTheme.chart,
-                        zoom: { enabled: true, type: 'x' },
-                        animations: { enabled: true, speed: 500, dynamicAnimation: { enabled: true } },
-                        toolbar: { show: true, tools: { download: true, zoom: true, zoomin: true, zoomout: true, reset: true } }
+                        stacked: true,
+                        animations: { enabled: true, speed: 400 },
+                        toolbar: { show: false }
                       },
                       colors: statuses.map((s, i) => CHART_COLORS[statusOrder.indexOf(s) % CHART_COLORS.length] || CHART_COLORS[i]),
-                      stroke: { curve: 'smooth', width: 2.5 },
-                      markers: { size: 4, hover: { size: 6 } },
+                      plotOptions: {
+                        bar: {
+                          horizontal: false,
+                          borderRadius: 6,
+                          columnWidth: '65%',
+                          dataLabels: { position: 'top', hideOverflowingLabels: true }
+                        }
+                      },
+                      dataLabels: { enabled: false },
                       xaxis: {
                         categories: evolutionData.map((r) => formatEvolutionLabel(r.periodKey, evolutionGranularity)),
                         ...apexTheme.xaxis,
-                        labels: { rotate: periodKeys.length > 14 ? -45 : -25, style: { fontSize: '11px' } },
-                        tickAmount: Math.min(periodKeys.length, 15)
+                        labels: { rotate: periodKeys.length > 12 ? -40 : 0, style: { fontSize: '11px' } }
                       },
-                      yaxis: { ...apexTheme.yaxis, tickAmount: 5, min: 0, forceNiceScale: true },
-                      grid: { ...apexTheme.grid, padding: { top: 16, right: 16, left: 8, bottom: 24 }, strokeDashArray: 3 },
+                      yaxis: { ...apexTheme.yaxis, tickAmount: 5, min: 0 },
+                      grid: { ...apexTheme.grid, padding: { top: 12, right: 12, left: 8, bottom: 16 } },
                       legend: { ...apexTheme.legend, position: 'top', horizontalAlign: 'right' },
                       tooltip: {
                         ...apexTheme.tooltip,
-                        x: { formatter: (_, { dataPointIndex }) => formatEvolutionLabel(evolutionData[dataPointIndex]?.periodKey, evolutionGranularity) },
-                        y: { formatter: (v) => `${v} OT` },
+                        intersect: false,
                         shared: true,
-                        intersect: false
+                        x: { formatter: (_, { dataPointIndex }) => formatEvolutionLabel(evolutionData[dataPointIndex]?.periodKey, evolutionGranularity) },
+                        y: { formatter: (v) => `${v} OT` }
                       }
                     }}
                   />

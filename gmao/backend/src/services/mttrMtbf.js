@@ -1,14 +1,17 @@
 /**
- * Calculs professionnels MTTR et MTBF (normes maintenance)
+ * Calculs professionnels MTTR et MTBF (normes maintenance industrielle)
  *
  * MTTR (Mean Time To Repair) = temps moyen de réparation
- *   Formule : Total temps de réparation / Nombre de réparations
- *   Périmètre : OT correctifs uniquement (failure_date ou type Correctif),
- *   avec actual_end > actual_start.
+ *   Formule : Σ (actual_end − actual_start) / nombre de réparations  [en heures]
+ *   Périmètre : OT correctifs uniquement (failure_date renseignée OU type Correctif),
+ *   status = completed, actual_start et actual_end non nuls, durée > 0.
+ *   Un seul réparation compte une fois ; la moyenne est cohérente avec les normes (ex. EN 15341).
  *
  * MTBF (Mean Time Between Failures) = temps moyen entre deux pannes
- *   Formule : Moyenne des intervalles entre deux dates de panne consécutives, par équipement.
- *   Périmètre : OT avec failure_date ; PARTITION BY equipment_id pour ne pas mélanger les actifs.
+ *   Formule : moyenne des intervalles (failure_date[i] − failure_date[i−1]) par équipement,
+ *   puis agrégation globale. Unité : jours (j) pour cohérence avec objectifs (ex. MTBF ≥ 30 j).
+ *   Périmètre : OT avec failure_date, status = completed, equipment_id non nul.
+ *   PARTITION BY equipment_id pour ne pas mélanger les actifs (chaque équipement a sa série de pannes).
  */
 
 function repairOnlyCondition(alias = 'wo') {

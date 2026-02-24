@@ -82,30 +82,39 @@ router.get('/mttr', (req, res) => {
     where += ' AND wo.equipment_id = ?';
     params.push(equipmentId);
   }
-  const byEquipment = db.prepare(`
+  let byEquipment = [];
+  let global = null;
+  try {
+    byEquipment = db.prepare(`
     SELECT e.id as equipment_id, e.code, e.name,
            COUNT(wo.id) as repair_count,
-           SUM((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24) / COUNT(*) as mttr_hours
+           SUM((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24) / NULLIF(COUNT(*), 0) as mttr_hours
     FROM work_orders wo
     JOIN equipment e ON wo.equipment_id = e.id
     WHERE ${where}
     GROUP BY wo.equipment_id
     ORDER BY mttr_hours DESC
   `).all(...params);
-  const global = db.prepare(`
+    global = db.prepare(`
     SELECT COUNT(*) as repair_count,
-           SUM((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24) / COUNT(*) as mttr_hours
+           SUM((julianday(wo.actual_end) - julianday(wo.actual_start)) * 24) / NULLIF(COUNT(*), 0) as mttr_hours
     FROM work_orders wo
     JOIN equipment e ON wo.equipment_id = e.id
     WHERE ${where}
   `).get(...params);
-  res.json({ global: global || { repair_count: 0, mttr_hours: null }, byEquipment });
+  } catch (e) {
+    if (e.message && (e.message.includes('no such table') || e.message.includes('no such column'))) {
+      global = { repair_count: 0, mttr_hours: null };
+    } else throw e;
+  }
+  res.json({ global: global || { repair_count: 0, mttr_hours: null }, byEquipment: byEquipment || [] });
 });
 
 /**
  * GET /api/reports/mtbf
  * MTBF (Mean Time Between Failures) — temps moyen entre deux pannes (failure_date), par équipement.
- * Retour en heures pour cohérence avec les rapports.
+ * Retour en jours (j) pour cohérence avec le dashboard et les objectifs (MTBF ≥ X j).
+ * Formule : moyenne des intervalles (failure_date[i] - failure_date[i-1]) par équipement, puis globale.
  */
 router.get('/mtbf', (req, res) => {
   const db = req.db;
@@ -123,7 +132,10 @@ router.get('/mtbf', (req, res) => {
     where += ' AND wo.equipment_id = ?';
     params.push(equipmentId);
   }
-  const byEquipment = db.prepare(`
+  let byEquipment = [];
+  let globalRow = null;
+  try {
+    byEquipment = db.prepare(`
     WITH ordered AS (
       SELECT wo.equipment_id, wo.failure_date,
              LAG(wo.failure_date) OVER (PARTITION BY wo.equipment_id ORDER BY wo.failure_date) as prev_failure
@@ -133,14 +145,14 @@ router.get('/mtbf', (req, res) => {
     )
     SELECT e.id as equipment_id, e.code, e.name,
            COUNT(*) as intervals,
-           (SUM((julianday(o.failure_date) - julianday(o.prev_failure)) * 24) / COUNT(*)) as mtbf_hours
+           (SUM(julianday(o.failure_date) - julianday(o.prev_failure)) / NULLIF(COUNT(*), 0)) as mtbf_days
     FROM ordered o
     JOIN equipment e ON o.equipment_id = e.id
     WHERE o.prev_failure IS NOT NULL
     GROUP BY o.equipment_id
-    ORDER BY mtbf_hours DESC
+    ORDER BY mtbf_days DESC
   `).all(...params);
-  const globalRow = db.prepare(`
+    globalRow = db.prepare(`
     WITH ordered AS (
       SELECT wo.equipment_id, wo.failure_date,
              LAG(wo.failure_date) OVER (PARTITION BY wo.equipment_id ORDER BY wo.failure_date) as prev_failure
@@ -149,12 +161,30 @@ router.get('/mtbf', (req, res) => {
       WHERE ${where}
     ),
     intervals AS (
-      SELECT (julianday(failure_date) - julianday(prev_failure)) * 24 as hours_between
+      SELECT (julianday(failure_date) - julianday(prev_failure)) as days_between
       FROM ordered WHERE prev_failure IS NOT NULL
     )
-    SELECT COUNT(*) as intervals, (SUM(hours_between) / COUNT(*)) as mtbf_hours FROM intervals
+    SELECT COUNT(*) as intervals, (SUM(days_between) / NULLIF(COUNT(*), 0)) as mtbf_days FROM intervals
   `).get(...params);
-  res.json({ global: globalRow || { intervals: 0, mtbf_hours: null }, byEquipment });
+  } catch (e) {
+    if (e.message && (e.message.includes('no such table') || e.message.includes('no such column'))) {
+      globalRow = { intervals: 0, mtbf_days: null };
+    } else throw e;
+  }
+  const global = globalRow || { intervals: 0, mtbf_days: null };
+  const byEquipmentWithDays = (byEquipment || []).map((row) => ({
+    ...row,
+    mtbf_days: row.mtbf_days != null ? parseFloat(Number(row.mtbf_days).toFixed(4)) : null,
+    mtbf_hours: row.mtbf_days != null ? parseFloat((row.mtbf_days * 24).toFixed(2)) : null
+  }));
+  res.json({
+    global: {
+      intervals: global.intervals ?? 0,
+      mtbf_days: global.mtbf_days != null ? parseFloat(Number(global.mtbf_days).toFixed(4)) : null,
+      mtbf_hours: global.mtbf_days != null ? parseFloat((global.mtbf_days * 24).toFixed(2)) : null
+    },
+    byEquipment: byEquipmentWithDays
+  });
 });
 
 /**

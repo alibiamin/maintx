@@ -24,6 +24,10 @@ export default function ReportsMtbfMttr() {
 
   useEffect(() => { load(); }, []);
 
+  const mtbfDaysGlobal = mtbf?.global?.mtbf_days != null
+    ? mtbf.global.mtbf_days
+    : (mtbf?.global?.mtbf_hours != null ? mtbf.global.mtbf_hours / 24 : null);
+
   return (
     <Box>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>{t('item.reports_mtbf_mttr')}</Typography>
@@ -54,14 +58,14 @@ export default function ReportsMtbfMttr() {
           </Card>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>MTBF (temps moyen entre pannes, en heures)</Typography>
-              <Typography color="text.secondary">Global : {mtbf?.global?.mtbf_hours != null ? `${Number(mtbf.global.mtbf_hours).toFixed(2)} h` : '—'} ({mtbf?.global?.intervals ?? 0} intervalles)</Typography>
+              <Typography variant="h6" gutterBottom>MTBF (temps moyen entre pannes, en jours)</Typography>
+              <Typography color="text.secondary">Global : {mtbfDaysGlobal != null ? `${Number(mtbfDaysGlobal).toFixed(2)} j` : '—'} ({mtbf?.global?.intervals ?? 0} intervalles)</Typography>
               <Table size="small" sx={{ mt: 2 }}>
-                <TableHead><TableRow><TableCell>Équipement</TableCell><TableCell>Code</TableCell><TableCell>Intervalles</TableCell><TableCell>MTBF (h)</TableCell></TableRow></TableHead>
+                <TableHead><TableRow><TableCell>Équipement</TableCell><TableCell>Code</TableCell><TableCell>Intervalles</TableCell><TableCell>MTBF (j)</TableCell></TableRow></TableHead>
                 <TableBody>
                   {(mtbf?.byEquipment || []).slice(0, 20).map((row, idx) => (
                     <TableRow key={row.equipment_id ?? idx}>
-                      <TableCell>{row.name}</TableCell><TableCell>{row.code}</TableCell><TableCell>{row.intervals}</TableCell><TableCell>{row.mtbf_hours != null ? Number(row.mtbf_hours).toFixed(2) : '—'}</TableCell>
+                      <TableCell>{row.name}</TableCell><TableCell>{row.code}</TableCell><TableCell>{row.intervals}</TableCell><TableCell>{row.mtbf_days != null ? Number(row.mtbf_days).toFixed(2) : '—'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
