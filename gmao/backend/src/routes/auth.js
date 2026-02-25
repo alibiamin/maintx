@@ -135,14 +135,15 @@ router.post('/login', [
     if (!passwordOk) {
       return res.status(401).json({ error: 'Email ou mot de passe incorrect' });
     }
+    let enabledModulesForClient = null;
     if (tenantId != null) {
       let tenant;
       try {
-        tenant = mainDb.prepare('SELECT id, status, deleted_at, license_start, license_end FROM tenants WHERE id = ?').get(tenantId);
+        tenant = mainDb.prepare('SELECT id, status, deleted_at, license_start, license_end, enabled_modules FROM tenants WHERE id = ?').get(tenantId);
       } catch (e) {
         if (e.message && e.message.includes('no such column')) {
           tenant = mainDb.prepare('SELECT id, license_start, license_end FROM tenants WHERE id = ?').get(tenantId);
-          if (tenant) { tenant.status = 'active'; tenant.deleted_at = null; }
+          if (tenant) { tenant.status = 'active'; tenant.deleted_at = null; tenant.enabled_modules = null; }
         } else if (e.message && e.message.includes('no such table')) tenant = null;
         else throw e;
       }
@@ -168,6 +169,12 @@ router.post('/login', [
       }
       if (tenant.license_start && String(tenant.license_start).trim() && today < tenant.license_start) {
         return res.status(403).json({ error: 'Licence pas encore active. La date de début d\'utilisation n\'est pas encore atteinte.', code: 'LICENSE_NOT_ACTIVE' });
+      }
+      if (tenant.enabled_modules != null && String(tenant.enabled_modules).trim()) {
+        try {
+          const parsed = JSON.parse(tenant.enabled_modules);
+          enabledModulesForClient = Array.isArray(parsed) ? parsed : null;
+        } catch (_) {}
       }
     }
     const isMaintxAdmin = tenantId == null;
@@ -213,7 +220,8 @@ router.post('/login', [
         permissions,
         isAdmin: tenantId == null
       },
-      tenantId: tenantId ?? undefined
+      tenantId: tenantId ?? undefined,
+      enabledModules: enabledModulesForClient ?? undefined
     });
   } catch (err) {
     console.error('[auth/login]', err);
@@ -274,6 +282,16 @@ router.post('/refresh', (req, res) => {
       { expiresIn: ACCESS_TOKEN_EXPIRES }
     );
     const permissions = getPermissionsForRoleId(adminDb, userRow.role_id);
+    let enabledModulesForClient = null;
+    if (tenantId != null) {
+      try {
+        const t = adminDb.prepare('SELECT enabled_modules FROM tenants WHERE id = ?').get(tenantId);
+        if (t && t.enabled_modules != null && String(t.enabled_modules).trim()) {
+          const parsed = JSON.parse(t.enabled_modules);
+          enabledModulesForClient = Array.isArray(parsed) ? parsed : null;
+        }
+      } catch (_) {}
+    }
     const expiresInSeconds = 15 * 60;
     res.json({
       accessToken,
@@ -286,7 +304,9 @@ router.post('/refresh', (req, res) => {
         role: userRow.role_name,
         permissions,
         isAdmin: tenantId == null
-      }
+      },
+      tenantId: tenantId ?? undefined,
+      enabledModules: enabledModulesForClient ?? undefined
     });
   } catch (err) {
     console.error('[auth/refresh]', err.message || err);
@@ -352,7 +372,8 @@ router.get('/me', authenticate, (req, res) => {
     permissions: req.user.permissions || [],
     pinnedMenuItems,
     dashboardLayout,
-    isAdmin: req.tenantId == null
+    isAdmin: req.tenantId == null,
+    enabledModules: req.enabledModules ?? undefined
   });
 });
 

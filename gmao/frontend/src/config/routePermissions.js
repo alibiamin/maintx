@@ -116,6 +116,129 @@ export const ROUTE_PERMISSIONS = {
 };
 
 /**
+ * Module métier par route (aligné backend). null = pas de module spécifique (ex. dashboard par défaut).
+ * Utilisé pour filtrer menu et bloquer l’accès si le module n’est pas activé pour le tenant.
+ */
+export const ROUTE_MODULES = {
+  '': 'dashboard',
+  'dashboard/kpis': 'dashboard',
+  'dashboard/activity': 'dashboard',
+  'equipment': 'equipment',
+  'equipment/creation/:type': 'equipment',
+  'equipment/map': 'equipment',
+  'equipment/categories': 'equipment',
+  'equipment/models': 'equipment_models',
+  'equipment/technical': 'equipment',
+  'equipment/:id': 'equipment',
+  'equipment/:id/technical': 'equipment',
+  'equipment/:id/history': 'equipment',
+  'equipment/:id/documents': 'documents',
+  'equipment/:id/warranties': 'equipment',
+  'work-orders': 'work_orders',
+  'work-orders/new': 'work_orders',
+  'work-orders/:id': 'work_orders',
+  'my-work-orders': 'work_orders',
+  'maintenance/creation/:type': 'work_orders',
+  'intervention-requests': 'intervention_requests',
+  'sites': 'sites',
+  'sites/lines': 'sites',
+  'sites/map': 'sites',
+  'planning': 'planning',
+  'planning/assignments': 'planning',
+  'planning/resources': 'planning',
+  'maintenance-plans': 'maintenance_plans',
+  'maintenance-plans/due': 'maintenance_plans',
+  'maintenance-projects': 'maintenance_projects',
+  'maintenance-projects/new': 'maintenance_projects',
+  'maintenance-projects/:id': 'maintenance_projects',
+  'maintenance-projects/:id/edit': 'maintenance_projects',
+  'checklists': 'checklists',
+  'procedures': 'procedures',
+  'maintenance/root-causes': 'root_causes',
+  'maintenance/satisfaction': 'satisfaction',
+  'maintenance/shutdowns': 'planned_shutdowns',
+  'maintenance/regulatory-checks': 'regulatory_checks',
+  'tools': 'tools',
+  'tools/creation/:type': 'tools',
+  'tools/assignments': 'tools',
+  'tools/calibrations': 'tools',
+  'stock': 'stock',
+  'stock/creation/:type': 'stock',
+  'stock/parts/:id': 'stock',
+  'stock/movements': 'stock',
+  'stock/inventories': 'stock',
+  'stock/alerts': 'stock',
+  'stock/entries': 'stock',
+  'stock/exits': 'stock',
+  'stock/transfers': 'stock',
+  'stock/reorders': 'stock',
+  'stock/quality': 'stock',
+  'stock/locations': 'stock_locations',
+  'stock/reservations': 'stock_reservations',
+  'stock/warehouses': 'warehouses',
+  'stock/reorder-rules': 'reorder_rules',
+  'suppliers': 'suppliers',
+  'suppliers/creation/:type': 'suppliers',
+  'suppliers/orders': 'suppliers',
+  'suppliers/purchase-requests': 'purchase_requests',
+  'suppliers/price-requests': 'price_requests',
+  'suppliers/invoices': 'supplier_invoices',
+  'contracts': 'contracts',
+  'subcontracting/contractors': 'external_contractors',
+  'subcontracting/orders': 'subcontract_orders',
+  'budgets': 'budgets',
+  'technicians': 'technicians',
+  'technicians/team': 'technicians',
+  'technicians/competencies': 'competencies',
+  'technicians/type-competencies': 'competencies',
+  'technicians/:id': 'technicians',
+  'effectif/presence': 'presence',
+  'effectif/pointage': 'time_entries',
+  'training/catalog': 'training_catalog',
+  'training/plans': 'training_plans',
+  'reports': 'reports',
+  'reports/mtbf-mttr': 'reports',
+  'reports/exports': 'reports',
+  'decision-support': 'reports',
+  'standards': 'standards',
+  'catalogue/part-families': 'part_families',
+  'catalogue/brands': 'brands',
+  'catalogue/wo-templates': 'work_order_templates',
+  'failure-codes': 'failure_codes',
+  'settings': 'settings',
+  'settings/creation/:type': 'users',
+  'settings/roles': 'settings',
+  'settings/email-templates': 'settings',
+  'users': 'users',
+  'exploitation': 'exploitation',
+  'exploitation/export': 'exploitation',
+  'exploitation/import': 'exploitation'
+};
+
+/**
+ * Retourne le code module pour un pathname (ex. /app/stock/creation/piece → 'stock').
+ * null = pas de module défini (accès autorisé si tenant a des restrictions).
+ */
+export function getModuleForPath(pathname) {
+  const base = pathname.replace(/^\/app\/?/, '').replace(/\/$/, '') || '';
+  if (ROUTE_MODULES[base]) return ROUTE_MODULES[base];
+  const segments = base.split('/');
+  for (const key of Object.keys(ROUTE_MODULES)) {
+    const patternSegments = key.split('/');
+    if (patternSegments.length !== segments.length) continue;
+    let match = true;
+    for (let i = 0; i < patternSegments.length; i++) {
+      const p = patternSegments[i];
+      const s = segments[i];
+      if (p.startsWith(':')) continue;
+      if (p !== s) { match = false; break; }
+    }
+    if (match) return ROUTE_MODULES[key];
+  }
+  return null;
+}
+
+/**
  * Retourne la permission pour un pathname (ex. /app/stock/creation/piece).
  * Compare avec les clés de ROUTE_PERMISSIONS en normalisant :id, :type en segments.
  */

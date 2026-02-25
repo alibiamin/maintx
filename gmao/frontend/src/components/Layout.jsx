@@ -98,6 +98,25 @@ const MENU_RESOURCE_MAP = {
   settings: 'settings'
 };
 
+/** Correspondance menu id → module métier (pour filtrer le menu selon les modules activés par tenant). */
+const MENU_MODULE_MAP = {
+  dashboard: 'dashboard',
+  equipment: 'equipment',
+  sites: 'sites',
+  maintenance: 'work_orders',
+  tools: 'tools',
+  stock: 'stock',
+  suppliers: 'suppliers',
+  subcontracting: 'external_contractors',
+  budget: 'budgets',
+  effectif: 'technicians',
+  reports: 'reports',
+  decisionSupport: 'reports',
+  standards: 'standards',
+  exploitation: 'exploitation',
+  settings: 'settings'
+};
+
 /** Liste plate de tous les menus — réorganisée pour une UX claire : vue principale → détails → création. */
 function getRawMenus() {
   return [
@@ -345,18 +364,19 @@ export default function Layout() {
   const searchInputRef = useRef(null);
   const searchDebounceRef = useRef(null);
   const lastPendingCountRef = useRef(-1);
-  const { user, logout, permissions, can } = useAuth();
+  const { user, logout, permissions, can, isModuleEnabled } = useAuth();
   const snackbar = useSnackbar();
 
   const rawMenus = React.useMemo(() => {
     const raw = getRawMenus();
-    if (!permissions || permissions.length === 0) return raw;
     return raw.filter((m) => {
       const resource = MENU_RESOURCE_MAP[m.id];
-      if (!resource) return true;
-      return can(resource, 'view');
+      if (resource && permissions?.length > 0 && !can(resource, 'view')) return false;
+      const moduleCode = MENU_MODULE_MAP[m.id];
+      if (moduleCode && !isModuleEnabled(moduleCode)) return false;
+      return true;
     });
-  }, [permissions, can]);
+  }, [permissions, can, isModuleEnabled]);
   const menuCategories = React.useMemo(() => getMenuCategories(rawMenus), [rawMenus]);
   const menuStructure = React.useMemo(() => getMenuStructure(rawMenus, menuCategories), [rawMenus, menuCategories]);
   const getPathLabel = (pathSeg) => (pathSeg === '' ? t('path._home') : t(`path.${pathSeg}`));

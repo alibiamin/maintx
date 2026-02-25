@@ -19,15 +19,15 @@ export function AuthProvider({ children }) {
       }
     );
     return () => setRefreshCallbacks(null, null);
-  }, []);
+  }, []); // newUser may include enabledModules when provided by interceptor
 
   useEffect(() => {
     api.post('/auth/refresh')
       .then((res) => {
-        const { accessToken, user: u } = res.data || {};
+        const { accessToken, user: u, enabledModules } = res.data || {};
         if (accessToken && u) {
           setAuthHeader(accessToken);
-          setUser(u);
+          setUser({ ...u, enabledModules: enabledModules ?? u.enabledModules });
         }
       })
       .catch(() => {})
@@ -36,9 +36,9 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const res = await api.post('/auth/login', { email, password });
-    const { accessToken, user: u } = res.data;
+    const { accessToken, user: u, enabledModules } = res.data;
     setAuthHeader(accessToken);
-    setUser(u);
+    setUser(u ? { ...u, enabledModules: enabledModules ?? u.enabledModules } : u);
     return u;
   };
 
@@ -53,17 +53,29 @@ export function AuthProvider({ children }) {
   const refreshMe = async () => {
     try {
       const res = await api.get('/auth/me');
-      setUser(prev => (prev ? { ...prev, ...res.data, permissions: res.data.permissions ?? prev.permissions } : res.data));
-      return res.data;
+      const data = res.data;
+      setUser(prev => (prev ? {
+        ...prev,
+        ...data,
+        permissions: data.permissions ?? prev.permissions,
+        enabledModules: data.enabledModules !== undefined ? data.enabledModules : prev.enabledModules
+      } : data));
+      return data;
     } catch (_) {
       return null;
     }
   };
 
   const permissions = user?.permissions ?? [];
+  const enabledModules = user?.enabledModules ?? null;
   const can = (resource, action) => permissions.includes(`${resource}.${action}`);
+  /** true = module activé ou pas de restriction. Route sans module (null/undefined) = toujours autorisée (isolation). */
+  const isModuleEnabled = (moduleCode) => {
+    if (moduleCode == null || moduleCode === '') return true;
+    return enabledModules == null || (Array.isArray(enabledModules) && enabledModules.includes(moduleCode));
+  };
 
-  const value = { user, loading, login, logout, refreshMe, isAuthenticated: !!user, permissions, can };
+  const value = { user, loading, login, logout, refreshMe, isAuthenticated: !!user, permissions, can, enabledModules, isModuleEnabled };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

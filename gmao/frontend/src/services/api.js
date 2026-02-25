@@ -71,7 +71,9 @@ api.interceptors.response.use(
           config.headers = config.headers || {};
           config.headers.Authorization = `Bearer ${token}`;
           if (typeof window !== 'undefined' && window.__onRefreshSuccess) {
-            window.__onRefreshSuccess(token, res.data?.user);
+            const u = res.data?.user;
+            const enabledModules = res.data?.enabledModules;
+            window.__onRefreshSuccess(token, u ? { ...u, enabledModules: enabledModules ?? u.enabledModules } : u);
           }
           return api.request(config);
         }
@@ -107,6 +109,9 @@ api.interceptors.response.use(
       delete api.defaults.headers.common['Authorization'];
       if (data?.error) sessionStorage.setItem('loginError', data.error);
       const enc = encodePath('/login', '');
+      window.location.href = window.location.pathname + window.location.search + (enc ? `#/${enc}` : '#/');
+    } else if (status === 403 && data?.code === 'MODULE_DISABLED') {
+      const enc = encodePath('/app', '');
       window.location.href = window.location.pathname + window.location.search + (enc ? `#/${enc}` : '#/');
     } else if (status === 403) {
       window.dispatchEvent(new CustomEvent('api-403', { detail: data }));

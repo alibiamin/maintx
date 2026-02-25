@@ -18,7 +18,8 @@ import {
   TextField,
   FormControlLabel,
   Checkbox,
-  IconButton
+  IconButton,
+  Tooltip
 } from '@mui/material';
 import Add from '@mui/icons-material/Add';
 import DeleteOutline from '@mui/icons-material/DeleteOutline';
@@ -41,12 +42,23 @@ export default function SettingsTenants() {
     name: '', emailDomain: '', dbFilename: '', initSchema: true, licenseStart: '', licenseEnd: '',
     adminEmail: '', adminPassword: '', adminFirstName: '', adminLastName: ''
   });
-  const [editForm, setEditForm] = useState({ name: '', licenseStart: '', licenseEnd: '' });
+  const [editForm, setEditForm] = useState({ name: '', licenseStart: '', licenseEnd: '', enabledModules: null });
+  const [moduleList, setModuleList] = useState({ codes: [], labels: {}, packs: [] });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     loadTenants();
+  }, []);
+
+  useEffect(() => {
+    api.get('/tenants/modules')
+      .then((res) => setModuleList({
+        codes: res.data?.codes ?? [],
+        labels: res.data?.labels ?? {},
+        packs: res.data?.packs ?? []
+      }))
+      .catch(() => setModuleList({ codes: [], labels: {}, packs: [] }));
   }, []);
 
   const loadTenants = async () => {
@@ -75,7 +87,8 @@ export default function SettingsTenants() {
     setEditForm({
       name: t.name || '',
       licenseStart: t.licenseStart ? t.licenseStart.slice(0, 10) : '',
-      licenseEnd: t.licenseEnd ? t.licenseEnd.slice(0, 10) : ''
+      licenseEnd: t.licenseEnd ? t.licenseEnd.slice(0, 10) : '',
+      enabledModules: t.enabledModules !== undefined ? (Array.isArray(t.enabledModules) ? t.enabledModules : null) : null
     });
     setError('');
     setEditDialogOpen(true);
@@ -86,11 +99,13 @@ export default function SettingsTenants() {
     setSubmitting(true);
     setError('');
     try {
-      await api.put(`/tenants/${editingTenant.id}`, {
+      const payload = {
         name: (editForm.name || '').trim() || undefined,
         licenseStart: (editForm.licenseStart || '').trim() || undefined,
         licenseEnd: (editForm.licenseEnd || '').trim() || undefined
-      });
+      };
+      if (editForm.enabledModules !== undefined) payload.enabledModules = editForm.enabledModules;
+      await api.put(`/tenants/${editingTenant.id}`, payload);
       setEditDialogOpen(false);
       setEditingTenant(null);
       loadTenants();
@@ -339,7 +354,7 @@ export default function SettingsTenants() {
       </Dialog>
 
       <Dialog open={editDialogOpen} onClose={() => !submitting && setEditDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Modifier le client — Période de licence</DialogTitle>
+        <DialogTitle>Modifier le client — Période de licence et modules</DialogTitle>
         <DialogContent>
           <Box display="flex" flexDirection="column" gap={2} pt={1}>
             {error && (
@@ -370,6 +385,93 @@ export default function SettingsTenants() {
               InputLabelProps={{ shrink: true }}
               helperText="Après cette date, les utilisateurs ne pourront plus se connecter jusqu'à une nouvelle activation"
             />
+            <Typography variant="subtitle2" sx={{ mt: 2, fontWeight: 600 }}>
+              Modules activés
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Choisir un pack prédéfini ou personnaliser ci‑dessous. L’absence d’un module n’affecte pas les autres.
+            </Typography>
+            {moduleList.packs.length > 0 && (
+              <Box display="flex" flexWrap="wrap" gap={1} mb={1}>
+                {moduleList.packs.map((pack) => {
+                  const isComplet = pack.moduleCodes === null;
+                  const isSelected = isComplet
+                    ? editForm.enabledModules === null
+                    : (Array.isArray(editForm.enabledModules) &&
+                        editForm.enabledModules.length === (pack.moduleCodes?.length ?? 0) &&
+                        (pack.moduleCodes ?? []).every((c) => editForm.enabledModules.includes(c)));
+                  return (
+                    <Tooltip key={pack.id} title={pack.description || ''}>
+                      <Button
+                        size="small"
+                        variant={isSelected ? 'contained' : 'outlined'}
+                        onClick={() => setEditForm((f) => ({ ...f, enabledModules: pack.moduleCodes === null ? null : [...(pack.moduleCodes || [])] }))}
+                      >
+                        {pack.label}
+                      </Button>
+                    </Tooltip>
+                  );
+                })}
+                <Button
+                  size="small"
+                  variant={editForm.enabledModules !== null && !moduleList.packs.some((pack) => {
+                    const isComplet = pack.moduleCodes === null;
+                    if (isComplet) return false;
+                    return Array.isArray(editForm.enabledModules) &&
+                      editForm.enabledModules.length === (pack.moduleCodes?.length ?? 0) &&
+                      (pack.moduleCodes ?? []).every((c) => editForm.enabledModules.includes(c));
+                  }) ? 'contained' : 'outlined'}
+                  disabled
+                >
+                  Personnalisé
+                </Button>
+              </Box>
+            )}
+            <Box display="flex" flexWrap="wrap" gap={1} maxHeight={200} overflow="auto" p={1} border={1} borderColor="divider" borderRadius={1}>
+              {moduleList.codes.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">Chargement…</Typography>
+              ) : (
+                moduleList.codes.map((code) => {
+                  const isAll = editForm.enabledModules === null;
+                  const checked = isAll || (Array.isArray(editForm.enabledModules) && editForm.enabledModules.includes(code));
+                  const label = moduleList.labels[code] || code;
+                  return (
+                    <FormControlLabel
+                      key={code}
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={checked}
+                          onChange={(e) => {
+                            setEditForm((f) => {
+                              if (f.enabledModules === null) {
+                                return e.target.checked
+                                  ? f
+                                  : { ...f, enabledModules: moduleList.codes.filter((c) => c !== code) };
+                              }
+                              const arr = Array.isArray(f.enabledModules) ? f.enabledModules : [];
+                              return {
+                                ...f,
+                                enabledModules: e.target.checked ? [...arr, code] : arr.filter((c) => c !== code)
+                              };
+                            });
+                          }}
+                        />
+                      }
+                      label={label}
+                    />
+                  );
+                })
+              )}
+            </Box>
+            {editForm.enabledModules !== null && (
+              <Button
+                size="small"
+                onClick={() => setEditForm((f) => ({ ...f, enabledModules: null }))}
+              >
+                Activer tous les modules
+              </Button>
+            )}
           </Box>
         </DialogContent>
         <DialogActions>

@@ -297,7 +297,7 @@ async function start() {
 
   // Migrations sur gmao.db : uniquement celles qui concernent la base admin (tenants, users.tenant_id).
   // Les autres migrations (sites, equipment, work_orders, etc.) s'appliquent à la base client (default.db) via runClientMigrations.
-  const ADMIN_MIGRATIONS = ['026_tenants.js', '027_users_tenant_id.js', '028_tenants_license_dates.js', '060_refresh_tokens.js', '061_permissions.js', '062_dashboard_permissions.js', '064_audit_logs.js', '065_tenant_status_deleted_at.js', '066_users_revoked_at.js', '067_tenant_usage.js'];
+  const ADMIN_MIGRATIONS = ['026_tenants.js', '027_users_tenant_id.js', '028_tenants_license_dates.js', '060_refresh_tokens.js', '061_permissions.js', '062_dashboard_permissions.js', '064_audit_logs.js', '065_tenant_status_deleted_at.js', '066_users_revoked_at.js', '067_tenant_usage.js', '068_tenant_enabled_modules.js'];
   try {
     const path = require('path');
     const fs = require('fs');

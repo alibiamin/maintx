@@ -1,13 +1,13 @@
 import React, { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { Box, CircularProgress } from '@mui/material';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Box, Button, CircularProgress, Typography } from '@mui/material';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import Landing from './pages/Landing';
 import DemandeInterventionForm from './pages/DemandeInterventionForm';
 import Layout from './components/Layout';
 import RequirePermission, { ForbiddenPage, RequireMaintxAdmin } from './components/RequirePermission';
-import { ROUTE_PERMISSIONS } from './config/routePermissions';
+import { ROUTE_PERMISSIONS, getModuleForPath } from './config/routePermissions';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const DashboardKPIs = lazy(() => import('./pages/DashboardKPIs'));
@@ -104,8 +104,25 @@ function LoadingFallback() {
   );
 }
 
-/** Enveloppe la route avec RequirePermission si une permission est définie pour ce path. */
+/** Affiche un message propre lorsque le tenant n’a pas accès au module (sans faire planter l’app). */
+function ModuleDisabledFallback() {
+  const navigate = useNavigate();
+  return (
+    <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="50vh" gap={2} p={3}>
+      <Typography color="text.secondary">Ce module n’est pas activé pour votre client.</Typography>
+      <Button variant="contained" onClick={() => navigate('/app')}>Retour au tableau de bord</Button>
+    </Box>
+  );
+}
+
+/** Enveloppe la route : vérification module activé (tenant), puis RequirePermission si défini. */
 function RouteGuard({ path, children }) {
+  const location = useLocation();
+  const { isModuleEnabled } = useAuth();
+  const moduleCode = getModuleForPath(location.pathname);
+  if (moduleCode && !isModuleEnabled(moduleCode)) {
+    return <ModuleDisabledFallback />;
+  }
   const perm = ROUTE_PERMISSIONS[path];
   if (!perm) return children;
   return <RequirePermission resource={perm.resource} action={perm.action}>{children}</RequirePermission>;

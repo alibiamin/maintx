@@ -11,6 +11,7 @@ const dbModule = require('../database/db');
 const auditLog = require('../services/auditLog');
 const path = require('path');
 const fs = require('fs');
+const { getAllModuleCodes, MODULE_LABELS, getModulePacks, filterValidModuleCodes } = require('../config/modules');
 
 const router = express.Router();
 router.use(authenticate);
@@ -18,6 +19,22 @@ router.use(authenticate);
 router.use(requireMaintxAdmin);
 
 const ALLOWED_STATUSES = ['trial', 'active', 'suspended', 'expired', 'deleted'];
+
+/**
+ * GET /api/tenants/modules
+ * Liste des codes et libellés des modules (pour l’admin qui édite les modules activés par tenant).
+ */
+router.get('/modules', (req, res) => {
+  res.json({ codes: getAllModuleCodes(), labels: MODULE_LABELS, packs: getModulePacks() });
+});
+
+function parseEnabledModules(val) {
+  if (val == null || typeof val !== 'string' || !val.trim()) return null;
+  try {
+    const parsed = JSON.parse(val);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (_) { return null; }
+}
 
 function mapTenantRow(r) {
   const today = new Date().toISOString().slice(0, 10);
@@ -37,7 +54,8 @@ function mapTenantRow(r) {
     licenseEnd: r.license_end || null,
     isActive,
     deletedAt: r.deleted_at || null,
-    createdAt: r.created_at
+    createdAt: r.created_at,
+    enabledModules: parseEnabledModules(r.enabled_modules) ?? undefined
   };
 }
 
@@ -53,18 +71,28 @@ router.get('/', (req, res) => {
     let rows;
     try {
       rows = adminDb.prepare(`
-        SELECT id, name, db_filename, email_domain, status, deleted_at, license_start, license_end, created_at
+        SELECT id, name, db_filename, email_domain, status, deleted_at, license_start, license_end, created_at, enabled_modules
         FROM tenants
         WHERE (? = 1 OR (COALESCE(status, 'active') != 'deleted' AND deleted_at IS NULL))
         ORDER BY name
       `).all(includeDeleted ? 1 : 0);
     } catch (e) {
       if (e.message && e.message.includes('no such column')) {
-        rows = adminDb.prepare(`
-          SELECT id, name, db_filename, email_domain, license_start, license_end, created_at
-          FROM tenants ORDER BY name
-        `).all();
-        rows.forEach(r => { r.status = 'active'; r.deleted_at = null; });
+        try {
+          rows = adminDb.prepare(`
+            SELECT id, name, db_filename, email_domain, status, deleted_at, license_start, license_end, created_at
+            FROM tenants
+            WHERE (? = 1 OR (COALESCE(status, 'active') != 'deleted' AND deleted_at IS NULL))
+            ORDER BY name
+          `).all(includeDeleted ? 1 : 0);
+        } catch (e2) {
+          rows = adminDb.prepare(`
+            SELECT id, name, db_filename, email_domain, license_start, license_end, created_at
+            FROM tenants ORDER BY name
+          `).all();
+          rows.forEach(r => { r.status = 'active'; r.deleted_at = null; });
+        }
+        rows.forEach(r => { if (r.enabled_modules === undefined) r.enabled_modules = null; });
       } else throw e;
     }
     res.json(rows.map(mapTenantRow));
@@ -268,13 +296,14 @@ router.put('/:id', [
   body('name').optional().trim(),
   body('licenseStart').optional().trim(),
   body('licenseEnd').optional().trim(),
-  body('status').optional({ values: 'falsy' }).trim().isIn(ALLOWED_STATUSES.filter(s => s !== 'deleted'))
+  body('status').optional({ values: 'falsy' }).trim().isIn(ALLOWED_STATUSES.filter(s => s !== 'deleted')),
+  body('enabledModules').optional().isArray()
 ], (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) return res.status(400).json({ error: 'Identifiant client invalide' });
-  const { name, licenseStart, licenseEnd, status } = req.body;
+  const { name, licenseStart, licenseEnd, status, enabledModules } = req.body;
   const adminDb = dbModule.getAdminDb();
   let row = adminDb.prepare(`
     SELECT id, name, db_filename, email_domain, license_start, license_end, created_at FROM tenants WHERE id = ?
@@ -292,13 +321,21 @@ router.put('/:id', [
   const newStart = normalizeDate(licenseStart);
   const newEnd = normalizeDate(licenseEnd);
   const newStatus = (status && ALLOWED_STATUSES.includes(status) && status !== 'deleted') ? status : (row.status || 'active');
+  const enabledModulesPayload = enabledModules === undefined
+    ? undefined
+    : (Array.isArray(enabledModules) ? JSON.stringify(filterValidModuleCodes(enabledModules)) : null);
   try {
-    adminDb.prepare('UPDATE tenants SET name = ?, license_start = ?, license_end = ?, status = ? WHERE id = ?')
-      .run(newName, newStart || null, newEnd || null, newStatus, id);
+    if (enabledModulesPayload !== undefined) {
+      adminDb.prepare('UPDATE tenants SET name = ?, license_start = ?, license_end = ?, status = ?, enabled_modules = ? WHERE id = ?')
+        .run(newName, newStart || null, newEnd || null, newStatus, enabledModulesPayload, id);
+    } else {
+      adminDb.prepare('UPDATE tenants SET name = ?, license_start = ?, license_end = ?, status = ? WHERE id = ?')
+        .run(newName, newStart || null, newEnd || null, newStatus, id);
+    }
   } catch (e) {
     if (e.message && e.message.includes('no such column')) {
-      adminDb.prepare('UPDATE tenants SET name = ?, license_start = ?, license_end = ? WHERE id = ?')
-        .run(newName, newStart || null, newEnd || null, id);
+      adminDb.prepare('UPDATE tenants SET name = ?, license_start = ?, license_end = ?, status = ? WHERE id = ?')
+        .run(newName, newStart || null, newEnd || null, newStatus, id);
     } else throw e;
   }
   adminDb._save();
@@ -308,7 +345,7 @@ router.put('/:id', [
       tenantId: null,
       action: 'tenant_updated',
       resource: 'tenants',
-      details: { tenantId: id, name: newName, licenseStart: newStart, licenseEnd: newEnd, status: newStatus },
+      details: { tenantId: id, name: newName, licenseStart: newStart, licenseEnd: newEnd, status: newStatus, enabledModules: enabledModulesPayload !== undefined },
       ip: auditLog.getClientIp(req)
     });
   } catch (_) {}
@@ -317,10 +354,16 @@ router.put('/:id', [
   `).get(id);
   try {
     updated = adminDb.prepare(`
-      SELECT id, name, db_filename, email_domain, status, deleted_at, license_start, license_end, created_at FROM tenants WHERE id = ?
+      SELECT id, name, db_filename, email_domain, status, deleted_at, license_start, license_end, created_at, enabled_modules FROM tenants WHERE id = ?
     `).get(id);
-  } catch (_) {}
-  if (!updated.status) updated.status = newStatus; if (updated.deleted_at === undefined) updated.deleted_at = null;
+  } catch (_) {
+    try {
+      updated = adminDb.prepare(`
+        SELECT id, name, db_filename, email_domain, status, deleted_at, license_start, license_end, created_at FROM tenants WHERE id = ?
+      `).get(id);
+    } catch (_2) {}
+  }
+  if (!updated.status) updated.status = newStatus; if (updated.deleted_at === undefined) updated.deleted_at = null; if (updated.enabled_modules === undefined) updated.enabled_modules = null;
   res.json(mapTenantRow(updated));
 });
 

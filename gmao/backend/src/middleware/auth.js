@@ -5,6 +5,7 @@
 
 const jwt = require('jsonwebtoken');
 const db = require('../database/db');
+const { getModuleCodeForPath, filterValidModuleCodes } = require('../config/modules');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'xmaint-jwt-secret-change-in-production';
 const DEFAULT_JWT_SECRET = 'xmaint-jwt-secret-change-in-production';
@@ -61,11 +62,16 @@ function authenticate(req, res, next) {
     if (tenantId != null) {
       let tenant;
       try {
-        tenant = mainDb.prepare('SELECT status, deleted_at, license_start, license_end FROM tenants WHERE id = ?').get(tenantId);
+        tenant = mainDb.prepare('SELECT status, deleted_at, license_start, license_end, enabled_modules FROM tenants WHERE id = ?').get(tenantId);
       } catch (e) {
         if (e.message && e.message.includes('no such column')) {
-          tenant = mainDb.prepare('SELECT license_start, license_end FROM tenants WHERE id = ?').get(tenantId);
-          if (tenant) { tenant.status = 'active'; tenant.deleted_at = null; }
+          tenant = mainDb.prepare('SELECT status, deleted_at, license_start, license_end FROM tenants WHERE id = ?').get(tenantId);
+          if (!tenant) tenant = mainDb.prepare('SELECT license_start, license_end FROM tenants WHERE id = ?').get(tenantId);
+          if (tenant) {
+            if (!tenant.status) tenant.status = 'active';
+            if (tenant.deleted_at === undefined) tenant.deleted_at = null;
+            tenant.enabled_modules = null;
+          }
         } else throw e;
       }
       if (!tenant) {
@@ -88,6 +94,16 @@ function authenticate(req, res, next) {
       if (tenant.license_start && String(tenant.license_start).trim() && today < tenant.license_start) {
         return res.status(403).json({ error: 'Licence pas encore active.', code: 'LICENSE_NOT_ACTIVE' });
       }
+      let enabledModules = null;
+      if (tenant.enabled_modules != null && String(tenant.enabled_modules).trim()) {
+        try {
+          const parsed = JSON.parse(tenant.enabled_modules);
+          enabledModules = Array.isArray(parsed) ? filterValidModuleCodes(parsed) : null;
+        } catch (_) {}
+      }
+      req.enabledModules = enabledModules;
+    } else {
+      req.enabledModules = null;
     }
     req.user = user;
     try {
@@ -112,6 +128,17 @@ function authenticate(req, res, next) {
       throw err;
     }
     req.tenantId = tenantId;
+    if (tenantId != null && Array.isArray(req.enabledModules)) {
+      const path = (req.originalUrl || req.url || '').split('?')[0];
+      const moduleCode = getModuleCodeForPath(path);
+      if (moduleCode && !req.enabledModules.includes(moduleCode)) {
+        return res.status(403).json({
+          error: 'Module non activé pour votre client',
+          code: 'MODULE_DISABLED',
+          module: moduleCode
+        });
+      }
+    }
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Token expiré ou invalide' });
