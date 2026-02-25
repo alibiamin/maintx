@@ -35,21 +35,26 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-function buildRefreshCookieOptions() {
+function buildRefreshCookieOptions(req) {
   const isProd = process.env.NODE_ENV === 'production';
+  const isHttps = req && (req.secure || (req.headers && req.headers['x-forwarded-proto'] === 'https'));
   const maxAge = REFRESH_TOKEN_DAYS * 24 * 60 * 60;
-  return {
+  const options = {
     httpOnly: true,
-    secure: isProd,
+    secure: isProd || isHttps,
     sameSite: 'lax',
     path: '/api',
     maxAge,
     signed: false
   };
+  if (req && req.get && req.get('host') && req.get('host').includes('maintx.org')) {
+    options.domain = '.maintx.org';
+  }
+  return options;
 }
 
-function clearRefreshCookie(res) {
-  res.cookie(COOKIE_NAME, '', { ...buildRefreshCookieOptions(), maxAge: 0 });
+function clearRefreshCookie(res, req) {
+  res.cookie(COOKIE_NAME, '', { ...buildRefreshCookieOptions(req), maxAge: 0 });
 }
 
 const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -184,7 +189,7 @@ router.post('/login', [
       console.error('[auth/login] refresh_tokens insert:', e.message);
       return res.status(500).json({ error: 'Erreur lors de la création de la session.' });
     }
-    res.cookie(COOKIE_NAME, refreshToken, buildRefreshCookieOptions());
+    res.cookie(COOKIE_NAME, refreshToken, buildRefreshCookieOptions(req));
     try {
       auditLog.log({
         userId: user.id,
@@ -227,7 +232,7 @@ router.post('/refresh', (req, res) => {
   try {
     const refreshToken = req.cookies?.[COOKIE_NAME];
     if (!refreshToken || typeof refreshToken !== 'string') {
-      clearRefreshCookie(res);
+      clearRefreshCookie(res, req);
       return res.status(401).json({ error: 'Session expirée ou invalide' });
     }
     const tokenHash = hashToken(refreshToken);
@@ -236,7 +241,7 @@ router.post('/refresh', (req, res) => {
       `SELECT id, user_id FROM refresh_tokens WHERE token_hash = ? AND expires_at > datetime('now') AND revoked_at IS NULL`
     ).get(tokenHash);
     if (!row) {
-      clearRefreshCookie(res);
+      clearRefreshCookie(res, req);
       try {
         adminDb.prepare('UPDATE refresh_tokens SET revoked_at = datetime("now") WHERE token_hash = ?').run(tokenHash);
         if (adminDb._save) adminDb._save();
@@ -250,7 +255,7 @@ router.post('/refresh', (req, res) => {
       WHERE u.id = ? AND u.is_active = 1
     `).get(row.user_id);
     if (!userRow) {
-      clearRefreshCookie(res);
+      clearRefreshCookie(res, req);
       try {
         adminDb.prepare('UPDATE refresh_tokens SET revoked_at = datetime("now") WHERE id = ?').run(row.id);
         if (adminDb._save) adminDb._save();
@@ -309,7 +314,7 @@ router.post('/logout', (req, res) => {
       if (adminDb._save) adminDb._save();
     } catch (_) {}
   }
-  clearRefreshCookie(res);
+  clearRefreshCookie(res, req);
   res.status(204).end();
 });
 
