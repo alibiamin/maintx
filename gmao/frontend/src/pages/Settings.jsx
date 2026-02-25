@@ -47,7 +47,6 @@ const CODIFICATION_ENTITIES = [
 ];
 
 export default function Settings() {
-  const [failureCodes, setFailureCodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState(0);
   const [codification, setCodification] = useState({});
@@ -84,22 +83,25 @@ export default function Settings() {
   const canViewAudit = can('audit', 'view');
   const snackbar = useSnackbar();
   const [searchParams, setSearchParams] = useSearchParams();
-  const unitsTabIndex = 3;
-  const kpiTabIndex = 4;
-  const targetsTabIndex = 5;
-  const backupTabIndex = 6; // Sauvegarde (visible seulement si isAdmin)
-  const alertesTabIndex = isAdmin ? 7 : 6;
-  const auditTabIndex = alertesTabIndex + 1;
+  // Onglets réorganisés : Général (devise + unités), Codification, Tableau de bord (KPI + objectifs), Sauvegarde, Alertes, Audit
+  const TAB_GENERAL = 0;
+  const TAB_CODIFICATION = 1;
+  const TAB_DASHBOARD = 2;
+  const TAB_BACKUP = 3;   // visible seulement si isAdmin
+  const TAB_ALERTES = isAdmin ? 4 : 3;
+  const TAB_AUDIT = TAB_ALERTES + 1;
 
   useEffect(() => {
-    if (searchParams.get('tab') === 'alertes') setTab(alertesTabIndex);
-    if (searchParams.get('tab') === 'audit') setTab(auditTabIndex);
-    if (searchParams.get('tab') === 'kpis') setTab(kpiTabIndex);
-    if (searchParams.get('tab') === 'targets') setTab(targetsTabIndex);
-  }, [searchParams.get('tab'), alertesTabIndex, auditTabIndex, kpiTabIndex, targetsTabIndex]);
+    const t = searchParams.get('tab');
+    if (t === 'alertes') setTab(TAB_ALERTES);
+    else if (t === 'audit') setTab(TAB_AUDIT);
+    else if (t === 'kpis' || t === 'targets') setTab(TAB_DASHBOARD);
+    else if (t === 'codification') setTab(TAB_CODIFICATION);
+    else if (t === 'general') setTab(TAB_GENERAL);
+  }, [searchParams.get('tab'), TAB_ALERTES, TAB_AUDIT, TAB_DASHBOARD]);
 
   useEffect(() => {
-    if (!canViewAudit || tab !== auditTabIndex) return;
+    if (!canViewAudit || tab !== TAB_AUDIT) return;
     setAuditLoading(true);
     const params = { limit: 200 };
     if (auditFilters.entityType) params.entityType = auditFilters.entityType;
@@ -109,13 +111,13 @@ export default function Settings() {
       .then((r) => setAuditLog(Array.isArray(r.data) ? r.data : []))
       .catch(() => setAuditLog([]))
       .finally(() => setAuditLoading(false));
-  }, [canViewAudit, tab, auditTabIndex, auditFilters.entityType, auditFilters.startDate, auditFilters.endDate]);
+  }, [canViewAudit, tab, TAB_AUDIT, auditFilters.entityType, auditFilters.startDate, auditFilters.endDate]);
 
   const refreshCurrency = useCurrencyRefresh();
   useEffect(() => {
-    api.get('/failure-codes').then(r => setFailureCodes(r.data)).catch(() => setFailureCodes([])).finally(() => setLoading(false));
     api.get('/settings/codification').then(r => setCodification(r.data || {})).catch(() => setCodification({}));
     api.get('/settings/currency').then(r => setCurrency(r.data?.value || '€')).catch(() => {});
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -130,13 +132,13 @@ export default function Settings() {
   }, []);
 
   useEffect(() => {
-    if (tab !== unitsTabIndex) return;
+    if (tab !== TAB_GENERAL) return;
     setUnitsLoading(true);
     api.get('/settings/units')
       .then((r) => setUnits(Array.isArray(r.data) ? r.data : []))
       .catch(() => setUnits([]))
       .finally(() => setUnitsLoading(false));
-  }, [tab, unitsTabIndex]);
+  }, [tab, TAB_GENERAL]);
 
   const openUnitDialog = (u = null) => {
     setUnitDialog({ open: true, id: u?.id ?? null, name: u?.name ?? '', symbol: u?.symbol ?? '' });
@@ -169,7 +171,7 @@ export default function Settings() {
   };
 
   useEffect(() => {
-    if (tab !== kpiTabIndex) return;
+    if (tab !== TAB_DASHBOARD) return;
     setKpiLoading(true);
     Promise.all([
       api.get('/settings/kpi-definitions'),
@@ -184,16 +186,16 @@ export default function Settings() {
         setKpiSources([]);
       })
       .finally(() => setKpiLoading(false));
-  }, [tab, kpiTabIndex]);
+  }, [tab, TAB_DASHBOARD]);
 
   useEffect(() => {
-    if (tab !== targetsTabIndex) return;
+    if (tab !== TAB_DASHBOARD) return;
     setIndicatorTargetsLoading(true);
     api.get('/settings/indicator-targets')
       .then((r) => setIndicatorTargets(Array.isArray(r.data) ? r.data : []))
       .catch(() => setIndicatorTargets([]))
       .finally(() => setIndicatorTargetsLoading(false));
-  }, [tab, targetsTabIndex]);
+  }, [tab, TAB_DASHBOARD]);
 
   const openKpiDialog = (k = null) => {
     setKpiDialog({
@@ -316,98 +318,109 @@ export default function Settings() {
       .finally(() => setNotifSaving(false));
   };
 
-  if (loading && failureCodes.length === 0) return <Box p={4}><CircularProgress /></Box>;
+  if (loading) return <Box p={4}><CircularProgress /></Box>;
 
   return (
     <Box>
       <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
-        Paramétrage
+        Configuration
       </Typography>
 
       <Tabs
         value={tab}
         onChange={(_, v) => {
           setTab(v);
-          if (v === alertesTabIndex) setSearchParams({ tab: 'alertes' });
-          else if (v === auditTabIndex) setSearchParams({ tab: 'audit' });
-          else if (v === kpiTabIndex) setSearchParams({ tab: 'kpis' });
-          else if (v === targetsTabIndex) setSearchParams({ tab: 'targets' });
+          if (v === TAB_ALERTES) setSearchParams({ tab: 'alertes' });
+          else if (v === TAB_AUDIT) setSearchParams({ tab: 'audit' });
+          else if (v === TAB_DASHBOARD) setSearchParams({ tab: 'kpis' });
+          else if (v === TAB_CODIFICATION) setSearchParams({ tab: 'codification' });
+          else if (v === TAB_GENERAL) setSearchParams({ tab: 'general' });
           else setSearchParams({});
         }}
         sx={{ mb: 2 }}
       >
         <Tab label="Général" />
-        <Tab label="Codes défaut" />
         <Tab label="Codification" />
-        <Tab label="Unités" />
-        <Tab label="Indicateurs KPI" />
-        <Tab label="Objectifs indicateurs" />
+        <Tab label="Tableau de bord" />
         {isAdmin && <Tab label="Sauvegarde" />}
-        <Tab label="Alertes email / SMS" />
+        <Tab label="Alertes" />
         {canViewAudit && <Tab label="Journal d'audit" />}
       </Tabs>
 
-      {tab === 0 && (
-        <Card sx={{ borderRadius: 2 }}>
-          <CardContent>
-            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
-              Devise de l'application
-            </Typography>
-            <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-              <TextField
-                label="Symbole ou code devise"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                size="small"
-                placeholder="€"
-                sx={{ width: 160 }}
-              />
-              <Button variant="contained" startIcon={<Save />} onClick={handleSaveCurrency} disabled={currencySaving}>
-                {currencySaving ? 'Enregistrement…' : 'Enregistrer'}
-              </Button>
-            </Box>
-            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-              Ex. € (euro), $ (dollar), £ (livre). Utilisé pour tous les montants (coûts, taux horaires, rapports).
-            </Typography>
-          </CardContent>
-        </Card>
+      {/* ——— Général : Devise + Unités ——— */}
+      {tab === TAB_GENERAL && (
+        <Box display="flex" flexDirection="column" gap={3}>
+          <Card sx={{ borderRadius: 2 }}>
+            <CardContent>
+              <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+                Devise de l'application
+              </Typography>
+              <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+                <TextField
+                  label="Symbole ou code devise"
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                  size="small"
+                  placeholder="€"
+                  sx={{ width: 160 }}
+                />
+                <Button variant="contained" startIcon={<Save />} onClick={handleSaveCurrency} disabled={currencySaving}>
+                  {currencySaving ? 'Enregistrement…' : 'Enregistrer'}
+                </Button>
+              </Box>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                Ex. € (euro), $ (dollar), £ (livre). Utilisé pour tous les montants (coûts, taux horaires, rapports).
+              </Typography>
+            </CardContent>
+          </Card>
+          <Card sx={{ borderRadius: 2 }}>
+            <CardContent>
+              <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+                Unités (stock)
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Référentiel des unités utilisées lors de la création de pièces (unité, pièce, mètre, kg, etc.).
+              </Typography>
+              {unitsLoading ? (
+                <Box display="flex" justifyContent="center" p={2}><CircularProgress /></Box>
+              ) : (
+                <>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Nom</TableCell>
+                        <TableCell>Symbole</TableCell>
+                        {canEditUnits && <TableCell width={120}>Actions</TableCell>}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {units.map((u) => (
+                        <TableRow key={u.id}>
+                          <TableCell>{u.name}</TableCell>
+                          <TableCell>{u.symbol || '—'}</TableCell>
+                          {canEditUnits && (
+                            <TableCell>
+                              <IconButton size="small" onClick={() => openUnitDialog(u)} title="Modifier"><Edit fontSize="small" /></IconButton>
+                              <IconButton size="small" onClick={() => handleDeleteUnit(u.id)} title="Supprimer" color="error"><Delete fontSize="small" /></IconButton>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {canEditUnits && (
+                    <Button startIcon={<Add />} variant="outlined" sx={{ mt: 2 }} onClick={() => openUnitDialog()}>
+                      Ajouter une unité
+                    </Button>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Box>
       )}
 
-      {tab === 1 && (
-        <Card sx={{ borderRadius: 2 }}>
-          <CardContent>
-            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
-              Codes défaut / Causes de panne
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Référentiel pour l'analyse des pannes (inspiré Coswin, arbre de défaillance)
-            </Typography>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Code</TableCell>
-                  <TableCell>Nom</TableCell>
-                  <TableCell>Catégorie</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {failureCodes.map((fc) => (
-                  <TableRow key={fc.id}>
-                    <TableCell>{fc.code}</TableCell>
-                    <TableCell>{fc.name}</TableCell>
-                    <TableCell>{fc.category || '-'}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            {failureCodes.length === 0 && (
-              <Typography color="text.secondary">Exécutez la migration 002 pour charger les codes par défaut.</Typography>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {tab === 2 && (
+      {tab === TAB_CODIFICATION && (
         <Card sx={{ borderRadius: 2 }}>
           <CardContent>
             <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>
@@ -467,53 +480,6 @@ export default function Settings() {
         </Card>
       )}
 
-      {tab === unitsTabIndex && (
-        <Card sx={{ borderRadius: 2 }}>
-          <CardContent>
-            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
-              Unités (stock)
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Référentiel des unités utilisées lors de la création de pièces (unité, pièce, mètre, kg, etc.).
-            </Typography>
-            {unitsLoading ? (
-              <Box display="flex" justifyContent="center" p={2}><CircularProgress /></Box>
-            ) : (
-              <>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Nom</TableCell>
-                      <TableCell>Symbole</TableCell>
-                      {canEditUnits && <TableCell width={120}>Actions</TableCell>}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {units.map((u) => (
-                      <TableRow key={u.id}>
-                        <TableCell>{u.name}</TableCell>
-                        <TableCell>{u.symbol || '—'}</TableCell>
-                        {canEditUnits && (
-                          <TableCell>
-                            <IconButton size="small" onClick={() => openUnitDialog(u)} title="Modifier"><Edit fontSize="small" /></IconButton>
-                            <IconButton size="small" onClick={() => handleDeleteUnit(u.id)} title="Supprimer" color="error"><Delete fontSize="small" /></IconButton>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                {canEditUnits && (
-                  <Button startIcon={<Add />} variant="outlined" sx={{ mt: 2 }} onClick={() => openUnitDialog()}>
-                    Ajouter une unité
-                  </Button>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
       <Dialog open={unitDialog.open} onClose={closeUnitDialog} maxWidth="xs" fullWidth>
         <DialogTitle>{unitDialog.id ? 'Modifier l\'unité' : 'Nouvelle unité'}</DialogTitle>
         <DialogContent>
@@ -526,12 +492,72 @@ export default function Settings() {
         </DialogActions>
       </Dialog>
 
-      {tab === targetsTabIndex && (
-        <Card sx={{ borderRadius: 2 }}>
-          <CardContent>
-            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
-              Objectifs des indicateurs
-            </Typography>
+      {/* ——— Tableau de bord : KPI + Objectifs ——— */}
+      {tab === TAB_DASHBOARD && (
+        <Box display="flex" flexDirection="column" gap={3}>
+          <Card sx={{ borderRadius: 2 }}>
+            <CardContent>
+              <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+                Indicateurs de performance (KPIs)
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Choisissez et ordonnez les indicateurs affichés sur la page Indicateurs de performance. Vous pouvez ajouter, modifier, supprimer ou réordonner les cartes.
+              </Typography>
+              {kpiLoading ? (
+                <Box display="flex" justifyContent="center" p={2}><CircularProgress /></Box>
+              ) : (
+                <>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell width={48}>Ordre</TableCell>
+                        <TableCell>Nom</TableCell>
+                        <TableCell>Source (donnée)</TableCell>
+                        <TableCell>Visible</TableCell>
+                        {canEditKpis && <TableCell width={160}>Actions</TableCell>}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {kpiDefinitions.map((k, index) => (
+                        <TableRow key={k.id}>
+                          <TableCell>
+                            {canEditKpis && (
+                              <Box display="flex" gap={0.5}>
+                                <IconButton size="small" disabled={index === 0} onClick={() => moveKpi(index, -1)} title="Monter"><ArrowUpward fontSize="small" /></IconButton>
+                                <IconButton size="small" disabled={index === kpiDefinitions.length - 1} onClick={() => moveKpi(index, 1)} title="Descendre"><ArrowDownward fontSize="small" /></IconButton>
+                              </Box>
+                            )}
+                          </TableCell>
+                          <TableCell>{k.name}</TableCell>
+                          <TableCell>{kpiSources.find((s) => s.key === k.source_key)?.label ?? k.source_key}</TableCell>
+                          <TableCell>{k.is_visible ? 'Oui' : 'Non'}</TableCell>
+                          {canEditKpis && (
+                            <TableCell>
+                              <IconButton size="small" onClick={() => openKpiDialog(k)} title="Modifier"><Edit fontSize="small" /></IconButton>
+                              <IconButton size="small" onClick={() => handleDeleteKpi(k.id)} title="Supprimer" color="error"><Delete fontSize="small" /></IconButton>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {canEditKpis && (
+                    <Button startIcon={<Add />} variant="outlined" sx={{ mt: 2 }} onClick={() => openKpiDialog()}>
+                      Ajouter un indicateur
+                    </Button>
+                  )}
+                  {kpiDefinitions.length === 0 && !kpiLoading && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>Aucun indicateur personnalisé. La page KPIs affichera les indicateurs par défaut. Ajoutez-en pour personnaliser.</Typography>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+          <Card sx={{ borderRadius: 2 }}>
+            <CardContent>
+              <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+                Objectifs des indicateurs
+              </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               Valeurs cibles utilisées pour le tableau de bord, la page Indicateurs et l&apos;Assistance à la décision. Référence : norme EN 15341 et bonnes pratiques. Direction « min » : la valeur doit être ≥ objectif ; « max » : la valeur doit être ≤ objectif.
             </Typography>
@@ -593,69 +619,9 @@ export default function Settings() {
                 )}
               </>
             )}
-          </CardContent>
-        </Card>
-      )}
-
-      {tab === kpiTabIndex && (
-        <Card sx={{ borderRadius: 2 }}>
-          <CardContent>
-            <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
-              Indicateurs de performance (KPIs)
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Choisissez et ordonnez les indicateurs affichés sur la page Indicateurs de performance. Vous pouvez ajouter, modifier, supprimer ou réordonner les cartes.
-            </Typography>
-            {kpiLoading ? (
-              <Box display="flex" justifyContent="center" p={2}><CircularProgress /></Box>
-            ) : (
-              <>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell width={48}>Ordre</TableCell>
-                      <TableCell>Nom</TableCell>
-                      <TableCell>Source (donnée)</TableCell>
-                      <TableCell>Visible</TableCell>
-                      {canEditKpis && <TableCell width={160}>Actions</TableCell>}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {kpiDefinitions.map((k, index) => (
-                      <TableRow key={k.id}>
-                        <TableCell>
-                          {canEditKpis && (
-                            <Box display="flex" gap={0.5}>
-                              <IconButton size="small" disabled={index === 0} onClick={() => moveKpi(index, -1)} title="Monter"><ArrowUpward fontSize="small" /></IconButton>
-                              <IconButton size="small" disabled={index === kpiDefinitions.length - 1} onClick={() => moveKpi(index, 1)} title="Descendre"><ArrowDownward fontSize="small" /></IconButton>
-                            </Box>
-                          )}
-                        </TableCell>
-                        <TableCell>{k.name}</TableCell>
-                        <TableCell>{kpiSources.find((s) => s.key === k.source_key)?.label ?? k.source_key}</TableCell>
-                        <TableCell>{k.is_visible ? 'Oui' : 'Non'}</TableCell>
-                        {canEditKpis && (
-                          <TableCell>
-                            <IconButton size="small" onClick={() => openKpiDialog(k)} title="Modifier"><Edit fontSize="small" /></IconButton>
-                            <IconButton size="small" onClick={() => handleDeleteKpi(k.id)} title="Supprimer" color="error"><Delete fontSize="small" /></IconButton>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                {canEditKpis && (
-                  <Button startIcon={<Add />} variant="outlined" sx={{ mt: 2 }} onClick={() => openKpiDialog()}>
-                    Ajouter un indicateur
-                  </Button>
-                )}
-                {kpiDefinitions.length === 0 && !kpiLoading && (
-                  <Typography color="text.secondary" sx={{ mt: 2 }}>Aucun indicateur personnalisé. La page KPIs affichera les indicateurs par défaut. Ajoutez-en pour personnaliser.</Typography>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </Box>
       )}
 
       <Dialog open={kpiDialog.open} onClose={closeKpiDialog} maxWidth="sm" fullWidth>
@@ -689,7 +655,7 @@ export default function Settings() {
         </DialogActions>
       </Dialog>
 
-      {isAdmin && tab === backupTabIndex && (
+      {isAdmin && tab === TAB_BACKUP && (
         <Card sx={{ borderRadius: 2 }}>
           <CardContent>
             <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
@@ -710,7 +676,7 @@ export default function Settings() {
         </Card>
       )}
 
-      {tab === alertesTabIndex && (
+      {tab === TAB_ALERTES && (
         <Card sx={{ borderRadius: 2 }}>
           <CardContent>
             <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
@@ -787,7 +753,7 @@ export default function Settings() {
         </Card>
       )}
 
-      {canViewAudit && tab === auditTabIndex && (
+      {canViewAudit && tab === TAB_AUDIT && (
         <Card sx={{ borderRadius: 2 }}>
           <CardContent>
             <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>

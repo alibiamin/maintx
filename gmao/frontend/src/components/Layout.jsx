@@ -65,7 +65,8 @@ import {
   AccountBalance as BudgetIcon,
   BusinessCenter as SubcontractIcon,
   Lightbulb as LightbulbIcon,
-  MenuBook as MenuBookIcon
+  MenuBook as MenuBookIcon,
+  AdminPanelSettings as AdminPanelSettingsIcon
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
@@ -296,23 +297,34 @@ function getRawMenus() {
         { labelKey: 'item.exploitation_import', path: `${APP_BASE}/exploitation/import` }
       ]}
     ]},
-    // ——— Paramétrage ———
+    // ——— Paramétrage (client) ———
     { id: 'settings', labelKey: 'menu.settings', icon: <SettingsIcon />, path: `${APP_BASE}/settings`, sections: [
-      { titleKey: 'section.settings_0', items: [
+      { titleKey: 'section.settings_general', items: [
         { labelKey: 'item.settings_config', path: `${APP_BASE}/settings` },
-        { labelKey: 'item.settings_alerts', path: `${APP_BASE}/settings?tab=alertes` },
+        { labelKey: 'item.settings_alerts', path: `${APP_BASE}/settings?tab=alertes` }
+      ]},
+      { titleKey: 'section.settings_users_rights', items: [
         { labelKey: 'item.settings_users', path: `${APP_BASE}/users` },
-        { labelKey: 'item.settings_roles', path: `${APP_BASE}/settings/roles` },
-        { labelKey: 'item.settings_tenants', path: `${APP_BASE}/settings/tenants`, maintxAdminOnly: true },
+        { labelKey: 'item.settings_roles', path: `${APP_BASE}/settings/roles` }
+      ]},
+      { titleKey: 'section.settings_referentiels', items: [
         { labelKey: 'item.failure_codes', path: `${APP_BASE}/failure-codes` },
         { labelKey: 'item.part_families', path: `${APP_BASE}/catalogue/part-families` },
         { labelKey: 'item.brands', path: `${APP_BASE}/catalogue/brands` },
-        { labelKey: 'item.wo_templates', path: `${APP_BASE}/catalogue/wo-templates` },
+        { labelKey: 'item.wo_templates', path: `${APP_BASE}/catalogue/wo-templates` }
+      ]},
+      { titleKey: 'section.settings_communications', items: [
         { labelKey: 'item.email_templates', path: `${APP_BASE}/settings/email-templates` }
       ]},
       { titleKey: 'section.settings_creation', items: [
         { labelKey: 'item.creation_user', path: `${APP_BASE}/settings/creation/user`, action: 'create' },
         { labelKey: 'item.creation_failure_code', path: `${APP_BASE}/settings/creation/failure-code`, action: 'create' }
+      ]}
+    ]},
+    // ——— Administration MAINTX (plateforme, réservé aux admins MAINTX) ———
+    { id: 'maintxAdmin', labelKey: 'menu.maintxAdmin', icon: <AdminPanelSettingsIcon />, path: `${APP_BASE}/settings/tenants`, sections: [
+      { titleKey: 'section.maintx_admin_clients', items: [
+        { labelKey: 'item.settings_tenants', path: `${APP_BASE}/settings/tenants`, resource: 'tenants', action: 'view' }
       ]}
     ]}
   ];
@@ -330,7 +342,8 @@ function getMenuCategories(rawMenus) {
     { id: 'hr', labelKey: 'menuCategory.hr', menuIds: ['effectif'] },
     { id: 'analysis', labelKey: 'menuCategory.analysis', menuIds: ['reports', 'decisionSupport', 'standards'] },
     { id: 'data', labelKey: 'menuCategory.data', menuIds: ['exploitation'] },
-    { id: 'settings', labelKey: 'menuCategory.settings', menuIds: ['settings'] }
+    { id: 'settings', labelKey: 'menuCategory.settings', menuIds: ['settings'] },
+    { id: 'maintxAdmin', labelKey: 'menuCategory.maintxAdmin', menuIds: ['maintxAdmin'] }
   ];
   return categories
     .map((cat) => ({
@@ -370,13 +383,14 @@ export default function Layout() {
   const rawMenus = React.useMemo(() => {
     const raw = getRawMenus();
     return raw.filter((m) => {
+      if (m.id === 'maintxAdmin') return !!user?.isAdmin;
       const resource = MENU_RESOURCE_MAP[m.id];
       if (resource && permissions?.length > 0 && !can(resource, 'view')) return false;
       const moduleCode = MENU_MODULE_MAP[m.id];
       if (moduleCode && !isModuleEnabled(moduleCode)) return false;
       return true;
     });
-  }, [permissions, can, isModuleEnabled]);
+  }, [user?.isAdmin, permissions, can, isModuleEnabled]);
   const menuCategories = React.useMemo(() => getMenuCategories(rawMenus), [rawMenus]);
   const menuStructure = React.useMemo(() => getMenuStructure(rawMenus, menuCategories), [rawMenus, menuCategories]);
   const getPathLabel = (pathSeg) => (pathSeg === '' ? t('path._home') : t(`path.${pathSeg}`));

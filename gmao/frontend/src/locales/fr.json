@@ -181,7 +181,8 @@
     "hr": "Effectif & Formation",
     "analysis": "Rapports & Référentiels",
     "data": "Données",
-    "settings": "Paramétrage"
+    "settings": "Paramétrage",
+    "maintxAdmin": "Administration MAINTX"
   },
   "menu": {
     "dashboard": "Tableau de bord",
@@ -201,6 +202,7 @@
     "effectif": "Effectif",
     "exploitation": "Exploitation",
     "settings": "Paramétrage",
+    "maintxAdmin": "Administration MAINTX",
     "standards_library": "Bibliothèque des Normes"
   },
   "section": {
@@ -231,7 +233,12 @@
     "effectif_1": "Pointage et présence",
     "exploitation_0": "Export et import",
     "settings_0": "Configuration",
+    "settings_general": "Général",
+    "settings_users_rights": "Utilisateurs et droits",
+    "settings_referentiels": "Référentiels",
+    "settings_communications": "Communications",
     "settings_creation": "Création",
+    "maintx_admin_clients": "Plateforme MAINTX",
     "standards_0": "Bibliothèque des normes"
   },
   "item": {
@@ -272,6 +279,17 @@
     "planning_calendar": "Calendrier",
     "planning_assignments": "Affectations",
     "planning_resources": "Ressources",
+    "planning_view_month": "Mois",
+    "planning_view_week": "Semaine",
+    "planning_view_gantt": "Gantt",
+    "planning_filter_assigned": "Assigné à",
+    "planning_filter_due_date": "Échéance",
+    "planning_filter_location": "Lieu",
+    "planning_filter_priority": "Priorité",
+    "planning_filter_assets": "Équipements",
+    "planning_add_filter": "Ajouter un filtre",
+    "planning_my_filters": "Mes filtres",
+    "planning_drag_hint": "Glissez-déposez les barres pour décaler les dates (enregistrement automatique).",
     "stock_list": "Liste des pièces",
     "stock_movements": "Mouvements",
     "stock_inventories": "Inventaires",

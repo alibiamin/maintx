@@ -154,7 +154,8 @@
     "hr": "Workforce & Training",
     "analysis": "Reports & Reference",
     "data": "Data",
-    "settings": "Settings"
+    "settings": "Settings",
+    "maintxAdmin": "MAINTX Administration"
   },
   "menu": {
     "dashboard": "Dashboard",
@@ -174,6 +175,7 @@
     "effectif": "Workforce",
     "exploitation": "Data management",
     "settings": "Settings",
+    "maintxAdmin": "MAINTX Administration",
     "standards_library": "Standards Library"
   },
   "section": {
@@ -204,7 +206,12 @@
     "effectif_1": "Time & attendance",
     "exploitation_0": "Export and import",
     "settings_0": "Configuration",
+    "settings_general": "General",
+    "settings_users_rights": "Users and permissions",
+    "settings_referentiels": "Reference data",
+    "settings_communications": "Communications",
     "settings_creation": "Creation",
+    "maintx_admin_clients": "MAINTX platform",
     "standards_0": "Standards library"
   },
   "item": {
@@ -244,6 +251,17 @@
     "planning_calendar": "Calendar",
     "planning_assignments": "Assignments",
     "planning_resources": "Resources",
+    "planning_view_month": "Month",
+    "planning_view_week": "Week",
+    "planning_view_gantt": "Gantt",
+    "planning_filter_assigned": "Assigned to",
+    "planning_filter_due_date": "Due date",
+    "planning_filter_location": "Location",
+    "planning_filter_priority": "Priority",
+    "planning_filter_assets": "Assets",
+    "planning_add_filter": "Add filter",
+    "planning_my_filters": "My filters",
+    "planning_drag_hint": "Drag and drop bars to reschedule (auto-save).",
     "stock_list": "Parts list",
     "stock_movements": "Movements",
     "stock_inventories": "Inventories",

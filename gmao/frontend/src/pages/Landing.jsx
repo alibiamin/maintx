@@ -125,8 +125,8 @@ export default function Landing() {
       />
       {/* Orbes flottantes */}
       <Box
-        sx={{
-          position: 'absolute',
+    sx={{
+      position: 'absolute',
           top: '20%',
           left: '15%',
           width: 'min(40vw, 320px)',
@@ -154,8 +154,8 @@ export default function Landing() {
           zIndex: 0
         }}
       />
-      <Box
-        sx={{
+        <Box
+          sx={{
           position: 'absolute',
           top: '55%',
           left: '50%',
@@ -171,7 +171,7 @@ export default function Landing() {
       />
       {/* Balayage lumineux passant */}
       <Box
-        sx={{
+            sx={{
           position: 'absolute',
           inset: 0,
           zIndex: 0,
@@ -183,7 +183,7 @@ export default function Landing() {
 
       {/* Conteneur flip 3D */}
       <Box
-        sx={{
+                  sx={{
           position: 'relative',
           zIndex: 1,
           width: '100%',
@@ -193,10 +193,10 @@ export default function Landing() {
           justifyContent: 'center',
           perspective: '1200px',
           px: 2
-        }}
-      >
-        <Box
-          sx={{
+                  }}
+                >
+                  <Box
+                    sx={{
             position: 'relative',
             width: '100%',
             maxWidth: 920,
@@ -209,9 +209,9 @@ export default function Landing() {
         >
           {/* Face avant : MAINTX + CTAs */}
           <Box
-            sx={{
-              position: 'absolute',
-              inset: 0,
+        sx={{
+            position: 'absolute',
+            inset: 0,
               backfaceVisibility: 'hidden',
               WebkitBackfaceVisibility: 'hidden',
               display: 'flex',
@@ -221,9 +221,9 @@ export default function Landing() {
               textAlign: 'center'
             }}
           >
-            <Typography
+                <Typography
               component="h1"
-              sx={{
+                  sx={{
                 fontSize: { xs: '4.5rem', sm: '8rem', md: '12rem', lg: '14rem' },
                 fontWeight: 900,
                 letterSpacing: { xs: '0.06em', md: '0.12em' },
@@ -235,19 +235,19 @@ export default function Landing() {
               }}
             >
               <Box component="span" sx={{ color: '#fff' }}>MAINT</Box>
-              <Box
-                component="span"
-                sx={{
+                  <Box
+                    component="span"
+                    sx={{
                   color: green,
                   display: 'inline',
                   animation: mounted ? `${softGlow} 4s ease-in-out infinite 0.5s` : 'none'
-                }}
-              >
-                X
-              </Box>
+                    }}
+                  >
+                    X
+                  </Box>
             </Typography>
-            <Typography
-              sx={{
+                  <Typography
+                    sx={{
                 mt: 2,
                 mb: 4,
                 fontSize: { xs: '0.85rem', md: '1.1rem' },
@@ -257,46 +257,46 @@ export default function Landing() {
               }}
             >
               {t('landing.tagline')}
-            </Typography>
-            <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              spacing={2}
+                  </Typography>
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={2}
               justifyContent="center"
               sx={{ animation: mounted ? `${fadeUp} 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both` : 'none' }}
-            >
-              <Button
-                size="large"
+                >
+                  <Button
+                    size="large"
                 variant="contained"
-                startIcon={<Login />}
-                onClick={() => navigate('/login')}
-                sx={{
-                  px: 4,
+                    startIcon={<Login />}
+                    onClick={() => navigate('/login')}
+                    sx={{
+                      px: 4,
                   py: 1.6,
-                  borderRadius: 2,
+                      borderRadius: 2,
                   fontWeight: 600,
                   backgroundColor: green,
                   boxShadow: `0 16px 48px ${alpha(green, 0.4)}`,
                   transition: 'transform 0.25s ease, box-shadow 0.25s ease',
-                  '&:hover': {
+                      '&:hover': {
                     transform: 'translateY(-3px)',
                     boxShadow: `0 24px 56px ${alpha(green, 0.5)}`
                   }
                 }}
               >
                 {t('landing.ctaLogin')}
-              </Button>
-              <Button
-                size="large"
+                  </Button>
+                  <Button
+                    size="large"
                 variant="outlined"
-                endIcon={<ArrowForward />}
+                    endIcon={<ArrowForward />}
                 onClick={() => setFlipped(true)}
-                sx={{
-                  px: 4,
+                    sx={{
+                      px: 4,
                   py: 1.6,
-                  borderRadius: 2,
+                      borderRadius: 2,
                   borderColor: alpha(green, 0.7),
                   color: green,
-                  '&:hover': {
+                      '&:hover': {
                     borderColor: green,
                     backgroundColor: alpha(green, 0.08),
                     transform: 'translateY(-3px)'
@@ -305,15 +305,15 @@ export default function Landing() {
                 }}
               >
                 {t('landing.ctaDiscover')}
-              </Button>
-            </Stack>
-          </Box>
+                  </Button>
+                </Stack>
+                  </Box>
 
           {/* Face arrière : description — occupe tout l'espace */}
           <Box
             role="region"
             aria-label={t('landing.flipTitle')}
-            sx={{
+        sx={{
               position: 'absolute',
               inset: 0,
               backfaceVisibility: 'hidden',
@@ -334,8 +334,8 @@ export default function Landing() {
               <Box sx={{ width: 40, height: 3, borderRadius: 2, bgcolor: green, opacity: 0.9 }} />
               <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
                 {t('landing.flipTitle')}
-              </Typography>
-            </Box>
+                      </Typography>
+      </Box>
 
             <Grid container spacing={1.5} sx={{ flex: 1, minHeight: 0, alignContent: 'stretch' }}>
               {/* Colonne gauche : À propos + En détail — remplissent la hauteur */}
@@ -345,10 +345,10 @@ export default function Landing() {
                     <CardContent sx={{ p: 1.5, flex: 1, display: 'flex', flexDirection: 'column', '&:last-child': { pb: 1.5 } }}>
                       <Typography variant="subtitle2" sx={{ color: green, fontWeight: 600, mb: 0.5 }}>
                         {t('landing.flipAboutTitle')}
-                      </Typography>
+                  </Typography>
                       <Typography sx={{ color: alpha('#fff', 0.88), fontSize: '0.8rem', lineHeight: 1.5, flex: 1 }}>
                         {t('landing.flipAboutText')}
-                      </Typography>
+                  </Typography>
                     </CardContent>
                   </Card>
                   <Card sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: alpha('#0d1218', 0.6), border: `1px solid ${alpha(green, 0.18)}`, borderRadius: 1.5 }}>
@@ -357,8 +357,8 @@ export default function Landing() {
                         <List sx={{ fontSize: 16, color: green }} />
                         <Typography variant="subtitle2" sx={{ color: green, fontWeight: 600, fontSize: '0.8rem' }}>
                           {t('landing.flipDetailTitle')}
-                        </Typography>
-                      </Box>
+                            </Typography>
+                          </Box>
                       <Stack component="ul" spacing={0.25} sx={{ m: 0, pl: 2, listStyleType: 'disc', flex: 1, '& li': { color: alpha('#fff', 0.82), fontSize: '0.75rem', lineHeight: 1.4 } }}>
                         <Typography component="li">{t('landing.flipDetail1')}</Typography>
                         <Typography component="li">{t('landing.flipDetail2')}</Typography>
@@ -368,7 +368,7 @@ export default function Landing() {
                     </CardContent>
                   </Card>
                 </Stack>
-              </Grid>
+                  </Grid>
 
               {/* Colonne droite : 4 features + Contact — remplissent la hauteur */}
               <Grid item xs={12} md={7} sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -385,17 +385,17 @@ export default function Landing() {
                           <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, flex: 1 }}>
                             <Box sx={{ width: 32, height: 32, borderRadius: 1, bgcolor: alpha(green, 0.15), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                               <Icon sx={{ fontSize: 18, color: green }} />
-                            </Box>
+                </Box>
                             <Box sx={{ flex: 1, minWidth: 0 }}>
                               <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600, fontSize: '0.8rem' }}>{t(`landing.${titleKey}`)}</Typography>
                               <Typography variant="body2" sx={{ color: alpha('#fff', 0.75), fontSize: '0.75rem', lineHeight: 1.4 }}>{t(`landing.${descKey}`)}</Typography>
-                            </Box>
+              </Box>
                           </Box>
                         </CardContent>
                       </Card>
-                    </Grid>
+            </Grid>
                   ))}
-                </Grid>
+          </Grid>
                 <Card sx={{ flexShrink: 0, mt: 1.5, bgcolor: alpha(green, 0.06), border: `1px solid ${alpha(green, 0.25)}`, borderRadius: 1.5 }}>
                   <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5 }}>
@@ -405,31 +405,31 @@ export default function Landing() {
                       <Box component="a" href={`mailto:${CONTACT_EMAIL}`} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color: green, fontSize: '0.8rem', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
                         <Email sx={{ fontSize: 16 }} />
                         {t('landing.flipContactEmail')}
-                      </Box>
+      </Box>
                       <Button component="a" href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(t('landing.flipContactDemo'))}`} variant="contained" size="small" sx={{ bgcolor: green, '&:hover': { bgcolor: theme.palette.primary.dark }, fontSize: '0.75rem', py: 0.5, px: 1.5 }}>
                         {t('landing.flipContactDemo')}
                       </Button>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
+            </Box>
+                      </CardContent>
+                    </Card>
+                </Grid>
+          </Grid>
 
             <Box sx={{ flexShrink: 0, pt: 1.5, display: 'flex', justifyContent: 'center' }}>
-            <Button
-              size="large"
-              variant="outlined"
+                <Button
+                  size="large"
+                  variant="outlined"
               startIcon={<ArrowBack />}
               onClick={() => setFlipped(false)}
               aria-label={t('landing.flipBack')}
-              sx={{
+                  sx={{
                 alignSelf: 'center',
                 px: 3,
                 py: 1.4,
-                borderRadius: 2,
+                    borderRadius: 2,
                 borderColor: alpha(green, 0.7),
                 color: green,
-                '&:hover': {
+                    '&:hover': {
                   borderColor: green,
                   backgroundColor: alpha(green, 0.12),
                   transform: 'translateY(-2px)'
@@ -438,17 +438,17 @@ export default function Landing() {
               }}
             >
               {t('landing.flipBack')}
-            </Button>
-            </Box>
-          </Box>
-        </Box>
+                </Button>
+      </Box>
+                </Box>
+                      </Box>
       </Box>
 
       {/* Footer minimal */}
       <Box
         id="footer"
         component="footer"
-        sx={{
+                sx={{
           position: 'absolute',
           bottom: 0,
           left: 0,
@@ -460,7 +460,7 @@ export default function Landing() {
       >
         <Typography variant="caption" sx={{ color: alpha('#fff', 0.45) }}>
           © {new Date().getFullYear()} MAINTX. {t('landing.footerRights')}
-        </Typography>
+            </Typography>
       </Box>
     </Box>
   );

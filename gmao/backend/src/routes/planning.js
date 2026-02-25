@@ -16,7 +16,7 @@ router.get('/gantt', (req, res) => {
     const s = start || new Date().toISOString().split('T')[0];
     const e = end || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    // Ordres de travail (correctifs et préventifs) dont la plage chevauche [s, e]
+    // Ordres de travail dont la plage chevauche [s, e] (tous statuts : terminés/annulés affichés en gris, non déplaçables)
     const workOrders = db.prepare(`
       SELECT wo.id, wo.number, wo.title, wo.description,
              wo.planned_start, wo.planned_end, wo.created_at,
@@ -29,8 +29,7 @@ router.get('/gantt', (req, res) => {
       LEFT JOIN equipment e ON wo.equipment_id = e.id
       LEFT JOIN work_order_types t ON wo.type_id = t.id
       LEFT JOIN users u ON wo.assigned_to = u.id
-      WHERE wo.status NOT IN ('cancelled')
-        AND (
+      WHERE (
           (wo.planned_start IS NOT NULL AND (
             (date(wo.planned_start) BETWEEN date(?) AND date(?))
             OR (wo.planned_end IS NOT NULL AND date(wo.planned_end) BETWEEN date(?) AND date(?))
@@ -86,7 +85,7 @@ router.get('/gantt', (req, res) => {
     });
 
     plans.forEach(mp => {
-      const d = new Date(mp.next_due_date + 'T12:00:00');
+      const d = new Date(mp.next_due_date + 'T12:00:00Z');
       const endD = new Date(d);
       endD.setDate(endD.getDate() + 1);
       items.push({
