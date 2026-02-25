@@ -17,9 +17,9 @@ export default function WOTemplatesList() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ name: '', description: '', typeId: '', defaultPriority: 'medium', estimatedHours: 0 });
   const [saving, setSaving] = useState(false);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('work_order_templates', 'update');
 
   const load = () => {
     setLoading(true);

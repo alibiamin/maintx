@@ -4,19 +4,19 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const codification = require('../services/codification');
 
 const router = express.Router();
 router.use(authenticate);
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('failure_codes', 'view'), (req, res) => {
   const db = req.db;
   const rows = db.prepare('SELECT * FROM failure_codes ORDER BY category, code').all();
   res.json(rows);
 });
 
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('failure_codes', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').notEmpty().trim()
 ], (req, res) => {
   const db = req.db;
@@ -36,7 +36,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.put('/:id', requirePermission('failure_codes', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt()
 ], (req, res) => {
   const db = req.db;
@@ -49,7 +49,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   res.json(db.prepare('SELECT * FROM failure_codes WHERE id = ?').get(id));
 });
 
-router.delete('/:id', authorize(ROLES.ADMIN), param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('failure_codes', 'delete'), authorize(ROLES.ADMIN), param('id').isInt(), (req, res) => {
   const db = req.db;
   const r = db.prepare('DELETE FROM failure_codes WHERE id = ?').run(req.params.id);
   if (r.changes === 0) return res.status(404).json({ error: 'Code non trouvé' });

@@ -4,7 +4,7 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
@@ -28,7 +28,7 @@ function enrichReservationRow(db, row) {
   return out;
 }
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('stock_reservations', 'view'), (req, res) => {
   const db = req.db;
   try {
     const { workOrderId, sparePartId, status } = req.query;
@@ -80,7 +80,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), [
+router.post('/', requirePermission('stock_reservations', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), [
   body('workOrderId').isInt(),
   body('sparePartId').isInt(),
   body('quantity').isInt({ min: 1 })
@@ -130,7 +130,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), [
   }
 });
 
-router.put('/:id/release', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), (req, res) => {
+router.put('/:id/release', requirePermission('stock_reservations', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = req.params.id;
   const existing = db.prepare('SELECT * FROM stock_reservations WHERE id = ?').get(id);
@@ -146,7 +146,7 @@ router.put('/:id/release', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHN
   res.json(enrichReservationRow(db, row));
 });
 
-router.put('/:id/consume', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), (req, res) => {
+router.put('/:id/consume', requirePermission('stock_reservations', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = req.params.id;
   const existing = db.prepare('SELECT * FROM stock_reservations WHERE id = ?').get(id);
@@ -162,7 +162,7 @@ router.put('/:id/consume', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHN
   res.json(enrichReservationRow(db, row));
 });
 
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('stock_reservations', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), (req, res) => {
   const db = req.db;
   const r = db.prepare('DELETE FROM stock_reservations WHERE id = ?').run(req.params.id);
   if (r.changes === 0) return res.status(404).json({ error: 'Réservation non trouvée' });

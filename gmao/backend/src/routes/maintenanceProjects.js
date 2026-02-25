@@ -5,7 +5,7 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
@@ -293,15 +293,15 @@ function unlinkPlan(req, res) {
 
 // ——— Routes (ordre : spécifique avant :id) ———
 
-router.get('/', list);
+router.get('/', requirePermission('maintenance_projects', 'view'), list);
 
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('maintenance_projects', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').trim().notEmpty().withMessage('Le nom est requis'),
   body('budgetAmount').optional().isFloat({ min: 0 }).withMessage('Budget invalide'),
   body('status').optional().isIn(PROJECT_STATUSES),
 ], create);
 
-router.get('/:id/work-orders', param('id').isInt(), (req, res) => {
+router.get('/:id/work-orders', requirePermission('maintenance_projects', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = req.params.id;
   if (!db.prepare('SELECT id FROM maintenance_projects WHERE id = ?').get(id)) return res.status(404).json({ error: 'Projet non trouvé' });
@@ -314,34 +314,34 @@ router.get('/:id/work-orders', param('id').isInt(), (req, res) => {
   res.json(rows.map((r) => ({ id: r.id, number: r.number, title: r.title, status: r.status })));
 });
 
-router.post('/:id/link-work-order', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/:id/link-work-order', requirePermission('maintenance_projects', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('workOrderId').isInt(),
 ], linkWorkOrder);
 
-router.post('/:id/unlink-work-order', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/:id/unlink-work-order', requirePermission('maintenance_projects', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('workOrderId').isInt(),
 ], unlinkWorkOrder);
 
-router.post('/:id/link-plan', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/:id/link-plan', requirePermission('maintenance_projects', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('planId').isInt(),
 ], linkPlan);
 
-router.post('/:id/unlink-plan', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/:id/unlink-plan', requirePermission('maintenance_projects', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('planId').isInt(),
 ], unlinkPlan);
 
-router.get('/:id', param('id').isInt(), getOne);
+router.get('/:id', requirePermission('maintenance_projects', 'view'), param('id').isInt(), getOne);
 
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.put('/:id', requirePermission('maintenance_projects', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('name').optional().trim().notEmpty(),
   body('status').optional().isIn(PROJECT_STATUSES),
 ], update);
 
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), remove);
+router.delete('/:id', requirePermission('maintenance_projects', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), remove);
 
 module.exports = router;

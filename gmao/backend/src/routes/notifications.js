@@ -4,7 +4,7 @@
  */
 
 const express = require('express');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 const { EVENT_LABELS } = require('../services/notificationService');
 const dbModule = require('../database/db');
 
@@ -15,7 +15,7 @@ const EVENT_TYPES = ['work_order_created', 'work_order_assigned', 'work_order_cl
 const CHANNELS = ['email', 'sms'];
 
 // GET /api/notifications/preferences — préférences + téléphone de l'utilisateur connecté
-router.get('/preferences', (req, res) => {
+router.get('/preferences', requirePermission('notifications', 'view'), (req, res) => {
   const adminDb = dbModule.getAdminDb();
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ error: 'Non authentifié' });
@@ -49,7 +49,7 @@ router.get('/preferences', (req, res) => {
 });
 
 // PUT /api/notifications/preferences — mettre à jour téléphone et préférences
-router.put('/preferences', (req, res) => {
+router.put('/preferences', requirePermission('notifications', 'update'), (req, res) => {
   const adminDb = dbModule.getAdminDb();
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ error: 'Non authentifié' });

@@ -5,7 +5,7 @@
 const express = require('express');
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const { repairOnlyCondition } = require('../services/mttrMtbf');
 
 function writePdfTable(doc, headers, rows, colWidths) {
@@ -24,6 +24,7 @@ function writePdfTable(doc, headers, rows, colWidths) {
 
 const router = express.Router();
 router.use(authenticate);
+router.use(requirePermission('reports', 'view'));
 
 /**
  * GET /api/reports/maintenance-costs
@@ -352,7 +353,7 @@ router.get('/parts-most-used', (req, res) => {
  * GET /api/reports/export/detailed
  * Export Excel détaillé (coûts, pièces, temps)
  */
-router.get('/export/detailed', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), async (req, res) => {
+router.get('/export/detailed', requirePermission('reports', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), async (req, res) => {
   const db = req.db;
   const { startDate, endDate } = req.query;
   const start = startDate || '2020-01-01';
@@ -416,7 +417,7 @@ router.get('/work-orders', (req, res) => {
  * GET /api/reports/export/excel
  * Export Excel des OT
  */
-router.get('/export/excel', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), async (req, res) => {
+router.get('/export/excel', requirePermission('reports', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), async (req, res) => {
   const db = req.db;
   const rows = db.prepare(`
     SELECT wo.number, wo.title, wo.status, wo.priority, wo.created_at, wo.actual_end,
@@ -448,7 +449,7 @@ router.get('/export/excel', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), async (re
 /**
  * GET /api/reports/export/pdf/equipment - Liste des équipements en PDF
  */
-router.get('/export/pdf/equipment', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.get('/export/pdf/equipment', requirePermission('reports', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const rows = db.prepare(`
     SELECT e.code, e.name, e.status, s.name as site_name
@@ -471,7 +472,7 @@ router.get('/export/pdf/equipment', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (
 /**
  * GET /api/reports/export/pdf/maintenance - Plans de maintenance en PDF
  */
-router.get('/export/pdf/maintenance', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.get('/export/pdf/maintenance', requirePermission('reports', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   let rows = [];
   try {
@@ -516,7 +517,7 @@ router.get('/export/pdf/maintenance', authorize(ROLES.ADMIN, ROLES.RESPONSABLE),
 /**
  * GET /api/reports/export/pdf/stock - État des stocks en PDF
  */
-router.get('/export/pdf/stock', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.get('/export/pdf/stock', requirePermission('reports', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const rows = db.prepare(`
     SELECT sp.code, sp.name, COALESCE(sb.quantity, 0) as quantity, sp.min_stock, sp.unit
@@ -649,7 +650,7 @@ router.get('/export/pdf/work-order/:id', (req, res) => {
 /**
  * GET /api/reports/export/pdf/kpis - Indicateurs de performance en PDF
  */
-router.get('/export/pdf/kpis', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.get('/export/pdf/kpis', requirePermission('reports', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const { startDate, endDate } = req.query;
   const start = startDate || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);

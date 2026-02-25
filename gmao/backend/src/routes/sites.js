@@ -3,7 +3,7 @@
  */
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const codification = require('../services/codification');
 
 const router = express.Router();
@@ -17,7 +17,7 @@ function getDepartements(db) {
   }
 }
 
-router.get('/departements', (req, res) => {
+router.get('/departements', requirePermission('sites', 'view'), (req, res) => {
   const db = req.db;
   if (!getDepartements(db)) return res.json([]);
   const { siteId } = req.query;
@@ -34,7 +34,7 @@ router.get('/departements', (req, res) => {
   res.json([...byKey.values()]);
 });
 
-router.get('/departements/:id', param('id').isInt(), (req, res) => {
+router.get('/departements/:id', requirePermission('sites', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   if (!getDepartements(db)) return res.status(404).json({ error: 'Département non trouvé' });
   const row = db.prepare('SELECT d.*, s.name as site_name FROM departements d LEFT JOIN sites s ON d.site_id = s.id WHERE d.id = ?').get(req.params.id);
@@ -42,7 +42,7 @@ router.get('/departements/:id', param('id').isInt(), (req, res) => {
   res.json(row);
 });
 
-router.post('/departements', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/departements', requirePermission('sites', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('siteId').isInt(),
   body('name').notEmpty().trim()
 ], (req, res) => {
@@ -66,7 +66,7 @@ router.post('/departements', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/departements/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.put('/departements/:id', requirePermission('sites', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   if (!getDepartements(db)) return res.status(400).json({ error: 'Table départements non disponible' });
   const { siteId, code, name, description } = req.body;
@@ -83,20 +83,20 @@ router.put('/departements/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param
   res.json(db.prepare('SELECT d.*, s.name as site_name FROM departements d LEFT JOIN sites s ON d.site_id = s.id WHERE d.id = ?').get(id));
 });
 
-router.get('/sites', (req, res) => {
+router.get('/sites', requirePermission('sites', 'view'), (req, res) => {
   const db = req.db;
   const rows = db.prepare('SELECT * FROM sites ORDER BY name').all();
   res.json(rows);
 });
 
-router.get('/sites/:id', param('id').isInt(), (req, res) => {
+router.get('/sites/:id', requirePermission('sites', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const row = db.prepare('SELECT * FROM sites WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Site non trouvé' });
   res.json(row);
 });
 
-router.post('/sites', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/sites', requirePermission('sites', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').notEmpty().trim()
 ], (req, res) => {
   const db = req.db;
@@ -115,7 +115,7 @@ router.post('/sites', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/sites/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.put('/sites/:id', requirePermission('sites', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const { code, name, address, latitude, longitude } = req.body;
   const id = req.params.id;
@@ -143,7 +143,7 @@ router.put('/sites/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').
   res.json(db.prepare('SELECT * FROM sites WHERE id = ?').get(id));
 });
 
-router.get('/lignes', (req, res) => {
+router.get('/lignes', requirePermission('sites', 'view'), (req, res) => {
   const db = req.db;
   const { siteId } = req.query;
   let sql = 'SELECT l.*, s.name as site_name FROM lignes l LEFT JOIN sites s ON l.site_id = s.id WHERE 1=1';
@@ -159,14 +159,14 @@ router.get('/lignes', (req, res) => {
   res.json([...byKey.values()]);
 });
 
-router.get('/lignes/:id', param('id').isInt(), (req, res) => {
+router.get('/lignes/:id', requirePermission('sites', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const row = db.prepare('SELECT l.*, s.name as site_name FROM lignes l LEFT JOIN sites s ON l.site_id = s.id WHERE l.id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Ligne non trouvée' });
   res.json(row);
 });
 
-router.post('/lignes', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/lignes', requirePermission('sites', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('siteId').isInt(),
   body('name').notEmpty().trim()
 ], (req, res) => {
@@ -188,7 +188,7 @@ router.post('/lignes', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/lignes/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.put('/lignes/:id', requirePermission('sites', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const { siteId, code, name } = req.body;
   const id = req.params.id;

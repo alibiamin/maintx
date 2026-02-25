@@ -6,7 +6,7 @@
 
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
 const codification = require('../services/codification');
 const dbModule = require('../database/db');
@@ -72,7 +72,7 @@ function formatRequest(row) {
  * GET /api/intervention-requests
  * Liste des demandes (filtre status, requestedBy)
  */
-router.get('/', [
+router.get('/', requirePermission('intervention_requests', 'view'), [
   query('status').optional().isIn(['pending', 'validated', 'rejected']),
   query('requestedBy').optional().isInt()
 ], (req, res) => {
@@ -103,7 +103,7 @@ router.get('/', [
  * POST /api/intervention-requests
  * Créer une demande (tout utilisateur connecté, type Open)
  */
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROLES.UTILISATEUR), [
+router.post('/', requirePermission('intervention_requests', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROLES.UTILISATEUR), [
   body('title').notEmpty().trim(),
   body('description').optional().trim(),
   body('equipmentId').optional().isInt(),
@@ -150,7 +150,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROL
 /**
  * GET /api/intervention-requests/:id
  */
-router.get('/:id', param('id').isInt(), (req, res) => {
+router.get('/:id', requirePermission('intervention_requests', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const row = db.prepare(`
     SELECT ir.*, e.name as equipment_name, e.code as equipment_code,
@@ -170,7 +170,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
  * PUT /api/intervention-requests/:id/validate
  * Valider la demande et créer un OT (responsable ou admin)
  */
-router.put('/:id/validate', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.put('/:id/validate', requirePermission('intervention_requests', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('priority').optional().isIn(['low', 'medium', 'high', 'critical']),
   body('title').optional().trim()
@@ -222,7 +222,7 @@ router.put('/:id/validate', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
  * PUT /api/intervention-requests/:id/reject
  * Rejeter la demande (responsable ou admin)
  */
-router.put('/:id/reject', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.put('/:id/reject', requirePermission('intervention_requests', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('rejectionReason').optional().trim()
 ], (req, res) => {

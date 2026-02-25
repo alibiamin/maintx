@@ -22,9 +22,9 @@ export default function BudgetsList() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ name: '', siteId: '', projectId: '', year: new Date().getFullYear(), amount: 0, currency: 'EUR', notes: '' });
   const [saving, setSaving] = useState(false);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('budgets', 'update');
 
   const load = () => {
     setLoading(true);

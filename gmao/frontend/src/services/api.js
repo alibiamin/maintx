@@ -1,5 +1,7 @@
 /**
  * Client API centralisé - xmaint
+ * Auth professionnelle : access token en mémoire, refresh via cookie httpOnly.
+ * withCredentials: true pour envoyer le cookie refresh à chaque requête.
  */
 
 import axios from 'axios';
@@ -23,11 +25,15 @@ function deduplicateList(arr) {
 
 const api = axios.create({
   baseURL: '/api',
-  headers: { 'Content-Type': 'application/json' }
+  headers: { 'Content-Type': 'application/json' },
+  withCredentials: true
 });
 
-const token = localStorage.getItem('xmaint-token');
-if (token) api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+let refreshPromise = null;
+
+function isRefreshRequest(config) {
+  return config?.url?.includes('/auth/refresh');
+}
 
 api.interceptors.response.use(
   (res) => {
@@ -40,19 +46,57 @@ api.interceptors.response.use(
           d[key] = deduplicateList(d[key]);
         }
       }
-      // Réponses paginées ou listes dans .data (catégories, lignes, etc.) : dédupliquer pour éviter doublons d'affichage
       if (Array.isArray(d.data) && d.data.length > 0 && d.data[0] && typeof d.data[0] === 'object' && 'id' in d.data[0]) {
         d.data = deduplicateList(d.data);
       }
     }
     return res;
   },
-  (err) => {
+  async (err) => {
     const status = err.response?.status;
     const data = err.response?.data;
+    const config = err.config;
+
+    if (status === 401 && config && !config._retried && !isRefreshRequest(config)) {
+      config._retried = true;
+      try {
+        if (!refreshPromise) {
+          refreshPromise = api.post('/auth/refresh');
+        }
+        const res = await refreshPromise;
+        refreshPromise = null;
+        const token = res.data?.accessToken;
+        if (token) {
+          api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+          config.headers = config.headers || {};
+          config.headers.Authorization = `Bearer ${token}`;
+          if (typeof window !== 'undefined' && window.__onRefreshSuccess) {
+            window.__onRefreshSuccess(token, res.data?.user);
+          }
+          return api.request(config);
+        }
+      } catch (refreshErr) {
+        refreshPromise = null;
+        if (typeof window !== 'undefined' && window.__onRefreshFailure) {
+          window.__onRefreshFailure();
+        }
+        api.defaults.headers.common['Authorization'] = '';
+        const currentPath = getPathFromHash();
+        const isLogin = currentPath === '/login' || currentPath === '/';
+        if (!isLogin) {
+          const enc = encodePath('/login', '');
+          window.location.href = window.location.pathname + window.location.search + (enc ? `#/${enc}` : '#/');
+        }
+        return Promise.reject(refreshErr);
+      }
+    }
+    refreshPromise = null;
+
     if (status === 401) {
-      localStorage.removeItem('xmaint-token');
       delete api.defaults.headers.common['Authorization'];
+      if (typeof window !== 'undefined' && window.__onRefreshFailure) {
+        window.__onRefreshFailure();
+      }
       const currentPath = getPathFromHash();
       const isLogin = currentPath === '/login' || currentPath === '/';
       if (!isLogin) {
@@ -60,7 +104,6 @@ api.interceptors.response.use(
         window.location.href = window.location.pathname + window.location.search + (enc ? `#/${enc}` : '#/');
       }
     } else if (status === 403 && (data?.code === 'LICENSE_EXPIRED' || data?.code === 'LICENSE_NOT_ACTIVE' || data?.code === 'TENANT_INVALID')) {
-      localStorage.removeItem('xmaint-token');
       delete api.defaults.headers.common['Authorization'];
       if (data?.error) sessionStorage.setItem('loginError', data.error);
       const enc = encodePath('/login', '');
@@ -72,9 +115,23 @@ api.interceptors.response.use(
   }
 );
 
+export function setAuthHeader(accessToken) {
+  if (accessToken) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+  } else {
+    delete api.defaults.headers.common['Authorization'];
+  }
+}
+
+export function setRefreshCallbacks(onSuccess, onFailure) {
+  if (typeof window !== 'undefined') {
+    window.__onRefreshSuccess = onSuccess;
+    window.__onRefreshFailure = onFailure;
+  }
+}
+
 /**
  * Retourne un message d'erreur lisible à partir d'une erreur axios (réponses 400/404/500).
- * Gère { error: "..." } et { errors: [{ msg: "..." }] } (express-validator).
  */
 export function getApiErrorMessage(err, fallback = 'Erreur') {
   const data = err?.response?.data;

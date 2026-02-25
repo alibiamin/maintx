@@ -4,7 +4,7 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const getWorkOrderCosts = require('./workOrders').getWorkOrderCosts;
 const notificationService = require('../services/notificationService');
 const dbModule = require('../database/db');
@@ -90,7 +90,7 @@ function getProjectCurrentCost(db, projectId) {
   return Math.round(total * 100) / 100;
 }
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('budgets', 'view'), (req, res) => {
   const db = req.db;
   try {
     const { siteId, year, projectId } = req.query;
@@ -121,7 +121,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.get('/:id', param('id').isInt(), (req, res) => {
+router.get('/:id', requirePermission('budgets', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   try {
     const row = db.prepare(`
@@ -143,7 +143,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
   }
 });
 
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('budgets', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').notEmpty().trim(),
   body('year').isInt({ min: 2000, max: 2100 })
 ], (req, res) => {
@@ -170,7 +170,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), [
+router.put('/:id', requirePermission('budgets', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), [
   body('name').optional().notEmpty().trim()
 ], (req, res) => {
   const db = req.db;
@@ -199,7 +199,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(
   `).get(id));
 });
 
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('budgets', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const r = db.prepare('DELETE FROM maintenance_budgets WHERE id = ?').run(req.params.id);
   if (r.changes === 0) return res.status(404).json({ error: 'Budget non trouvé' });

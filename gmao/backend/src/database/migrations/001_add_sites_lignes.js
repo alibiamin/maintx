@@ -25,31 +25,34 @@ CREATE INDEX IF NOT EXISTS idx_lignes_site ON lignes(site_id);
 
 async function migrate(db) {
   db.exec(schema);
-  // Ajouter colonnes à equipment si elles n'existent pas (SQLite: pas de IF NOT EXISTS pour ALTER)
+  // Ajouter colonnes à equipment / work_orders si les tables existent déjà (créées plus tard en cas de DB vierge)
+  function alterOk(e) {
+    return e.message.includes('duplicate column') || e.message.includes('no such table');
+  }
   try {
     db.exec('ALTER TABLE equipment ADD COLUMN ligne_id INTEGER REFERENCES lignes(id)');
   } catch (e) {
-    if (!e.message.includes('duplicate column')) throw e;
+    if (!alterOk(e)) throw e;
   }
   try {
     db.exec("ALTER TABLE equipment ADD COLUMN criticite TEXT DEFAULT 'B' CHECK(criticite IN ('A','B','C'))");
   } catch (e) {
-    if (!e.message.includes('duplicate column')) throw e;
+    if (!alterOk(e)) throw e;
   }
   try {
     db.exec('ALTER TABLE work_orders ADD COLUMN declared_by INTEGER REFERENCES users(id)');
   } catch (e) {
-    if (!e.message.includes('duplicate column')) throw e;
+    if (!alterOk(e)) throw e;
   }
   try {
     db.exec('ALTER TABLE work_orders ADD COLUMN validated_by INTEGER REFERENCES users(id)');
   } catch (e) {
-    if (!e.message.includes('duplicate column')) throw e;
+    if (!alterOk(e)) throw e;
   }
   try {
     db.exec('ALTER TABLE work_orders ADD COLUMN sla_deadline DATETIME');
   } catch (e) {
-    if (!e.message.includes('duplicate column')) throw e;
+    if (!alterOk(e)) throw e;
   }
 }
 

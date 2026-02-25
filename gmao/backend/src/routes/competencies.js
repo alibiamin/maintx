@@ -3,12 +3,12 @@
  */
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('competencies', 'view'), (req, res) => {
   const db = req.db;
   const rows = db.prepare(`
     SELECT id, code, name, description, created_at
@@ -18,16 +18,14 @@ router.get('/', (req, res) => {
   res.json(rows);
 });
 
-router.get('/:id', param('id').isInt(), (req, res) => {
+router.get('/:id', requirePermission('competencies', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const row = db.prepare('SELECT id, code, name, description, created_at FROM competencies WHERE id = ?').get(parseInt(req.params.id));
   if (!row) return res.status(404).json({ error: 'Compétence introuvable' });
   res.json(row);
 });
 
-router.use(authorize(ROLES.ADMIN, ROLES.RESPONSABLE));
-
-router.post('/', [
+router.post('/', requirePermission('competencies', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('code').notEmpty().trim(),
   body('name').notEmpty().trim(),
   body('description').optional().trim()
@@ -77,7 +75,7 @@ router.put('/:id', [
   }
 });
 
-router.delete('/:id', param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('competencies', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = parseInt(req.params.id);
   db.prepare('DELETE FROM competencies WHERE id = ?').run(id);

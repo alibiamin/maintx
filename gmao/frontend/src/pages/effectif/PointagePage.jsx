@@ -45,7 +45,7 @@ function formatDateTime(iso) {
 function PointagePage() {
   const { t } = useTranslation();
   const snackbar = useSnackbar();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -147,7 +147,7 @@ function PointagePage() {
       .catch((err) => snackbar.showError(err.response?.data?.error || 'Erreur'));
   };
 
-  const canDelete = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canDelete = can('time_entries', 'delete');
 
   return (
     <Box sx={{ p: 2 }}>

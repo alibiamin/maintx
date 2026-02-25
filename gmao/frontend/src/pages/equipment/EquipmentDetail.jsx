@@ -86,9 +86,9 @@ export default function EquipmentDetail() {
   const [costPerHourSubmitting, setCostPerHourSubmitting] = useState(false);
   const [thresholdToDelete, setThresholdToDelete] = useState(null);
   const [bomLineToDelete, setBomLineToDelete] = useState(null); // { sparePartId, partName } | null
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const currency = useCurrency();
-  const canEditEquipment = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEditEquipment = can('equipment', 'update');
 
   const numId = id != null && /^\d+$/.test(String(id)) ? String(id) : null;
 

@@ -31,8 +31,6 @@ import { useCurrency } from '../../context/CurrencyContext';
 
 const APP_BASE = '/app';
 const STATUS_LABELS = { draft: 'Brouillon', active: 'Actif', completed: 'Terminé', cancelled: 'Annulé' };
-const CAN_EDIT_ROLES = ['administrateur', 'responsable_maintenance'];
-
 export default function MaintenanceProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -46,10 +44,10 @@ export default function MaintenanceProjectDetail() {
   const [availablePlans, setAvailablePlans] = useState([]);
   const [linkPlanId, setLinkPlanId] = useState('');
   const [linkPlanSubmitting, setLinkPlanSubmitting] = useState(false);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
   const currency = useCurrency();
-  const canEdit = CAN_EDIT_ROLES.includes(user?.role ?? '');
+  const canEdit = can('maintenance_projects', 'update');
 
   const load = () => {
     if (!id || id === 'new' || id === 'undefined') return;

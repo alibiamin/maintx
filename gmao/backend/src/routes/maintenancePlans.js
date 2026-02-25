@@ -4,12 +4,12 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('maintenance_plans', 'view'), (req, res) => {
   const db = req.db;
   const { equipmentId, isActive } = req.query;
   let sql = `
@@ -37,7 +37,7 @@ router.get('/', (req, res) => {
  * GET /api/maintenance-plans/due
  * Plans dus ou proches (7 jours) + plans conditionnels (compteur >= seuil)
  */
-router.get('/due', (req, res) => {
+router.get('/due', requirePermission('maintenance_plans', 'view'), (req, res) => {
   const db = req.db;
   let rows = [];
   try {
@@ -83,7 +83,7 @@ router.get('/due', (req, res) => {
  * POST /api/maintenance-plans
  * triggerType: 'calendar' | 'counter'. Si counter: counterType + thresholdValue requis, frequencyDays optionnel.
  */
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('maintenance_plans', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('equipmentId').isInt(),
   body('name').notEmpty().trim(),
   body('frequencyDays').optional().isInt({ min: 1 })
@@ -123,7 +123,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 /**
  * PUT /api/maintenance-plans/:id
  */
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.put('/:id', requirePermission('maintenance_plans', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt()
 ], (req, res) => {
   const db = req.db;
@@ -160,7 +160,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
  * POST /api/maintenance-plans/:id/execute
  * Marquer comme exécuté et planifier le prochain (work_order_id optionnel pour traçabilité)
  */
-router.post('/:id/execute', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), (req, res) => {
+router.post('/:id/execute', requirePermission('maintenance_plans', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), (req, res) => {
   const db = req.db;
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) return res.status(400).json({ error: 'ID invalide' });

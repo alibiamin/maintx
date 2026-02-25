@@ -70,8 +70,8 @@ export default function Tools() {
   const [error, setError] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const snackbar = useSnackbar();
-  const { user } = useAuth();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const { can } = useAuth();
+  const canEdit = can('tools', 'update');
 
   useEffect(() => {
     loadTools();

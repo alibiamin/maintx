@@ -21,9 +21,9 @@ export default function EquipmentModelsList() {
   const [form, setForm] = useState({ name: '', description: '', categoryId: '', manufacturer: '', model: '' });
   const [fromModelForm, setFromModelForm] = useState({ code: '', name: '' });
   const [saving, setSaving] = useState(false);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('equipment_models', 'update');
 
   const load = () => {
     setLoading(true);

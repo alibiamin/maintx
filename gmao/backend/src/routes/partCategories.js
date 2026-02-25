@@ -5,13 +5,13 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const codification = require('../services/codification');
 
 const router = express.Router();
 router.use(authenticate);
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('part_categories', 'view'), (req, res) => {
   const db = req.db;
   try {
     const rows = db.prepare('SELECT * FROM part_categories ORDER BY code').all();
@@ -22,7 +22,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.get('/:id', param('id').isInt(), (req, res) => {
+router.get('/:id', requirePermission('part_categories', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   try {
     const row = db.prepare('SELECT * FROM part_categories WHERE id = ?').get(req.params.id);
@@ -34,7 +34,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
   }
 });
 
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('part_categories', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').notEmpty().trim()
 ], (req, res) => {
   const db = req.db;
@@ -54,7 +54,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), [
+router.put('/:id', requirePermission('part_categories', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), [
   body('name').optional().notEmpty().trim()
 ], (req, res) => {
   const db = req.db;
@@ -67,7 +67,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(
   res.json(db.prepare('SELECT * FROM part_categories WHERE id = ?').get(id));
 });
 
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('part_categories', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const r = db.prepare('DELETE FROM part_categories WHERE id = ?').run(req.params.id);
   if (r.changes === 0) return res.status(404).json({ error: 'Catégorie non trouvée' });

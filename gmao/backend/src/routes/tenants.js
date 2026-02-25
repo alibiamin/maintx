@@ -1,50 +1,72 @@
 /**
  * API Tenants (admin MAINTX) — paramétrage des clients
- * Un client = un enregistrement dans gmao.tenants. Sa base .db est créée vierge à sa première connexion.
+ * Un client = un enregistrement dans gmao.tenants. La base .db est créée à la création du tenant (migrations appliquées, pas à la 1re connexion).
  */
 
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, requireMaintxAdmin } = require('../middleware/auth');
 const dbModule = require('../database/db');
+const auditLog = require('../services/auditLog');
 const path = require('path');
 const fs = require('fs');
 
 const router = express.Router();
 router.use(authenticate);
-router.use(authorize(ROLES.ADMIN));
+// Réservé aux admins MAINTX (plateforme) : tenant_id null. Les admins clients n'ont pas accès.
+router.use(requireMaintxAdmin);
+
+const ALLOWED_STATUSES = ['trial', 'active', 'suspended', 'expired', 'deleted'];
 
 function mapTenantRow(r) {
   const today = new Date().toISOString().slice(0, 10);
   const start = r.license_start && String(r.license_start).trim();
   const end = r.license_end && String(r.license_end).trim();
-  let isActive = true;
-  if (end && today > end) isActive = false;
-  else if (start && today < start) isActive = false;
+  const status = (r.status && String(r.status).trim()) || 'active';
+  let isActive = status === 'active' || status === 'trial';
+  if (isActive && end && today > end) isActive = false;
+  else if (isActive && start && today < start) isActive = false;
   return {
     id: r.id,
     name: r.name,
     dbFilename: r.db_filename,
     emailDomain: r.email_domain,
+    status,
     licenseStart: r.license_start || null,
     licenseEnd: r.license_end || null,
     isActive,
+    deletedAt: r.deleted_at || null,
     createdAt: r.created_at
   };
 }
 
 /**
  * GET /api/tenants
- * Liste des tenants (base admin uniquement)
+ * Liste des tenants (base admin uniquement). Par défaut exclut les tenants supprimés (soft delete).
+ * ?includeDeleted=1 pour inclure les tenants avec status=deleted.
  */
 router.get('/', (req, res) => {
   try {
     const adminDb = dbModule.getAdminDb();
-    const rows = adminDb.prepare(`
-      SELECT id, name, db_filename, email_domain, license_start, license_end, created_at
-      FROM tenants ORDER BY name
-    `).all();
+    const includeDeleted = req.query.includeDeleted === '1' || req.query.includeDeleted === 'true';
+    let rows;
+    try {
+      rows = adminDb.prepare(`
+        SELECT id, name, db_filename, email_domain, status, deleted_at, license_start, license_end, created_at
+        FROM tenants
+        WHERE (? = 1 OR (COALESCE(status, 'active') != 'deleted' AND deleted_at IS NULL))
+        ORDER BY name
+      `).all(includeDeleted ? 1 : 0);
+    } catch (e) {
+      if (e.message && e.message.includes('no such column')) {
+        rows = adminDb.prepare(`
+          SELECT id, name, db_filename, email_domain, license_start, license_end, created_at
+          FROM tenants ORDER BY name
+        `).all();
+        rows.forEach(r => { r.status = 'active'; r.deleted_at = null; });
+      } else throw e;
+    }
     res.json(rows.map(mapTenantRow));
   } catch (e) {
     if (e.message && (e.message.includes('no such table') || e.message.includes('tenants'))) {
@@ -57,6 +79,70 @@ router.get('/', (req, res) => {
 });
 
 /**
+ * GET /api/tenants/:id/export
+ * Export des données du tenant (RGPD / portabilité). Réservé MAINTX.
+ * Retourne : infos tenant, utilisateurs (sans mot de passe), données métier principales (sites, équipements, OT…).
+ */
+router.get('/:id/export', [param('id').isInt({ min: 1 })], (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const id = parseInt(req.params.id, 10);
+  const adminDb = dbModule.getAdminDb();
+  let row = adminDb.prepare('SELECT id, name, db_filename, email_domain, license_start, license_end, created_at FROM tenants WHERE id = ?').get(id);
+  try {
+    row = adminDb.prepare('SELECT id, name, db_filename, email_domain, status, license_start, license_end, created_at, deleted_at FROM tenants WHERE id = ?').get(id) || row;
+  } catch (_) {}
+  if (!row) return res.status(404).json({ error: 'Tenant non trouvé' });
+  const exportData = {
+    exportedAt: new Date().toISOString(),
+    tenant: {
+      id: row.id,
+      name: row.name,
+      emailDomain: row.email_domain,
+      status: row.status || 'active',
+      licenseStart: row.license_start,
+      licenseEnd: row.license_end,
+      createdAt: row.created_at
+    },
+    users: [],
+    sites: [],
+    equipment: [],
+    workOrders: []
+  };
+  try {
+    const users = adminDb.prepare(`
+      SELECT u.id, u.email, u.first_name, u.last_name, u.is_active, u.created_at, r.name as role_name
+      FROM users u JOIN roles r ON u.role_id = r.id WHERE u.tenant_id = ?
+    `).all(id);
+    exportData.users = users;
+  } catch (_) {}
+  try {
+    const clientDb = dbModule.getClientDb(id);
+    try {
+      exportData.sites = clientDb.prepare('SELECT id, name, code, address FROM sites').all();
+    } catch (_) {}
+    try {
+      exportData.equipment = clientDb.prepare('SELECT id, code, name, site_id FROM equipment LIMIT 10000').all();
+    } catch (_) {}
+    try {
+      exportData.workOrders = clientDb.prepare('SELECT id, number, title, status, priority, created_at FROM work_orders ORDER BY id DESC LIMIT 5000').all();
+    } catch (_) {}
+  } catch (_) {}
+  try {
+    auditLog.log({
+      userId: req.user.id,
+      tenantId: null,
+      action: 'tenant_export',
+      resource: 'tenants',
+      details: { tenantId: id, name: row.name },
+      ip: auditLog.getClientIp(req)
+    });
+  } catch (_) {}
+  res.setHeader('Content-Disposition', `attachment; filename="tenant-${id}-export-${new Date().toISOString().slice(0, 10)}.json"`);
+  res.json(exportData);
+});
+
+/**
  * POST /api/tenants
  * Créer un tenant et l'utilisateur admin de ce client.
  * Body: { name, emailDomain, dbFilename?, initSchema?, licenseStart?, licenseEnd?, adminEmail, adminPassword, adminFirstName, adminLastName }
@@ -65,7 +151,6 @@ router.post('/', [
   body('name').notEmpty().trim(),
   body('emailDomain').notEmpty().trim(),
   body('dbFilename').optional().trim(),
-  body('initSchema').optional().isBoolean(),
   body('licenseStart').optional().trim(),
   body('licenseEnd').optional().trim(),
   body('adminEmail').isEmail().normalizeEmail(),
@@ -75,7 +160,7 @@ router.post('/', [
 ], (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-  const { name, emailDomain, initSchema, licenseStart, licenseEnd, adminEmail, adminPassword, adminFirstName, adminLastName } = req.body;
+  const { name, emailDomain, licenseStart, licenseEnd, adminEmail, adminPassword, adminFirstName, adminLastName } = req.body;
   const domain = String(emailDomain).trim().toLowerCase().replace(/^@/, '');
   const emailDomainFromAdmin = adminEmail.split('@')[1]?.toLowerCase();
   if (emailDomainFromAdmin !== domain) {
@@ -96,14 +181,29 @@ router.post('/', [
 
   const ls = normalizeDate(licenseStart);
   const le = normalizeDate(licenseEnd);
-  const insertResult = adminDb.prepare(
-    'INSERT INTO tenants (name, db_filename, email_domain, license_start, license_end) VALUES (?, ?, ?, ?, ?)'
-  ).run(name, dbFilename, domain, ls || null, le || null);
+  let insertResult;
+  try {
+    insertResult = adminDb.prepare(
+      'INSERT INTO tenants (name, db_filename, email_domain, license_start, license_end, status) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(name, dbFilename, domain, ls || null, le || null, 'trial');
+  } catch (e) {
+    if (e.message && e.message.includes('no such column')) {
+      insertResult = adminDb.prepare(
+        'INSERT INTO tenants (name, db_filename, email_domain, license_start, license_end) VALUES (?, ?, ?, ?, ?)'
+      ).run(name, dbFilename, domain, ls || null, le || null);
+    } else throw e;
+  }
   adminDb._save();
   const tenantId = insertResult.lastInsertRowid;
-  const row = adminDb.prepare(`
+  let row = adminDb.prepare(`
     SELECT id, name, db_filename, email_domain, license_start, license_end, created_at FROM tenants WHERE id = ?
   `).get(tenantId);
+  try {
+    row = adminDb.prepare(`
+      SELECT id, name, db_filename, email_domain, status, deleted_at, license_start, license_end, created_at FROM tenants WHERE id = ?
+    `).get(tenantId);
+  } catch (_) {}
+  if (!row.status) row.status = 'trial'; if (row.deleted_at === undefined) row.deleted_at = null;
 
   const adminRole = adminDb.prepare("SELECT id FROM roles WHERE name = 'administrateur'").get();
   if (!adminRole) {
@@ -125,13 +225,28 @@ router.post('/', [
     throw e;
   }
 
-  if (initSchema) {
-    try {
-      dbModule.getClientDb(row.id);
-    } catch (e) {
-      console.warn('[tenants] Création base client:', e.message);
-    }
+  // Création immédiate de la base client (migrations appliquées) — évite crash à la 1re connexion
+  const createResult = dbModule.createTenantDatabase && dbModule.createTenantDatabase(row.id);
+  if (createResult && !createResult.ok) {
+    adminDb.prepare('DELETE FROM tenants WHERE id = ?').run(tenantId);
+    adminDb.prepare('DELETE FROM users WHERE tenant_id = ?').run(tenantId);
+    adminDb._save();
+    return res.status(500).json({
+      error: 'Impossible de créer la base client. Vérifiez les permissions disque.',
+      details: process.env.NODE_ENV === 'development' ? createResult.error : undefined
+    });
   }
+
+  try {
+    auditLog.log({
+      userId: req.user.id,
+      tenantId: null,
+      action: 'tenant_created',
+      resource: 'tenants',
+      details: { tenantId, name: row.name, dbFilename: row.db_filename },
+      ip: auditLog.getClientIp(req)
+    });
+  } catch (_) {}
 
   res.status(201).json(mapTenantRow(row));
 });
@@ -145,40 +260,74 @@ function normalizeDate(v) {
 
 /**
  * PUT /api/tenants/:id
- * Mettre à jour un tenant (nom, période de licence). email_domain et db_filename non modifiables.
- * Body: { name?, licenseStart?, licenseEnd? }
+ * Mettre à jour un tenant (nom, période de licence, status). email_domain et db_filename non modifiables.
+ * Body: { name?, licenseStart?, licenseEnd?, status? } — status: trial | active | suspended | expired (pas 'deleted', utiliser DELETE pour soft delete).
  */
 router.put('/:id', [
   param('id').isInt({ min: 1 }),
   body('name').optional().trim(),
   body('licenseStart').optional().trim(),
-  body('licenseEnd').optional().trim()
+  body('licenseEnd').optional().trim(),
+  body('status').optional({ values: 'falsy' }).trim().isIn(ALLOWED_STATUSES.filter(s => s !== 'deleted'))
 ], (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) return res.status(400).json({ error: 'Identifiant client invalide' });
-  const { name, licenseStart, licenseEnd } = req.body;
+  const { name, licenseStart, licenseEnd, status } = req.body;
   const adminDb = dbModule.getAdminDb();
-  const row = adminDb.prepare(`
+  let row = adminDb.prepare(`
     SELECT id, name, db_filename, email_domain, license_start, license_end, created_at FROM tenants WHERE id = ?
   `).get(id);
+  try {
+    row = adminDb.prepare(`
+      SELECT id, name, db_filename, email_domain, status, deleted_at, license_start, license_end, created_at FROM tenants WHERE id = ?
+    `).get(id);
+  } catch (_) {}
   if (!row) return res.status(404).json({ error: 'Tenant non trouvé' });
+  if (row.status === 'deleted' || row.deleted_at) {
+    return res.status(410).json({ error: 'Impossible de modifier un client supprimé.', code: 'TENANT_DELETED' });
+  }
   const newName = name !== undefined && String(name).trim() ? String(name).trim() : row.name;
   const newStart = normalizeDate(licenseStart);
   const newEnd = normalizeDate(licenseEnd);
-  adminDb.prepare('UPDATE tenants SET name = ?, license_start = ?, license_end = ? WHERE id = ?')
-    .run(newName, newStart || null, newEnd || null, id);
+  const newStatus = (status && ALLOWED_STATUSES.includes(status) && status !== 'deleted') ? status : (row.status || 'active');
+  try {
+    adminDb.prepare('UPDATE tenants SET name = ?, license_start = ?, license_end = ?, status = ? WHERE id = ?')
+      .run(newName, newStart || null, newEnd || null, newStatus, id);
+  } catch (e) {
+    if (e.message && e.message.includes('no such column')) {
+      adminDb.prepare('UPDATE tenants SET name = ?, license_start = ?, license_end = ? WHERE id = ?')
+        .run(newName, newStart || null, newEnd || null, id);
+    } else throw e;
+  }
   adminDb._save();
-  const updated = adminDb.prepare(`
+  try {
+    auditLog.log({
+      userId: req.user.id,
+      tenantId: null,
+      action: 'tenant_updated',
+      resource: 'tenants',
+      details: { tenantId: id, name: newName, licenseStart: newStart, licenseEnd: newEnd, status: newStatus },
+      ip: auditLog.getClientIp(req)
+    });
+  } catch (_) {}
+  let updated = adminDb.prepare(`
     SELECT id, name, db_filename, email_domain, license_start, license_end, created_at FROM tenants WHERE id = ?
   `).get(id);
+  try {
+    updated = adminDb.prepare(`
+      SELECT id, name, db_filename, email_domain, status, deleted_at, license_start, license_end, created_at FROM tenants WHERE id = ?
+    `).get(id);
+  } catch (_) {}
+  if (!updated.status) updated.status = newStatus; if (updated.deleted_at === undefined) updated.deleted_at = null;
   res.json(mapTenantRow(updated));
 });
 
 /**
  * DELETE /api/tenants/:id
- * Supprimer un tenant (enregistrement uniquement ; le fichier .db n'est pas supprimé).
+ * Soft delete : marque le tenant comme supprimé (status=deleted, deleted_at), désactive la licence, révoque les sessions.
+ * La base .db n'est pas supprimée immédiatement (récupération possible). Suppression physique à faire par un job après délai (ex. 30 j).
  * Refusé s'il reste des utilisateurs associés à ce client.
  */
 router.delete('/:id', [
@@ -189,21 +338,68 @@ router.delete('/:id', [
   const adminDb = dbModule.getAdminDb();
   const id = parseInt(req.params.id, 10);
   if (Number.isNaN(id)) return res.status(400).json({ error: 'Identifiant client invalide' });
-  const row = adminDb.prepare('SELECT id, db_filename FROM tenants WHERE id = ?').get(id);
+  const row = adminDb.prepare('SELECT id, name, db_filename FROM tenants WHERE id = ?').get(id);
   if (!row) return res.status(404).json({ error: 'Tenant non trouvé' });
-  let userCount;
+  try {
+    const t = adminDb.prepare('SELECT status, deleted_at FROM tenants WHERE id = ?').get(id);
+    if (t && (t.status === 'deleted' || t.deleted_at)) {
+      return res.status(410).json({ error: 'Ce client est déjà supprimé (soft delete).', code: 'TENANT_ALREADY_DELETED' });
+    }
+  } catch (_) {}
+  let userCount = 0;
   try {
     userCount = adminDb.prepare('SELECT COUNT(*) as c FROM users WHERE tenant_id = ?').get(id).c;
   } catch (e) {
-    if (e.message && e.message.includes('no such column')) userCount = 0;
-    else throw e;
+    if (!e.message || !e.message.includes('no such column')) throw e;
   }
   if (userCount > 0) {
     return res.status(409).json({
       error: `Impossible de supprimer ce client : ${userCount} utilisateur(s) encore associé(s). Désactivez-les ou réaffectez-les depuis la gestion des utilisateurs, puis réessayez.`
     });
   }
-  adminDb.prepare('DELETE FROM tenants WHERE id = ?').run(id);
+
+  // 1) Invalider tous les refresh tokens des utilisateurs de ce tenant
+  try {
+    const userIds = adminDb.prepare('SELECT id FROM users WHERE tenant_id = ?').all(id).map(u => u.id);
+    if (userIds.length > 0) {
+      const placeholders = userIds.map(() => '?').join(',');
+      adminDb.prepare(`UPDATE refresh_tokens SET revoked_at = datetime('now') WHERE user_id IN (${placeholders})`).run(...userIds);
+    }
+  } catch (e) {
+    if (!e.message || !e.message.includes('no such table')) {
+      return res.status(500).json({ error: 'Erreur lors de la révocation des sessions.' });
+    }
+  }
+
+  // 2) Audit log
+  try {
+    auditLog.log({
+      userId: req.user.id,
+      tenantId: id,
+      action: 'tenant_deleted',
+      resource: 'tenants',
+      details: { tenantId: id, name: row.name, dbFilename: row.db_filename, softDelete: true },
+      ip: auditLog.getClientIp(req)
+    });
+  } catch (_) {}
+
+  // 3) Fermer la base client en cache (plus d'accès). Ne pas supprimer le fichier .db tout de suite.
+  if (row.db_filename && row.db_filename !== 'default.db' && dbModule.removeClientDbFromCache) {
+    dbModule.removeClientDbFromCache(row.db_filename);
+  }
+
+  // 4) Soft delete : status=deleted, deleted_at=now, licence désactivée (license_end=aujourd'hui)
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    adminDb.prepare(`
+      UPDATE tenants SET status = 'deleted', deleted_at = datetime('now'), license_end = ?
+      WHERE id = ?
+    `).run(today, id);
+  } catch (e) {
+    if (e.message && e.message.includes('no such column')) {
+      adminDb.prepare('UPDATE tenants SET license_end = ? WHERE id = ?').run(today, id);
+    } else throw e;
+  }
   adminDb._save();
   res.status(204).send();
 });

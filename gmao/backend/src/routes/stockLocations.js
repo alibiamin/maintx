@@ -5,12 +5,12 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('stock_locations', 'view'), (req, res) => {
   const db = req.db;
   try {
     const { siteId } = req.query;
@@ -31,7 +31,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.get('/:id', param('id').isInt(), (req, res) => {
+router.get('/:id', requirePermission('stock_locations', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   try {
     const row = db.prepare(`
@@ -54,7 +54,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
   }
 });
 
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('stock_locations', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').notEmpty().trim(),
   body('code').optional().trim()
 ], (req, res) => {
@@ -78,7 +78,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.put('/:id', requirePermission('stock_locations', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = req.params.id;
   const existing = db.prepare('SELECT * FROM stock_locations WHERE id = ?').get(id);
@@ -93,7 +93,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(
   `).get(id));
 });
 
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('stock_locations', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const r = db.prepare('DELETE FROM stock_locations WHERE id = ?').run(req.params.id);
   if (r.changes === 0) return res.status(404).json({ error: 'Emplacement non trouvé' });

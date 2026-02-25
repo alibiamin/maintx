@@ -17,9 +17,9 @@ export default function SettingsEmailTemplates() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ code: '', name: '', subjectTemplate: '', bodyTemplate: '', description: '' });
   const [saving, setSaving] = useState(false);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('settings', 'update');
 
   const load = () => {
     setLoading(true);

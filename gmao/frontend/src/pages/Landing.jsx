@@ -1,733 +1,467 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Box, Typography, Button, Stack, Grid, Card, CardContent } from '@mui/material';
+import { useTheme, alpha, keyframes } from '@mui/material/styles';
+import { Login, ArrowForward, ArrowBack, Build, Assignment, Inventory, Schedule, List, Email, ContactMail } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import {
-  Box,
-  Container,
-  Typography,
-  Button,
-  Grid,
-  Card,
-  CardContent,
-  alpha,
-  useTheme,
-  Paper,
-  Avatar,
-  Chip,
-  Stack,
-  Divider,
-  IconButton,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails
-} from '@mui/material';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import {
-  Build,
-  Assignment,
-  Inventory,
-  Assessment,
-  Schedule,
-  Security,
-  Login,
-  ArrowForward,
-  KeyboardDoubleArrowDown,
-  CheckCircle,
-  Support,
-  Biotech,
-  EmojiEvents,
-  Timeline,
-  PrecisionManufacturing
-} from '@mui/icons-material';
-import { THEME_COLORS } from '../theme';
+import { useTranslation } from 'react-i18next';
 
-// Images optimisées avec attributs de performance
-const HERO_IMAGE = 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1200&q=80&auto=format&fit=crop';
-const ABOUT_IMAGE = 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80&auto=format&fit=crop';
+const HERO_IMAGE = 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1920&q=85&auto=format&fit=crop';
+const CONTACT_EMAIL = 'contact@maintx.org';
 
-// Données enrichies
-const features = [
-  {
-    icon: PrecisionManufacturing,
-    title: 'Gestion des équipements',
-    description: 'Parc machine, hiérarchie sites / lignes, fiches techniques, historique et documents.',
-    longDescription: 'Centralisez l\'ensemble de votre parc avec une arborescence intuitive. Suivez le cycle de vie complet de vos équipements avec fiches techniques, historique des interventions et documents associés.',
-    image: 'https://images.unsplash.com/photo-1565793298595-6a879b1d9492?w=600&q=80&auto=format&fit=crop',
-    benefits: ['Arborescence flexible', 'Historique complet', 'Documents centralisés']
-  },
-  {
-    icon: Assignment,
-    title: 'Ordres de travail',
-    description: 'Déclaration, planification, affectation et suivi des interventions.',
-    longDescription: 'Créez et suivez vos OT de la déclaration à la clôture avec un workflow optimisé. Planification intelligente, affectation aux techniciens et suivi en temps réel.',
-    image: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=600&q=80&auto=format&fit=crop',
-    benefits: ['Workflow personnalisable', 'Affectation automatique', 'Notifications temps réel']
-  },
-  {
-    icon: Inventory,
-    title: 'Stock & pièces',
-    description: 'Nomenclatures, mouvements, alertes de seuil et réapprovisionnements.',
-    longDescription: 'Pilotez vos pièces détachées avec précision : nomenclatures techniques, gestion des mouvements, alertes automatiques de seuil et génération de bons de réapprovisionnement.',
-    image: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=600&q=80&auto=format&fit=crop',
-    benefits: ['Alertes seuils', 'Nomenclatures techniques', 'Réappro automatique']
-  },
-  {
-    icon: Schedule,
-    title: 'Maintenance préventive',
-    description: 'Plans de maintenance, échéances, checklists et procédures.',
-    longDescription: 'Automatisez votre maintenance préventive avec des plans personnalisés, des échéances automatiques et des checklists d\'intervention standardisées.',
-    image: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=600&q=80&auto=format&fit=crop',
-    benefits: ['Plans automatisés', 'Checklists standard', 'Rappels intelligents']
-  },
-  {
-    icon: Timeline,
-    title: 'Rapports & indicateurs',
-    description: 'KPIs, coûts, MTTR, disponibilité et exports Excel / PDF.',
-    longDescription: 'Pilotez la performance avec des tableaux de bord interactifs et des rapports personnalisables. Analysez les coûts, suivez le MTTR/MTBF et exportez vos données.',
-    image: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&q=80&auto=format&fit=crop',
-    benefits: ['Tableaux de bord', 'Exports multi-formats', 'Analyses prédictives']
-  },
-  {
-    icon: Security,
-    title: 'Sécurité & traçabilité',
-    description: 'Rôles, droits d\'accès, audit et alertes configurables.',
-    longDescription: 'Sécurisez vos données avec une gestion fine des droits d\'accès, un journal d\'audit complet et des alertes configurables pour une conformité totale.',
-    image: 'https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=600&q=80&auto=format&fit=crop',
-    benefits: ['Rôles personnalisés', 'Traçabilité totale', 'Alertes configurables']
-  }
-];
+/* Animations type Figma : entrées progressives, easing fluide */
+const fadeUp = keyframes`
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
 
-const faqItems = [
-  {
-    question: 'Qu\'est-ce que MaintX GMAO ?',
-    answer: 'MaintX GMAO est une solution de Gestion de Maintenance Assistée par Ordinateur qui centralise équipements, ordres de travail, stock, maintenance préventive et rapports dans une seule plateforme moderne.'
-  },
-  {
-    question: 'Comment accéder à l\'application ?',
-    answer: 'Cliquez sur « Accéder à l\'application » ou « Se connecter » puis saisissez vos identifiants. Si vous n\'avez pas encore de compte, contactez votre administrateur.'
-  },
-  {
-    question: 'Quels secteurs peuvent utiliser MaintX ?',
-    answer: 'Industrie manufacturière, agroalimentaire, énergie, BTP, transport, santé… Tout secteur ayant un parc d\'équipements à maintenir et à suivre.'
-  },
-  {
-    question: 'Les données sont-elles sécurisées ?',
-    answer: 'Oui. MaintX propose des rôles et droits d\'accès configurables, un journal d\'audit et des alertes. Vos données sont protégées et traçables.'
-  }
-];
+const scaleIn = keyframes`
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+`;
 
-const keyframes = {
-  '@keyframes slideUp': {
-    '0%': { opacity: 0, transform: 'translateY(30px)' },
-    '100%': { opacity: 1, transform: 'translateY(0)' }
-  },
-  '@keyframes fadeScale': {
-    '0%': { opacity: 0, transform: 'scale(0.95)' },
-    '100%': { opacity: 1, transform: 'scale(1)' }
-  },
-  '@keyframes float': {
-    '0%, 100%': { transform: 'translateY(0)' },
-    '50%': { transform: 'translateY(-10px)' }
-  },
-  '@keyframes pulse': {
-    '0%, 100%': { opacity: 1 },
-    '50%': { opacity: 0.7 }
-  }
-};
+const softGlow = keyframes`
+  0%, 100% { filter: drop-shadow(0 0 24px rgba(46, 178, 62, 0.35)); }
+  50%      { filter: drop-shadow(0 0 48px rgba(46, 178, 62, 0.55)); }
+`;
+
+const blendShimmer = keyframes`
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+`;
+
+/* Animations arrière-plan uniquement */
+const gridMove = keyframes`
+  0%   { transform: translate(0, 0); }
+  100% { transform: translate(50px, 50px); }
+`;
+
+const orbFloat1 = keyframes`
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.4; }
+  33%      { transform: translate(30px, -20px) scale(1.05); opacity: 0.5; }
+  66%      { transform: translate(-20px, 15px) scale(0.95); opacity: 0.35; }
+`;
+
+const orbFloat2 = keyframes`
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.3; }
+  50%      { transform: translate(-40px, -30px) scale(1.1); opacity: 0.45; }
+`;
+
+const orbFloat3 = keyframes`
+  0%, 100% { transform: translate(0, 0); opacity: 0.25; }
+  50%      { transform: translate(25px, 25px); opacity: 0.4; }
+`;
+
+const lightSweep = keyframes`
+  0%   { opacity: 0; transform: translateX(-100%) skewX(-12deg); }
+  50%  { opacity: 0.15; }
+  100% { opacity: 0; transform: translateX(100%) skewX(-12deg); }
+`;
 
 export default function Landing() {
-  const navigate = useNavigate();
+  const { t } = useTranslation();
   const theme = useTheme();
-  const primary = theme.palette.primary.main;
+  const navigate = useNavigate();
+  const green = theme.palette.primary.main;
+  const [mounted, setMounted] = useState(false);
+  const [flipped, setFlipped] = useState(false);
 
-  const handleScroll = useCallback((id) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
   }, []);
 
-  const heroStyles = useMemo(() => ({
-    ...keyframes,
-    '& .hero-title': { animation: 'slideUp 0.8s ease-out forwards' },
-    '& .hero-subtitle': { animation: 'slideUp 0.8s ease-out 0.2s forwards', opacity: 0 },
-    '& .hero-description': { animation: 'slideUp 0.8s ease-out 0.4s forwards', opacity: 0 },
-    '& .hero-cta': { animation: 'fadeScale 0.6s ease-out 0.6s forwards', opacity: 0 }
-  }), []);
-
   return (
-    <Box component="main" sx={{ minHeight: '100vh', overflowX: 'hidden' }}>
-      {/* Lien d'évitement pour l'accessibilité */}
+    <Box
+      sx={{
+        minHeight: '100vh',
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        /* Image de fond */
+        backgroundImage: `url(${HERO_IMAGE})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+        /* Overlay blend : assombrit + teinte verte thème */
+        '&::before': {
+          content: '""',
+          position: 'absolute',
+          inset: 0,
+          background: `
+            linear-gradient(180deg, ${alpha('#0a0e12', 0.75)} 0%, ${alpha('#0a0e12', 0.5)} 40%, ${alpha('#0a0e12', 0.82)} 100%),
+            linear-gradient(135deg, ${alpha(green, 0.12)} 0%, transparent 50%)
+          `,
+          backgroundSize: '200% 200%',
+          animation: `${blendShimmer} 12s ease-in-out infinite`,
+          pointerEvents: 'none'
+        },
+        '&::after': {
+          content: '""',
+          position: 'absolute',
+          inset: 0,
+          background: `radial-gradient(ellipse 70% 50% at 50% 50%, ${alpha(green, 0.08)} 0%, transparent 60%)`,
+          pointerEvents: 'none'
+        }
+      }}
+    >
+      {/* ——— Animations arrière-plan (z-index 0) ——— */}
+      {/* Grille en mouvement */}
       <Box
-        component="a"
-        href="#contenu-principal"
         sx={{
           position: 'absolute',
-          left: -9999,
-          zIndex: 9999,
-          p: 2,
-          bgcolor: 'primary.main',
-          color: 'white',
-          fontWeight: 700,
-          '&:focus': { left: 16, top: 16 }
+          inset: 0,
+          zIndex: 0,
+          backgroundImage: `
+            linear-gradient(${alpha(green, 0.06)} 1px, transparent 1px),
+            linear-gradient(90deg, ${alpha(green, 0.06)} 1px, transparent 1px)
+          `,
+          backgroundSize: '50px 50px',
+          animation: `${gridMove} 25s linear infinite`,
+          pointerEvents: 'none'
         }}
-      >
-        Aller au contenu principal
-      </Box>
-
-      {/* Hero Section — image en fond de page */}
+      />
+      {/* Orbes flottantes */}
       <Box
-        component="header"
-        id="contenu-principal"
-        aria-label="En-tête"
+        sx={{
+          position: 'absolute',
+          top: '20%',
+          left: '15%',
+          width: 'min(40vw, 320px)',
+          height: 'min(40vw, 320px)',
+          borderRadius: '50%',
+          background: `radial-gradient(circle, ${alpha(green, 0.2)} 0%, transparent 70%)`,
+          filter: 'blur(40px)',
+          animation: `${orbFloat1} 18s ease-in-out infinite`,
+          pointerEvents: 'none',
+          zIndex: 0
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          bottom: '25%',
+          right: '10%',
+          width: 'min(35vw, 280px)',
+          height: 'min(35vw, 280px)',
+          borderRadius: '50%',
+          background: `radial-gradient(circle, ${alpha(green, 0.15)} 0%, transparent 70%)`,
+          filter: 'blur(50px)',
+          animation: `${orbFloat2} 22s ease-in-out infinite 2s`,
+          pointerEvents: 'none',
+          zIndex: 0
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          top: '55%',
+          left: '50%',
+          width: 'min(25vw, 200px)',
+          height: 'min(25vw, 200px)',
+          borderRadius: '50%',
+          background: `radial-gradient(circle, ${alpha(green, 0.12)} 0%, transparent 70%)`,
+          filter: 'blur(35px)',
+          animation: `${orbFloat3} 15s ease-in-out infinite 1s`,
+          pointerEvents: 'none',
+          zIndex: 0
+        }}
+      />
+      {/* Balayage lumineux passant */}
+      <Box
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 0,
+          background: `linear-gradient(90deg, transparent 0%, ${alpha(green, 0.08)} 50%, transparent 100%)`,
+          animation: `${lightSweep} 8s ease-in-out infinite 3s`,
+          pointerEvents: 'none'
+        }}
+      />
+
+      {/* Conteneur flip 3D */}
+      <Box
         sx={{
           position: 'relative',
+          zIndex: 1,
+          width: '100%',
           minHeight: '100vh',
-          pt: { xs: 8, md: 12 },
-          pb: { xs: 8, md: 10 },
-          backgroundImage: `url(${HERO_IMAGE})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundAttachment: 'fixed',
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            inset: 0,
-            background: `linear-gradient(105deg, ${alpha('#fff', 0.94)} 0%, ${alpha('#fff', 0.82)} 45%, ${alpha('#fff', 0.5)} 100%)`,
-            pointerEvents: 'none'
-          }
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          perspective: '1200px',
+          px: 2
         }}
       >
-        <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1, ...heroStyles }}>
-          <Grid container alignItems="center" spacing={6}>
-            <Grid item xs={12} md={8}>
-              <Box>
-                <Chip
-                  label="GMAO nouvelle génération"
-                  sx={{
-                    mb: 3,
-                    bgcolor: alpha(primary, 0.1),
-                    color: primary,
-                    fontWeight: 600,
-                    animation: 'fadeScale 0.5s ease-out forwards'
-                  }}
-                />
-                
-                <Typography
-                  variant="h1"
-                  className="hero-title"
-                  sx={{
-                    fontSize: { xs: '4rem', sm: '5rem', md: '6rem' },
-                    fontWeight: 800,
-                    lineHeight: 1.1,
-                    letterSpacing: '-0.03em',
-                    mb: 2
-                  }}
-                >
-                  MAINT
-                  <Box component="span" sx={{ color: primary }}>X</Box>
-                  <Typography
-                    component="span"
-                    variant="h2"
-                    sx={{
-                      display: 'block',
-                      fontSize: { xs: '2.75rem', sm: '3.5rem', md: '4.25rem' },
-                      fontWeight: 700,
-                      color: primary,
-                      mt: 1
-                    }}
-                  >
-                    GMAO
-                  </Typography>
-                </Typography>
-
-                <Typography
-                  variant="h5"
-                  className="hero-subtitle"
-                  sx={{ color: 'text.secondary', fontWeight: 500, mb: 2 }}
-                >
-                  La solution complète pour votre maintenance industrielle
-                </Typography>
-
-                <Typography
-                  variant="body1"
-                  className="hero-description"
-                  sx={{ color: 'text.secondary', mb: 4, maxWidth: 500, fontSize: '1.1rem' }}
-                >
-                  Centralisez, automatisez et optimisez votre maintenance avec une plateforme moderne et intuitive. 
-                  Réduisez les pannes, maîtrisez vos coûts et augmentez la disponibilité de vos équipements.
-                </Typography>
-
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={2}
-                  className="hero-cta"
-                  sx={{ mb: 4 }}
-                >
-                  <Button
-                    variant="contained"
-                    size="large"
-                    startIcon={<Login />}
-                    onClick={() => navigate('/login')}
-                    sx={{
-                      px: 4,
-                      py: 1.8,
-                      borderRadius: 2,
-                      fontSize: '1.1rem',
-                      fontWeight: 700,
-                      textTransform: 'none',
-                      background: `linear-gradient(135deg, ${primary} 0%, ${theme.palette.primary.dark} 100%)`,
-                      boxShadow: `0 10px 30px ${alpha(primary, 0.4)}`,
-                      transition: 'all 0.3s ease',
-                      '&:hover': {
-                        transform: 'translateY(-2px)',
-                        boxShadow: `0 15px 35px ${alpha(primary, 0.5)}`
-                      }
-                    }}
-                  >
-                    Accéder à l'application
-                  </Button>
-                  
-                  <Button
-                    variant="outlined"
-                    size="large"
-                    endIcon={<ArrowForward />}
-                    onClick={() => handleScroll('features')}
-                    sx={{
-                      px: 4,
-                      py: 1.8,
-                      borderRadius: 2,
-                      fontSize: '1.1rem',
-                      fontWeight: 600,
-                      textTransform: 'none',
-                      borderColor: alpha(primary, 0.3),
-                      borderWidth: 2,
-                      color: primary,
-                      '&:hover': {
-                        borderColor: primary,
-                        borderWidth: 2,
-                        bgcolor: alpha(primary, 0.05)
-                      }
-                    }}
-                  >
-                    Découvrir les fonctionnalités
-                  </Button>
-                </Stack>
-              </Box>
-            </Grid>
-          </Grid>
-
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}>
-            <IconButton
-              onClick={() => handleScroll('about')}
-              aria-label="Voir la section À propos"
-              sx={{
-                animation: 'pulse 2s ease-in-out infinite',
-                color: primary,
-                bgcolor: alpha(primary, 0.1),
-                '&:hover': { bgcolor: alpha(primary, 0.2) }
-              }}
-            >
-              <KeyboardDoubleArrowDown sx={{ fontSize: 32 }} />
-            </IconButton>
-          </Box>
-        </Container>
-      </Box>
-
-      {/* About Section — image en fond */}
-      <Box
-        component="section"
-        id="about"
-        aria-labelledby="about-title"
-        sx={{
-          position: 'relative',
-          py: { xs: 10, md: 14 },
-          backgroundImage: `url(${ABOUT_IMAGE})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundAttachment: 'fixed',
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            inset: 0,
-            background: `linear-gradient(90deg, ${alpha('#fff', 0.92)} 0%, ${alpha('#fff', 0.78)} 100%)`,
-            pointerEvents: 'none'
-          }
-        }}
-      >
-        <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
-          <Grid container alignItems="center" spacing={6}>
-            <Grid item xs={12} md={8}>
-              <Chip
-                icon={<Biotech />}
-                label="Innovation & Performance"
-                sx={{ mb: 2, bgcolor: alpha(primary, 0.1), color: primary }}
-              />
-              
-              <Typography id="about-title" variant="h3" sx={{ fontWeight: 800, mb: 2, lineHeight: 1.2 }}>
-                La GMAO qui transforme votre maintenance
-              </Typography>
-              
-              <Typography variant="body1" sx={{ color: 'text.secondary', mb: 3, fontSize: '1.1rem' }}>
-                MaintX centralise l'ensemble de vos processus de maintenance dans une interface unique et moderne. 
-                De la gestion des équipements aux rapports d'analyse, optimisez chaque étape de votre maintenance.
-              </Typography>
-
-              <Grid container spacing={2} sx={{ mb: 4 }}>
-                {features.slice(0, 4).map((feat, index) => (
-                  <Grid item xs={6} key={index}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CheckCircle sx={{ color: primary, fontSize: 20 }} />
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {feat.title}
-                      </Typography>
-                    </Box>
-                  </Grid>
-                ))}
-              </Grid>
-
-              <Button
-                variant="contained"
-                size="large"
-                endIcon={<ArrowForward />}
-                onClick={() => handleScroll('features')}
-                sx={{
-                  px: 4,
-                  py: 1.5,
-                  borderRadius: 2,
-                  textTransform: 'none',
-                  bgcolor: primary,
-                  '&:hover': { bgcolor: theme.palette.primary.dark }
-                }}
-              >
-                Demander une démo
-              </Button>
-            </Grid>
-          </Grid>
-        </Container>
-      </Box>
-
-      {/* Features Section — image en fond */}
-      <Box
-        component="section"
-        id="features"
-        aria-labelledby="features-title"
-        sx={{
-          position: 'relative',
-          py: { xs: 10, md: 14 },
-          backgroundImage: `url(${features[0]?.image || HERO_IMAGE})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundAttachment: 'fixed',
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            inset: 0,
-            background: alpha('#fff', 0.88),
-            pointerEvents: 'none'
-          }
-        }}
-      >
-        <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
-          <Box sx={{ textAlign: 'center', mb: 8 }}>
-            <Chip
-              label="Fonctionnalités principales"
-              sx={{ mb: 2, bgcolor: alpha(primary, 0.1), color: primary }}
-            />
-            
-            <Typography id="features-title" variant="h3" sx={{ fontWeight: 800, mb: 2 }}>
-              Une solution complète pour votre maintenance
-            </Typography>
-            
-            <Typography variant="h6" sx={{ color: 'text.secondary', maxWidth: 700, mx: 'auto' }}>
-              Découvrez comment MaintX peut transformer votre gestion de maintenance avec des modules intégrés et puissants
-            </Typography>
-          </Box>
-
-          <Grid container spacing={4}>
-            {features.map((feature, index) => (
-              <Grid item xs={12} md={6} lg={4} key={index}>
-                <Card
-                  sx={{
-                    height: '100%',
-                    borderRadius: 3,
-                    overflow: 'hidden',
-                    transition: 'all 0.3s ease',
-                    border: `1px solid ${alpha(primary, 0.1)}`,
-                    '&:hover': {
-                      transform: 'translateY(-8px)',
-                      boxShadow: `0 20px 40px ${alpha(primary, 0.15)}`,
-                      '& .feature-image': {
-                        transform: 'scale(1.1)'
-                      }
-                    }
-                  }}
-                >
-                  <Box sx={{ position: 'relative', overflow: 'hidden', height: 200 }}>
-                    <Box
-                      className="feature-image"
-                      sx={{
-                        position: 'absolute',
-                        inset: 0,
-                        backgroundImage: `url(${feature.image})`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                        transition: 'transform 0.6s ease'
-                      }}
-                    />
-                  </Box>
-
-                  <CardContent sx={{ p: 3 }}>
-                    <Avatar
-                      sx={{
-                        bgcolor: alpha(primary, 0.1),
-                        color: primary,
-                        width: 56,
-                        height: 56,
-                        mb: 2
-                      }}
-                    >
-                      <feature.icon sx={{ fontSize: 32 }} />
-                    </Avatar>
-
-                    <Typography variant="h5" sx={{ fontWeight: 700, mb: 1 }}>
-                      {feature.title}
-                    </Typography>
-
-                    <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-                      {feature.description}
-                    </Typography>
-
-                    <Divider sx={{ my: 2 }} />
-
-                    <Stack spacing={1}>
-                      {feature.benefits?.map((benefit, i) => (
-                        <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <CheckCircle sx={{ color: primary, fontSize: 18 }} />
-                          <Typography variant="caption" sx={{ fontWeight: 500 }}>
-                            {benefit}
-                          </Typography>
-                        </Box>
-                      ))}
-                    </Stack>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        </Container>
-      </Box>
-
-      {/* FAQ */}
-      <Box
-        component="section"
-        id="faq"
-        aria-labelledby="faq-title"
-        sx={{ py: { xs: 8, md: 10 }, bgcolor: '#fafafa' }}
-      >
-        <Container maxWidth="md">
-          <Typography id="faq-title" variant="h4" sx={{ fontWeight: 800, textAlign: 'center', mb: 4 }}>
-            Questions fréquentes
-          </Typography>
-          {faqItems.map((item, index) => (
-            <Accordion
-              key={index}
-              sx={{
-                mb: 1,
-                '&:before': { display: 'none' },
-                boxShadow: 'none',
-                border: `1px solid ${alpha(primary, 0.15)}`,
-                borderRadius: '8px !important',
-                overflow: 'hidden'
-              }}
-            >
-              <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ fontWeight: 600 }}>
-                {item.question}
-              </AccordionSummary>
-              <AccordionDetails sx={{ pt: 0 }}>
-                <Typography variant="body2" color="text.secondary">
-                  {item.answer}
-                </Typography>
-              </AccordionDetails>
-            </Accordion>
-          ))}
-        </Container>
-      </Box>
-
-      {/* CTA Final amélioré */}
-      <Box
-        id="cta"
-        component="section"
-        aria-labelledby="cta-title"
-        sx={{
-          py: { xs: 10, md: 14 },
-          background: `linear-gradient(135deg, ${alpha(primary, 0.1)} 0%, ${alpha(primary, 0.05)} 100%)`,
-          position: 'relative',
-          overflow: 'hidden',
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            top: -100,
-            right: -100,
-            width: 300,
-            height: 300,
-            borderRadius: '50%',
-            background: alpha(primary, 0.1),
-            filter: 'blur(80px)'
-          }
-        }}
-      >
-        <Container maxWidth="md" sx={{ position: 'relative', zIndex: 1 }}>
-          <Paper
+        <Box
+          sx={{
+            position: 'relative',
+            width: '100%',
+            maxWidth: 920,
+            height: 'min(92vh, 720px)',
+            minHeight: 480,
+            transformStyle: 'preserve-3d',
+            transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+            transition: 'transform 0.75s cubic-bezier(0.4, 0, 0.2, 1)'
+          }}
+        >
+          {/* Face avant : MAINTX + CTAs */}
+          <Box
             sx={{
-              p: { xs: 4, md: 6 },
-              textAlign: 'center',
-              borderRadius: 4,
-              bgcolor: 'rgba(255,255,255,0.95)',
-              backdropFilter: 'blur(10px)',
-              boxShadow: `0 30px 60px ${alpha(primary, 0.2)}`,
-              border: `1px solid ${alpha(primary, 0.2)}`
+              position: 'absolute',
+              inset: 0,
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center'
             }}
           >
-            <EmojiEvents sx={{ fontSize: 64, color: primary, mb: 2 }} />
-            
-            <Typography id="cta-title" variant="h4" sx={{ fontWeight: 800, mb: 2 }}>
-              Prêt à révolutionner votre maintenance ?
+            <Typography
+              component="h1"
+              sx={{
+                fontSize: { xs: '4.5rem', sm: '8rem', md: '12rem', lg: '14rem' },
+                fontWeight: 900,
+                letterSpacing: { xs: '0.06em', md: '0.12em' },
+                lineHeight: 1,
+                whiteSpace: 'nowrap',
+                animation: mounted ? `${scaleIn} 0.9s cubic-bezier(0.16, 1, 0.3, 1) both` : 'none',
+                color: '#fff',
+                textShadow: `0 2px 40px ${alpha(green, 0.4)}`
+              }}
+            >
+              <Box component="span" sx={{ color: '#fff' }}>MAINT</Box>
+              <Box
+                component="span"
+                sx={{
+                  color: green,
+                  display: 'inline',
+                  animation: mounted ? `${softGlow} 4s ease-in-out infinite 0.5s` : 'none'
+                }}
+              >
+                X
+              </Box>
             </Typography>
-            
-            <Typography variant="h6" sx={{ color: 'text.secondary', mb: 4, fontWeight: 400 }}>
-              Rejoignez les entreprises qui optimisent déjà leur maintenance avec MaintX
+            <Typography
+              sx={{
+                mt: 2,
+                mb: 4,
+                fontSize: { xs: '0.85rem', md: '1.1rem' },
+                letterSpacing: '0.28em',
+                color: alpha('#fff', 0.85),
+                animation: mounted ? `${fadeUp} 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both` : 'none'
+              }}
+            >
+              {t('landing.tagline')}
             </Typography>
-
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
               spacing={2}
               justifyContent="center"
+              sx={{ animation: mounted ? `${fadeUp} 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both` : 'none' }}
             >
               <Button
-                variant="contained"
                 size="large"
+                variant="contained"
                 startIcon={<Login />}
                 onClick={() => navigate('/login')}
                 sx={{
                   px: 4,
-                  py: 1.5,
+                  py: 1.6,
                   borderRadius: 2,
-                  fontSize: '1.1rem',
-                  fontWeight: 700,
-                  textTransform: 'none',
-                  background: `linear-gradient(135deg, ${primary} 0%, ${theme.palette.primary.dark} 100%)`,
-                  boxShadow: `0 10px 30px ${alpha(primary, 0.4)}`
+                  fontWeight: 600,
+                  backgroundColor: green,
+                  boxShadow: `0 16px 48px ${alpha(green, 0.4)}`,
+                  transition: 'transform 0.25s ease, box-shadow 0.25s ease',
+                  '&:hover': {
+                    transform: 'translateY(-3px)',
+                    boxShadow: `0 24px 56px ${alpha(green, 0.5)}`
+                  }
                 }}
               >
-                Se connecter
+                {t('landing.ctaLogin')}
               </Button>
-              
               <Button
-                variant="outlined"
                 size="large"
-                startIcon={<Support />}
-                href="mailto:contact@maintx.org"
-                component="a"
+                variant="outlined"
+                endIcon={<ArrowForward />}
+                onClick={() => setFlipped(true)}
                 sx={{
                   px: 4,
-                  py: 1.5,
+                  py: 1.6,
                   borderRadius: 2,
-                  fontSize: '1.1rem',
-                  fontWeight: 600,
-                  textTransform: 'none',
-                  borderColor: alpha(primary, 0.3),
-                  borderWidth: 2,
-                  color: primary
+                  borderColor: alpha(green, 0.7),
+                  color: green,
+                  '&:hover': {
+                    borderColor: green,
+                    backgroundColor: alpha(green, 0.08),
+                    transform: 'translateY(-3px)'
+                  },
+                  transition: 'all 0.25s ease'
                 }}
               >
-                Contacter un expert
+                {t('landing.ctaDiscover')}
               </Button>
             </Stack>
-          </Paper>
-        </Container>
-      </Box>
+          </Box>
 
-      {/* Footer enrichi */}
-      <Box
-        component="footer"
-        sx={{
-          py: 4,
-          borderTop: '1px solid',
-          borderColor: alpha(primary, 0.1),
-          bgcolor: '#ffffff'
-        }}
-      >
-        <Container maxWidth="lg">
-          <Grid container spacing={4}>
-            <Grid item xs={12} md={4}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
-                <Box component="span" sx={{ color: primary }}>MAINT</Box>X
+          {/* Face arrière : description — occupe tout l'espace */}
+          <Box
+            role="region"
+            aria-label={t('landing.flipTitle')}
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
+              transform: 'rotateY(180deg)',
+              display: 'flex',
+              flexDirection: 'column',
+              bgcolor: alpha('#0a0e12', 0.97),
+              borderRadius: 3,
+              border: `1px solid ${alpha(green, 0.25)}`,
+              boxShadow: `0 24px 80px ${alpha('#000', 0.5)}, 0 0 0 1px ${alpha(green, 0.08)}`,
+              p: { xs: 2, sm: 2.5 },
+              overflow: 'hidden',
+              gap: 0
+            }}
+          >
+            <Box sx={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Box sx={{ width: 40, height: 3, borderRadius: 2, bgcolor: green, opacity: 0.9 }} />
+              <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
+                {t('landing.flipTitle')}
               </Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-                La GMAO nouvelle génération pour une maintenance optimisée et connectée.
-              </Typography>
-              <Stack direction="row" spacing={1}>
-                {['Mentions légales', 'Confidentialité', 'CGU'].map((item) => (
-                  <Button
-                    key={item}
-                    variant="text"
-                    size="small"
-                    sx={{ color: 'text.secondary', textTransform: 'none' }}
-                  >
-                    {item}
-                  </Button>
-                ))}
-              </Stack>
-            </Grid>
+            </Box>
 
-            <Grid item xs={12} md={8}>
-              <Grid container spacing={4}>
-                <Grid item xs={4}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                    Produit
-                  </Typography>
-                  <Stack spacing={0.5}>
-                    <Button variant="text" size="small" onClick={() => handleScroll('features')} sx={{ color: 'text.secondary', textTransform: 'none', justifyContent: 'flex-start' }}>Fonctionnalités</Button>
-                    <Button variant="text" size="small" onClick={() => handleScroll('cta')} sx={{ color: 'text.secondary', textTransform: 'none', justifyContent: 'flex-start' }}>Tarifs</Button>
-                    <Button variant="text" size="small" onClick={() => handleScroll('faq')} sx={{ color: 'text.secondary', textTransform: 'none', justifyContent: 'flex-start' }}>FAQ</Button>
-                    <Button variant="text" size="small" component="a" href="mailto:contact@maintx.org" sx={{ color: 'text.secondary', textTransform: 'none', justifyContent: 'flex-start' }}>Support</Button>
-                  </Stack>
+            <Grid container spacing={1.5} sx={{ flex: 1, minHeight: 0, alignContent: 'stretch' }}>
+              {/* Colonne gauche : À propos + En détail — remplissent la hauteur */}
+              <Grid item xs={12} md={5} sx={{ display: 'flex', minHeight: 0 }}>
+                <Stack spacing={1.5} sx={{ flex: 1, minHeight: 0, width: '100%' }}>
+                  <Card sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: alpha(green, 0.06), border: `1px solid ${alpha(green, 0.2)}`, borderRadius: 1.5 }}>
+                    <CardContent sx={{ p: 1.5, flex: 1, display: 'flex', flexDirection: 'column', '&:last-child': { pb: 1.5 } }}>
+                      <Typography variant="subtitle2" sx={{ color: green, fontWeight: 600, mb: 0.5 }}>
+                        {t('landing.flipAboutTitle')}
+                      </Typography>
+                      <Typography sx={{ color: alpha('#fff', 0.88), fontSize: '0.8rem', lineHeight: 1.5, flex: 1 }}>
+                        {t('landing.flipAboutText')}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                  <Card sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: alpha('#0d1218', 0.6), border: `1px solid ${alpha(green, 0.18)}`, borderRadius: 1.5 }}>
+                    <CardContent sx={{ p: 1.5, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, '&:last-child': { pb: 1.5 } }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5, flexShrink: 0 }}>
+                        <List sx={{ fontSize: 16, color: green }} />
+                        <Typography variant="subtitle2" sx={{ color: green, fontWeight: 600, fontSize: '0.8rem' }}>
+                          {t('landing.flipDetailTitle')}
+                        </Typography>
+                      </Box>
+                      <Stack component="ul" spacing={0.25} sx={{ m: 0, pl: 2, listStyleType: 'disc', flex: 1, '& li': { color: alpha('#fff', 0.82), fontSize: '0.75rem', lineHeight: 1.4 } }}>
+                        <Typography component="li">{t('landing.flipDetail1')}</Typography>
+                        <Typography component="li">{t('landing.flipDetail2')}</Typography>
+                        <Typography component="li">{t('landing.flipDetail3')}</Typography>
+                        <Typography component="li">{t('landing.flipDetail4')}</Typography>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Stack>
+              </Grid>
+
+              {/* Colonne droite : 4 features + Contact — remplissent la hauteur */}
+              <Grid item xs={12} md={7} sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <Grid container spacing={1.5} sx={{ flex: 1, minHeight: 0, alignContent: 'stretch' }}>
+                  {[
+                    { Icon: Build, titleKey: 'feature1Title', descKey: 'feature1Desc' },
+                    { Icon: Assignment, titleKey: 'feature2Title', descKey: 'feature2Desc' },
+                    { Icon: Inventory, titleKey: 'feature3Title', descKey: 'feature3Desc' },
+                    { Icon: Schedule, titleKey: 'feature4Title', descKey: 'feature4Desc' }
+                  ].map(({ Icon, titleKey, descKey }) => (
+                    <Grid item xs={12} sm={6} key={titleKey} sx={{ display: 'flex', minHeight: 0 }}>
+                      <Card sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: alpha('#0d1218', 0.8), border: `1px solid ${alpha(green, 0.15)}`, borderRadius: 1.5, '&:hover': { borderColor: alpha(green, 0.3) } }}>
+                        <CardContent sx={{ p: 1.5, flex: 1, display: 'flex', flexDirection: 'column', '&:last-child': { pb: 1.5 } }}>
+                          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, flex: 1 }}>
+                            <Box sx={{ width: 32, height: 32, borderRadius: 1, bgcolor: alpha(green, 0.15), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <Icon sx={{ fontSize: 18, color: green }} />
+                            </Box>
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600, fontSize: '0.8rem' }}>{t(`landing.${titleKey}`)}</Typography>
+                              <Typography variant="body2" sx={{ color: alpha('#fff', 0.75), fontSize: '0.75rem', lineHeight: 1.4 }}>{t(`landing.${descKey}`)}</Typography>
+                            </Box>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
                 </Grid>
-
-                <Grid item xs={4}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                    Entreprise
-                  </Typography>
-                  <Stack spacing={0.5}>
-                    <Button variant="text" size="small" onClick={() => handleScroll('about')} sx={{ color: 'text.secondary', textTransform: 'none', justifyContent: 'flex-start' }}>À propos</Button>
-                    <Button variant="text" size="small" onClick={() => handleScroll('cta')} sx={{ color: 'text.secondary', textTransform: 'none', justifyContent: 'flex-start' }}>Contact</Button>
-                    <Button variant="text" size="small" sx={{ color: 'text.secondary', textTransform: 'none', justifyContent: 'flex-start' }}>Carrières</Button>
-                  </Stack>
-                </Grid>
-
-                <Grid item xs={4}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                    Légal
-                  </Typography>
-                  <Stack spacing={0.5}>
-                    {['Confidentialité', 'CGU', 'Mentions'].map((item) => (
-                      <Button key={item} variant="text" size="small" sx={{ color: 'text.secondary', textTransform: 'none', justifyContent: 'flex-start' }}>
-                        {item}
+                <Card sx={{ flexShrink: 0, mt: 1.5, bgcolor: alpha(green, 0.06), border: `1px solid ${alpha(green, 0.25)}`, borderRadius: 1.5 }}>
+                  <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5 }}>
+                      <ContactMail sx={{ fontSize: 18, color: green }} />
+                      <Typography variant="subtitle2" sx={{ color: green, fontWeight: 600, fontSize: '0.8rem' }}>{t('landing.flipContactTitle')}</Typography>
+                      <Typography sx={{ color: alpha('#fff', 0.85), fontSize: '0.8rem' }}>{t('landing.flipContactText')}</Typography>
+                      <Box component="a" href={`mailto:${CONTACT_EMAIL}`} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color: green, fontSize: '0.8rem', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
+                        <Email sx={{ fontSize: 16 }} />
+                        {t('landing.flipContactEmail')}
+                      </Box>
+                      <Button component="a" href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(t('landing.flipContactDemo'))}`} variant="contained" size="small" sx={{ bgcolor: green, '&:hover': { bgcolor: theme.palette.primary.dark }, fontSize: '0.75rem', py: 0.5, px: 1.5 }}>
+                        {t('landing.flipContactDemo')}
                       </Button>
-                    ))}
-                  </Stack>
-                </Grid>
+                    </Box>
+                  </CardContent>
+                </Card>
               </Grid>
             </Grid>
-          </Grid>
 
-          <Divider sx={{ my: 3 }} />
-
-          <Typography variant="body2" sx={{ color: 'text.secondary', textAlign: 'center' }}>
-            © {new Date().getFullYear()} MaintX GMAO. Tous droits réservés.
-          </Typography>
-        </Container>
+            <Box sx={{ flexShrink: 0, pt: 1.5, display: 'flex', justifyContent: 'center' }}>
+            <Button
+              size="large"
+              variant="outlined"
+              startIcon={<ArrowBack />}
+              onClick={() => setFlipped(false)}
+              aria-label={t('landing.flipBack')}
+              sx={{
+                alignSelf: 'center',
+                px: 3,
+                py: 1.4,
+                borderRadius: 2,
+                borderColor: alpha(green, 0.7),
+                color: green,
+                '&:hover': {
+                  borderColor: green,
+                  backgroundColor: alpha(green, 0.12),
+                  transform: 'translateY(-2px)'
+                },
+                transition: 'all 0.25s ease'
+              }}
+            >
+              {t('landing.flipBack')}
+            </Button>
+            </Box>
+          </Box>
+        </Box>
       </Box>
 
-      {/* Injection des keyframes */}
-      <Box sx={keyframes} />
+      {/* Footer minimal */}
+      <Box
+        id="footer"
+        component="footer"
+        sx={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          py: 2,
+          textAlign: 'center',
+          zIndex: 1
+        }}
+      >
+        <Typography variant="caption" sx={{ color: alpha('#fff', 0.45) }}>
+          © {new Date().getFullYear()} MAINTX. {t('landing.footerRights')}
+        </Typography>
+      </Box>
     </Box>
   );
 }

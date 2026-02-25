@@ -4,12 +4,12 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('work_order_templates', 'view'), (req, res) => {
   const db = req.db;
   try {
     const rows = db.prepare(`
@@ -25,7 +25,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.get('/:id', param('id').isInt(), (req, res) => {
+router.get('/:id', requirePermission('work_order_templates', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   try {
     const row = db.prepare(`
@@ -42,7 +42,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
   }
 });
 
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('work_order_templates', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').notEmpty().trim()
 ], (req, res) => {
   const db = req.db;
@@ -65,7 +65,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.put('/:id', requirePermission('work_order_templates', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = req.params.id;
   const existing = db.prepare('SELECT * FROM work_order_templates WHERE id = ?').get(id);
@@ -80,7 +80,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(
   `).get(id));
 });
 
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('work_order_templates', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const r = db.prepare('DELETE FROM work_order_templates WHERE id = ?').run(req.params.id);
   if (r.changes === 0) return res.status(404).json({ error: 'Modèle non trouvé' });

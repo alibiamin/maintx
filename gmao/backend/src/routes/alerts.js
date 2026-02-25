@@ -4,11 +4,11 @@
 
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 
 router.use(authenticate);
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('alerts', 'view'), (req, res) => {
   const db = req.db;
   try {
     try {
@@ -68,7 +68,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.get('/unread-count', (req, res) => {
+router.get('/unread-count', requirePermission('alerts', 'view'), (req, res) => {
   const db = req.db;
   try {
     const userId = req.user?.id;
@@ -91,7 +91,7 @@ router.get('/unread-count', (req, res) => {
   }
 });
 
-router.post('/', (req, res) => {
+router.post('/', requirePermission('alerts', 'create'), (req, res) => {
   const db = req.db;
   try {
     const {
@@ -128,7 +128,7 @@ router.post('/', (req, res) => {
   }
 });
 
-router.put('/:id/read', (req, res) => {
+router.put('/:id/read', requirePermission('alerts', 'update'), (req, res) => {
   const db = req.db;
   try {
     const userId = req.user?.id;
@@ -152,7 +152,7 @@ router.put('/:id/read', (req, res) => {
   }
 });
 
-router.put('/read-all', (req, res) => {
+router.put('/read-all', requirePermission('alerts', 'update'), (req, res) => {
   const db = req.db;
   try {
     const userId = req.user?.id;
@@ -168,7 +168,7 @@ router.put('/read-all', (req, res) => {
   }
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requirePermission('alerts', 'delete'), (req, res) => {
   const db = req.db;
   try {
     db.prepare('DELETE FROM alerts WHERE id = ?').run(req.params.id);

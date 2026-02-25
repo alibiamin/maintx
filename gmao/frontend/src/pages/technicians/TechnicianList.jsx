@@ -40,10 +40,10 @@ function TechnicianList() {
   const [saving, setSaving] = useState(false);
   const [evalDialog, setEvalDialog] = useState({ open: false, tech: null, score: 3, comment: '' });
   const [savingEval, setSavingEval] = useState(false);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
   const currency = useCurrency();
-  const canAdd = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canAdd = can('technicians', 'create');
 
   const load = () => {
     setLoading(true);

@@ -68,10 +68,10 @@ export default function TechnicianDetail() {
   const [trainingForm, setTrainingForm] = useState({ name: '', description: '', completed_date: '', valid_until: '', issuer: '' });
   const [editingTrainingId, setEditingTrainingId] = useState(null);
   const [savingTraining, setSavingTraining] = useState(false);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
   const currency = useCurrency();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('technicians', 'update');
 
   useEffect(() => {
     Promise.all([

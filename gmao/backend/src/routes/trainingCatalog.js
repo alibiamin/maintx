@@ -4,12 +4,12 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('training_catalog', 'view'), (req, res) => {
   const db = req.db;
   try {
     const rows = db.prepare('SELECT * FROM training_catalog ORDER BY code').all();
@@ -20,7 +20,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.get('/:id', param('id').isInt(), (req, res) => {
+router.get('/:id', requirePermission('training_catalog', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   try {
     const row = db.prepare('SELECT * FROM training_catalog WHERE id = ?').get(req.params.id);
@@ -32,7 +32,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
   }
 });
 
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('training_catalog', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').notEmpty().trim(),
   body('code').optional().trim()
 ], (req, res) => {
@@ -54,7 +54,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.put('/:id', requirePermission('training_catalog', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = req.params.id;
   const existing = db.prepare('SELECT * FROM training_catalog WHERE id = ?').get(id);
@@ -75,7 +75,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(
   res.json(db.prepare('SELECT * FROM training_catalog WHERE id = ?').get(id));
 });
 
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('training_catalog', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const r = db.prepare('DELETE FROM training_catalog WHERE id = ?').run(req.params.id);
   if (r.changes === 0) return res.status(404).json({ error: 'Formation non trouvée' });

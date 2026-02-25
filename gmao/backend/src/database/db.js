@@ -19,7 +19,8 @@ const GMAO_DB_PATH = path.join(dataDir, process.env.GMAO_DB_PATH || 'gmao.db');
 let _SQL = null;
 let _adminDb = null;
 let _adminWrapper = null;
-const _clientDbCache = new Map(); // db_filename -> { raw, wrapper }
+const _clientDbCache = new Map(); // db_filename -> { raw, wrapper } (ordre = LRU, dernier accès en fin)
+const CLIENT_DB_CACHE_MAX = Math.max(1, parseInt(process.env.GMAO_CLIENT_DB_CACHE_MAX, 10) || 20);
 
 /**
  * Crée un wrapper db (prepare, exec, etc.) autour d'une instance sql.js
@@ -108,7 +109,7 @@ function getAdminDb() {
 }
 
 /** Fichiers de migration à ne pas exécuter sur la base client (réservés à gmao.db admin) */
-const CLIENT_SKIP_MIGRATIONS = ['026_tenants.js', '027_users_tenant_id.js', '028_tenants_license_dates.js'];
+const CLIENT_SKIP_MIGRATIONS = ['026_tenants.js', '027_users_tenant_id.js', '028_tenants_license_dates.js', '060_refresh_tokens.js', '061_permissions.js', '062_dashboard_permissions.js'];
 
 /**
  * Migrations à appliquer sur les bases client : schéma GMAO complet (001-056 sauf tenants).
@@ -157,9 +158,22 @@ function getClientDb(tenantIdOrKey) {
   } else {
     dbFilename = tenantIdOrKey.endsWith('.db') ? tenantIdOrKey : `${tenantIdOrKey}.db`;
   }
-  // Cache hit : retourner la base sans rejouer les migrations ni sauvegarder (évite lenteur à chaque requête)
+  // Cache hit : déplacer en fin (LRU) et retourner
   if (_clientDbCache.has(dbFilename)) {
-    return _clientDbCache.get(dbFilename).wrapper;
+    const entry = _clientDbCache.get(dbFilename);
+    _clientDbCache.delete(dbFilename);
+    _clientDbCache.set(dbFilename, entry);
+    return entry.wrapper;
+  }
+  // Éviction LRU si cache plein
+  while (_clientDbCache.size >= CLIENT_DB_CACHE_MAX) {
+    const firstKey = _clientDbCache.keys().next().value;
+    if (!firstKey) break;
+    const entry = _clientDbCache.get(firstKey);
+    try {
+      if (entry.wrapper && typeof entry.wrapper.close === 'function') entry.wrapper.close();
+    } catch (_) {}
+    _clientDbCache.delete(firstKey);
   }
   const clientPath = path.join(dataDir, dbFilename);
   if (!_SQL) throw new Error('DB non initialisée');
@@ -191,6 +205,21 @@ function getClientDb(tenantIdOrKey) {
 }
 
 /**
+ * Ferme et évince la base client du cache (avant suppression du fichier .db).
+ * @param {string} dbFilename - nom du fichier (ex. client_xxx.db)
+ */
+function removeClientDbFromCache(dbFilename) {
+  if (!dbFilename) return;
+  const entry = _clientDbCache.get(dbFilename);
+  if (entry) {
+    try {
+      if (entry.wrapper && typeof entry.wrapper.close === 'function') entry.wrapper.close();
+    } catch (_) {}
+    _clientDbCache.delete(dbFilename);
+  }
+}
+
+/**
  * Détermine admin MAINTX (tenant_id NULL) ou client (tenant_id non NULL). Tous les utilisateurs sont dans gmao.db.
  */
 function resolveTenantByEmail(email) {
@@ -212,6 +241,38 @@ function resolveTenantByEmail(email) {
 
 /** Base client par défaut pour connexion sans tenant (admin ou démo). */
 const DEFAULT_CLIENT_DB = process.env.GMAO_DEFAULT_CLIENT_DB || 'default.db';
+
+/**
+ * Vérifie que le répertoire data est accessible en écriture (évite crash à la 1re connexion).
+ * @returns {{ ok: boolean, error?: string }}
+ */
+function ensureDataDirWritable() {
+  try {
+    const testFile = path.join(dataDir, '.maintx_write_check_' + Date.now());
+    fs.writeFileSync(testFile, '');
+    fs.unlinkSync(testFile);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message || 'Impossible d\'écrire dans le répertoire data' };
+  }
+}
+
+/**
+ * Crée la base client d'un tenant à la création du client (pas à la 1re connexion).
+ * Applique les migrations client. À appeler après INSERT INTO tenants.
+ * @param {number} tenantId - id du tenant (table tenants)
+ * @returns {{ ok: boolean, error?: string }}
+ */
+function createTenantDatabase(tenantId) {
+  const check = ensureDataDirWritable();
+  if (!check.ok) return check;
+  try {
+    getClientDb(tenantId);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message || 'Création de la base client impossible' };
+  }
+}
 
 /**
  * Retourne la db à utiliser :
@@ -270,7 +331,10 @@ const db = {
   getAdminDb,
   getClientDb,
   getDbForRequest,
-  resolveTenantByEmail
+  resolveTenantByEmail,
+  ensureDataDirWritable,
+  createTenantDatabase,
+  removeClientDbFromCache
 };
 
 /** Appelle les migrations client sur une base (ex. après "no such table" pour work_order_extra_fees). */
@@ -288,3 +352,6 @@ module.exports.getClientDb = getClientDb;
 module.exports.getDbForRequest = getDbForRequest;
 module.exports.resolveTenantByEmail = resolveTenantByEmail;
 module.exports.ensureClientMigrations = ensureClientMigrations;
+module.exports.ensureDataDirWritable = ensureDataDirWritable;
+module.exports.createTenantDatabase = createTenantDatabase;
+module.exports.removeClientDbFromCache = removeClientDbFromCache;

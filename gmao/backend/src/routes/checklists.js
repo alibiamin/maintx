@@ -4,11 +4,11 @@
 
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 
 router.use(authenticate);
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('checklists', 'view'), (req, res) => {
   const db = req.db;
   try {
     try {
@@ -63,7 +63,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.get('/:id', (req, res) => {
+router.get('/:id', requirePermission('checklists', 'view'), (req, res) => {
   const db = req.db;
   try {
     const checklist = db.prepare('SELECT * FROM maintenance_checklists WHERE id = ?').get(req.params.id);
@@ -78,7 +78,7 @@ router.get('/:id', (req, res) => {
   }
 });
 
-router.post('/', (req, res) => {
+router.post('/', requirePermission('checklists', 'create'), (req, res) => {
   const db = req.db;
   try {
     const { maintenance_plan_id, name, description, is_template, items } = req.body;
@@ -122,7 +122,7 @@ router.post('/', (req, res) => {
   }
 });
 
-router.put('/:id', (req, res) => {
+router.put('/:id', requirePermission('checklists', 'update'), (req, res) => {
   const db = req.db;
   try {
     const { name, description, maintenance_plan_id, items } = req.body;
@@ -255,7 +255,7 @@ router.get('/:id/executions', (req, res) => {
   }
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requirePermission('checklists', 'delete'), (req, res) => {
   const db = req.db;
   try {
     db.prepare('DELETE FROM checklist_items WHERE checklist_id = ?').run(req.params.id);

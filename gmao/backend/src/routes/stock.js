@@ -5,7 +5,7 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const codification = require('../services/codification');
 
 const router = express.Router();
@@ -186,7 +186,7 @@ function changeStatus(db, sparePartId, fromStatus, toStatus, quantity) {
  * Query: belowMin, search, page (1-based), limit (default 20)
  * If page/limit provided: Response { data: [...], total: N }. Otherwise: array.
  */
-router.get('/parts', (req, res) => {
+router.get('/parts', requirePermission('stock', 'view'), (req, res) => {
   const db = req.db;
   const fl = getFamilyLocationJoin(db);
   const { belowMin, search, page, limit } = req.query;
@@ -621,7 +621,7 @@ router.put('/reorders/:id', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RE
  * GET /api/stock/parts/:id
  * Fiche stock complète (détails, image, stock actuel).
  */
-router.get('/parts/:id', param('id').isInt(), (req, res) => {
+router.get('/parts/:id', requirePermission('stock', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const fl = getFamilyLocationJoin(db);
   let row;
@@ -684,7 +684,7 @@ router.get('/parts/:id', param('id').isInt(), (req, res) => {
  * PUT /api/stock/parts/:id
  * Mise à jour de la fiche stock (détails, image, etc.).
  */
-router.put('/parts/:id', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.put('/parts/:id', requirePermission('stock', 'update'), param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').optional().trim(),
   body('description').optional().trim(),
   body('unit').optional().trim(),
@@ -904,7 +904,7 @@ router.post('/quality/change-status', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, 
  * POST /api/stock/parts
  * Création d'une pièce avec fiche complète (image, emplacement, référence constructeur optionnels).
  */
-router.post('/parts', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/parts', requirePermission('stock', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').notEmpty().trim(),
   body('description').optional().trim(),
   body('unit').optional().trim(),

@@ -7,7 +7,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { body, param, query, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const dbModule = require('../database/db');
 
 const router = express.Router();
@@ -55,7 +55,7 @@ function enrichWithTechnicianNames(adminDb, rows) {
 }
 
 // Liste des pointages (filtres : technicianId, dateFrom, dateTo)
-router.get('/', [
+router.get('/', requirePermission('time_entries', 'view'), [
   query('technicianId').optional().isInt().toInt(),
   query('dateFrom').optional().isISO8601(),
   query('dateTo').optional().isISO8601(),
@@ -121,7 +121,7 @@ router.get('/', [
 });
 
 // Créer un pointage (manuel)
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), [
+router.post('/', requirePermission('time_entries', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), [
   body('technicianId').isInt().toInt(),
   body('occurredAt').notEmpty().trim(),
   body('type').isIn(['in', 'out']),
@@ -162,7 +162,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), [
 });
 
 // Supprimer un pointage (correction)
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.delete('/:id', requirePermission('time_entries', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt().toInt()
 ], (req, res) => {
   const err = validationResult(req);

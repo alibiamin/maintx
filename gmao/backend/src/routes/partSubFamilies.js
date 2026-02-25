@@ -4,12 +4,12 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('part_sub_families', 'view'), (req, res) => {
   const db = req.db;
   const { familyId } = req.query;
   try {
@@ -54,7 +54,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
   }
 });
 
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('part_sub_families', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('partFamilyId').isInt(),
   body('position').isInt({ min: 1, max: 5 }),
   body('name').notEmpty().trim()
@@ -75,7 +75,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), [
+router.put('/:id', requirePermission('part_sub_families', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), [
   body('position').optional().isInt({ min: 1, max: 5 }),
   body('name').optional().notEmpty().trim()
 ], (req, res) => {
@@ -90,7 +90,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(
   res.json(row);
 });
 
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('part_sub_families', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const r = db.prepare('DELETE FROM part_sub_families WHERE id = ?').run(req.params.id);
   if (r.changes === 0) return res.status(404).json({ error: 'Sous-famille non trouvée' });

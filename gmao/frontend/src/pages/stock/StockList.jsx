@@ -39,8 +39,8 @@ export default function StockList() {
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [sortBy, setSortBy] = useState('code');
   const [sortOrder, setSortOrder] = useState('asc');
-  const { user } = useAuth();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const { can } = useAuth();
+  const canEdit = can('stock', 'update');
 
   useEffect(() => {
     const fetch = () => {

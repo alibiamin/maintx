@@ -4,7 +4,7 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
@@ -32,7 +32,7 @@ function formatProcedure(row) {
  * GET /api/procedures
  * Query: equipmentModelId, procedureType (maintenance | test | operating_mode)
  */
-router.get('/', (req, res) => {
+router.get('/', requirePermission('procedures', 'view'), (req, res) => {
   const db = req.db;
   const { equipmentModelId, procedureType } = req.query;
   let sql = `
@@ -72,7 +72,7 @@ router.get('/', (req, res) => {
  * GET /api/procedures/:id/usage
  * Liaisons : plans de maintenance et OT qui utilisent cette procédure.
  */
-router.get('/:id/usage', param('id').isInt(), (req, res) => {
+router.get('/:id/usage', requirePermission('procedures', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = req.params.id;
   const proc = db.prepare('SELECT id FROM procedures WHERE id = ?').get(id);
@@ -131,7 +131,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
 /**
  * POST /api/procedures
  */
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('procedures', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').notEmpty().trim(),
   body('procedureType').optional().isIn(PROCEDURE_TYPES),
   body('code').optional().trim()
@@ -172,7 +172,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 /**
  * PUT /api/procedures/:id
  */
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.put('/:id', requirePermission('procedures', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('name').optional().notEmpty().trim(),
   body('procedureType').optional().isIn(PROCEDURE_TYPES),
@@ -223,7 +223,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 /**
  * DELETE /api/procedures/:id
  */
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('procedures', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = req.params.id;
   try {

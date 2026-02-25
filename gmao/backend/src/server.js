@@ -6,6 +6,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const db = require('./database/db');
 
@@ -59,6 +60,7 @@ const scheduledReportsRoutes = require('./routes/scheduledReports');
 const stockBySiteRoutes = require('./routes/stockBySite');
 const requiredDocumentTypesRoutes = require('./routes/requiredDocumentTypes');
 const standardsRoutes = require('./routes/standards');
+const permissionsRoutes = require('./routes/permissions');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -71,6 +73,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 }));
 app.use(express.json());
+app.use(cookieParser());
 
 // Toutes les réponses /api en JSON
 app.use('/api', (req, res, next) => {
@@ -78,8 +81,30 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// Rate limiting sur les routes métier (hors health et auth)
+try {
+  const rateLimit = require('express-rate-limit');
+  app.use('/api', rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: parseInt(process.env.API_RATE_LIMIT_MAX, 10) || 400,
+    skip: (req) => req.originalUrl === '/api/health' || req.originalUrl.startsWith('/api/auth'),
+    standardHeaders: true,
+    legacyHeaders: false
+  }));
+} catch (_) {}
+
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  try {
+    const adminDb = db.getAdminDb();
+    adminDb.prepare('SELECT 1').get();
+    const diskOk = db.ensureDataDirWritable && db.ensureDataDirWritable();
+    if (diskOk && !diskOk.ok) {
+      return res.status(503).json({ status: 'degraded', error: 'Disk write check failed', timestamp: new Date().toISOString() });
+    }
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  } catch (e) {
+    res.status(503).json({ status: 'error', error: 'Database unavailable', timestamp: new Date().toISOString() });
+  }
 });
 
 // Point d’entrée pour les applications externes : infos API (sans authentification)
@@ -162,6 +187,22 @@ app.use('/api/scheduled-reports', scheduledReportsRoutes);
 app.use('/api/stock-by-site', stockBySiteRoutes);
 app.use('/api/required-document-types', requiredDocumentTypesRoutes);
 app.use('/api/standards', standardsRoutes);
+app.use('/api/permissions', permissionsRoutes);
+// Fonctionnalités type Coswin 8i
+const plannedShutdownsRoutes = require('./routes/plannedShutdowns');
+const purchaseRequestsRoutes = require('./routes/purchaseRequests');
+const priceRequestsRoutes = require('./routes/priceRequests');
+const supplierInvoicesRoutes = require('./routes/supplierInvoices');
+const regulatoryChecksRoutes = require('./routes/regulatoryChecks');
+const warehousesRoutes = require('./routes/warehouses');
+const reorderRulesRoutes = require('./routes/reorderRules');
+app.use('/api/planned-shutdowns', plannedShutdownsRoutes);
+app.use('/api/purchase-requests', purchaseRequestsRoutes);
+app.use('/api/price-requests', priceRequestsRoutes);
+app.use('/api/supplier-invoices', supplierInvoicesRoutes);
+app.use('/api/regulatory-checks', regulatoryChecksRoutes);
+app.use('/api/warehouses', warehousesRoutes);
+app.use('/api/reorder-rules', reorderRulesRoutes);
 
 // 404 pour toute requête /api non gérée (réponse JSON cohérente)
 app.use('/api', (req, res) => {
@@ -169,10 +210,14 @@ app.use('/api', (req, res) => {
 });
 
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('[error]', { tenantId: req.tenantId ?? null, userId: req.user?.id ?? null, path: req.originalUrl }, err.message, err.stack);
+  const isProd = process.env.NODE_ENV === 'production';
+  if (err.message && (err.message.includes('Type de fichier non autorisé') || err.message === 'Type de fichier non autorisé')) {
+    return res.status(400).json({ error: err.message });
+  }
   res.status(500).json({
     error: 'Erreur serveur',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+    ...(isProd ? {} : { message: err.message })
   });
 });
 
@@ -223,6 +268,7 @@ function ensureAdminBaseSchema(adminDb) {
   if (roleCount && roleCount.c === 0) {
     adminDb.prepare("INSERT INTO roles (name, description) VALUES ('administrateur', 'Administrateur système')").run();
     adminDb.prepare("INSERT INTO roles (name, description) VALUES ('responsable_maintenance', 'Responsable maintenance')").run();
+    adminDb.prepare("INSERT INTO roles (name, description) VALUES ('planificateur', 'Planificateur')").run();
     adminDb.prepare("INSERT INTO roles (name, description) VALUES ('technicien', 'Technicien')").run();
     adminDb.prepare("INSERT INTO roles (name, description) VALUES ('utilisateur', 'Utilisateur')").run();
     adminDb._save();
@@ -230,6 +276,14 @@ function ensureAdminBaseSchema(adminDb) {
     ensureDefaultAdmin(adminDb);
     return;
   }
+  try {
+    const planif = adminDb.prepare("SELECT id FROM roles WHERE name = 'planificateur'").get();
+    if (!planif) {
+      adminDb.prepare("INSERT INTO roles (name, description) VALUES ('planificateur', 'Planificateur')").run();
+      adminDb._save();
+      console.log('✅ Rôle Planificateur ajouté');
+    }
+  } catch (_) {}
   const userCount = adminDb.prepare('SELECT COUNT(*) as c FROM users').get();
   if (userCount && userCount.c === 0) {
     ensureDefaultAdmin(adminDb);
@@ -243,7 +297,7 @@ async function start() {
 
   // Migrations sur gmao.db : uniquement celles qui concernent la base admin (tenants, users.tenant_id).
   // Les autres migrations (sites, equipment, work_orders, etc.) s'appliquent à la base client (default.db) via runClientMigrations.
-  const ADMIN_MIGRATIONS = ['026_tenants.js', '027_users_tenant_id.js', '028_tenants_license_dates.js'];
+  const ADMIN_MIGRATIONS = ['026_tenants.js', '027_users_tenant_id.js', '028_tenants_license_dates.js', '060_refresh_tokens.js', '061_permissions.js', '062_dashboard_permissions.js', '064_audit_logs.js', '065_tenant_status_deleted_at.js', '066_users_revoked_at.js', '067_tenant_usage.js'];
   try {
     const path = require('path');
     const fs = require('fs');
@@ -267,6 +321,8 @@ async function start() {
       }
       adminDb._save();
     }
+    const { seedPermissions } = require('./database/permissionsSeed');
+    seedPermissions(adminDb);
   } catch (err) {
     console.warn('⚠️  Erreur lors des migrations admin:', err.message);
   }
@@ -401,9 +457,41 @@ async function start() {
       } catch (_) {}
     }, 60 * 60 * 1000);
   }
+
+  // Job : métriques d'usage par tenant (1x/jour pour facturation)
+  try {
+    const usageMetrics = require('./services/usageMetrics');
+    if (usageMetrics.recordAllTenantsSnapshot) {
+      setInterval(() => { usageMetrics.recordAllTenantsSnapshot(); }, 24 * 60 * 60 * 1000);
+      usageMetrics.recordAllTenantsSnapshot(); // premier run au démarrage
+    }
+  } catch (_) {}
+
+  // Job : sauvegarde quotidienne des bases (2h00) si ENABLE_BACKUP_JOB=1
+  if (process.env.ENABLE_BACKUP_JOB === '1') {
+    try {
+      const cron = require('node-cron');
+      const { exec } = require('child_process');
+      const path = require('path');
+      const backendDir = path.join(__dirname, '..');
+      cron.schedule('0 2 * * *', () => {
+        exec('node scripts/backup-tenant-bases.js', { cwd: backendDir }, (err, stdout, stderr) => {
+          if (err) console.error('[backup job]', err.message);
+          if (stdout) console.log('[backup job]', stdout.trim());
+        });
+      });
+      console.log('[backup] Job quotidien activé (2h00).');
+    } catch (e) {
+      console.warn('[backup] Job non démarré:', e.message);
+    }
+  }
 }
 
-start().catch(err => {
-  console.error('❌ Erreur démarrage:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  start().catch(err => {
+    console.error('❌ Erreur démarrage:', err);
+    process.exit(1);
+  });
+}
+
+module.exports = app;

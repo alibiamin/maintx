@@ -4,7 +4,7 @@
 
 const express = require('express');
 const { param, query, validationResult } = require('express-validator');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
@@ -35,7 +35,7 @@ function formatStandard(row) {
  * GET /api/standards
  * Liste des normes avec filtres : type, organization, search (code/title)
  */
-router.get('/', [
+router.get('/', requirePermission('standards', 'view'), [
   query('type').optional().isIn(STANDARD_TYPES),
   query('organization').optional().isIn(ORGANIZATIONS),
   query('search').optional().trim()
@@ -76,7 +76,7 @@ router.get('/', [
  * GET /api/standards/:id
  * Détail d'une norme
  */
-router.get('/:id', param('id').isInt(), (req, res) => {
+router.get('/:id', requirePermission('standards', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });

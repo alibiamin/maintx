@@ -4,12 +4,12 @@
 
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('required_document_types', 'view'), (req, res) => {
   const db = req.db;
   const { entityType, entityId } = req.query;
   try {
@@ -26,7 +26,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('required_document_types', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('entityType').isIn(['equipment_category', 'equipment', 'site']),
   body('entityId').isInt(),
   body('documentTypeName').notEmpty().trim(),
@@ -50,7 +50,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('required_document_types', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const r = db.prepare('DELETE FROM required_document_types WHERE id = ?').run(req.params.id);
   if (r.changes === 0) return res.status(404).json({ error: 'Type de document obligatoire non trouvé' });
@@ -61,7 +61,7 @@ router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isI
  * GET /api/required-document-types/check?equipmentId= ou siteId=
  * Retourne les documents obligatoires manquants ou expirés pour un équipement ou un site
  */
-router.get('/check', query('equipmentId').optional().isInt(), query('siteId').optional().isInt(), (req, res) => {
+router.get('/check', requirePermission('required_document_types', 'view'), query('equipmentId').optional().isInt(), query('siteId').optional().isInt(), (req, res) => {
   const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });

@@ -19,9 +19,9 @@ export default function FailureCodesList() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ code: '', name: '', description: '', category: '' });
   const [saving, setSaving] = useState(false);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('failure_codes', 'update');
 
   const load = () => {
     setLoading(true);

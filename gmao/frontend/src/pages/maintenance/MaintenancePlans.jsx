@@ -24,10 +24,10 @@ export default function MaintenancePlans() {
   const [editForm, setEditForm] = useState({ name: '', description: '', frequencyDays: '30', isActive: true, procedureId: '' });
   const [procedures, setProcedures] = useState([]);
   const [editSubmitting, setEditSubmitting] = useState(false);
-  const { user } = useAuth();
+  const { can } = useAuth();
   const snackbar = useSnackbar();
-  const canExecute = ['administrateur', 'responsable_maintenance', 'technicien'].includes(user?.role);
-  const canCreate = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canExecute = can('maintenance_plans', 'update');
+  const canCreate = can('maintenance_plans', 'create');
 
   const load = () => {
     setLoading(true);

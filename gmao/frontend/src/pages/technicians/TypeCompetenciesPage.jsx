@@ -34,9 +34,9 @@ export default function TypeCompetenciesPage() {
   const [newCompId, setNewCompId] = useState('');
   const [newLevel, setNewLevel] = useState(3);
   const [saving, setSaving] = useState(false);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('competencies', 'update');
 
   const load = () => {
     Promise.all([

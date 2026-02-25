@@ -22,16 +22,14 @@ import { useCurrency } from '../../context/CurrencyContext';
 
 const APP_BASE = '/app';
 const STATUS_LABELS = { draft: 'Brouillon', active: 'Actif', completed: 'Terminé', cancelled: 'Annulé' };
-const CAN_CREATE_ROLES = ['administrateur', 'responsable_maintenance'];
-
 export default function MaintenanceProjectsList() {
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
   const currency = useCurrency();
-  const canCreate = CAN_CREATE_ROLES.includes(user?.role ?? '');
+  const canCreate = can('maintenance_projects', 'create');
 
   const load = () => {
     setLoading(true);

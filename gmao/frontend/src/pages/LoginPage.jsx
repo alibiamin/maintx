@@ -14,7 +14,8 @@ import {
   Link,
   IconButton,
   Menu,
-  MenuItem
+  MenuItem,
+  CircularProgress
 } from '@mui/material';
 import { Language as LanguageIcon } from '@mui/icons-material';
 import {
@@ -28,7 +29,6 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import Logo from '../components/Logo';
-import AppLoadingScreen from '../components/AppLoadingScreen';
 
 // Liens sociaux — à personnaliser avec vos URLs
 const SOCIAL_LINKS = [
@@ -82,11 +82,18 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [langAnchor, setLangAnchor] = useState(null);
-  const { login } = useAuth();
+  const { login, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
   const returnTo = location.state?.from?.pathname || '/app';
+
+  // Si déjà connecté (ex. nouvel onglet avec session en localStorage), garder la même session : rediriger vers l'app
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      navigate(returnTo, { replace: true });
+    }
+  }, [authLoading, isAuthenticated, navigate, returnTo]);
 
   useEffect(() => {
     const stored = sessionStorage.getItem('loginError');
@@ -121,7 +128,13 @@ export default function LoginPage() {
     }
   };
 
-  if (loading) return <AppLoadingScreen />;
+  if (authLoading || loading || isAuthenticated) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   const fadeInUp = {
     '@keyframes fadeInUp': {

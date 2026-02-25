@@ -64,8 +64,8 @@ export default function StockFiche() {
   const { id } = useParams();
   const navigate = useNavigate();
   const currency = useCurrency();
-  const { user } = useAuth();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const { user, can } = useAuth();
+  const canEdit = can('stock', 'update');
 
   const [part, setPart] = useState(null);
   const [movements, setMovements] = useState([]);
@@ -344,7 +344,7 @@ export default function StockFiche() {
         <Typography variant="h5" fontWeight={700}>
           Fiche stock — {part.code}
         </Typography>
-        {!editing && (part.quantity_accepted != null || part.quantity_quarantine != null) && (canEdit || user?.role === 'technicien') && (
+        {!editing && (part.quantity_accepted != null || part.quantity_quarantine != null) && (canEdit || can('work_orders', 'update')) && (
           <Button variant="outlined" size="small" startIcon={<SwapHoriz />} onClick={openChangeStatusDialog}>
             Changer le statut
           </Button>

@@ -5,7 +5,7 @@
 const express = require('express');
 const { param, validationResult } = require('express-validator');
 const router = express.Router();
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -15,9 +15,15 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+/** Un seul segment alphanumérique/underscore/tiret pour éviter path traversal */
+function sanitizeEntityType(raw) {
+  const s = String(raw || 'general').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  return s || 'general';
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const entityType = req.body.entity_type || 'general';
+    const entityType = sanitizeEntityType(req.body && req.body.entity_type);
     const entityDir = path.join(uploadsDir, entityType);
     if (!fs.existsSync(entityDir)) {
       fs.mkdirSync(entityDir, { recursive: true });
@@ -53,7 +59,7 @@ router.use((req, res, next) => {
   next();
 });
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('documents', 'view'), (req, res) => {
   const db = req.db;
   if (!db) return res.status(401).json({ error: 'Authentification requise' });
   try {
@@ -80,7 +86,7 @@ router.get('/', (req, res) => {
 });
 
 // GET /api/documents/:id/download — déclaré avant /:id pour que "download" ne soit pas capturé comme id
-router.get('/:id/download', param('id').isInt({ min: 1 }), (req, res) => {
+router.get('/:id/download', requirePermission('documents', 'view'), param('id').isInt({ min: 1 }), (req, res) => {
   const db = req.db;
   if (!db) return res.status(401).json({ error: 'Authentification requise' });
   const err = validationResult(req);
@@ -90,18 +96,21 @@ router.get('/:id/download', param('id').isInt({ min: 1 }), (req, res) => {
     if (!doc) {
       return res.status(404).json({ error: 'Document non trouvé' });
     }
-
-    if (!fs.existsSync(doc.file_path)) {
+    const resolvedPath = path.resolve(doc.file_path);
+    const uploadsResolved = path.resolve(uploadsDir);
+    if (!resolvedPath.startsWith(uploadsResolved) || resolvedPath === uploadsResolved) {
+      return res.status(403).json({ error: 'Chemin de fichier invalide' });
+    }
+    if (!fs.existsSync(resolvedPath)) {
       return res.status(404).json({ error: 'Fichier non trouvé sur le serveur' });
     }
-
-    res.download(doc.file_path, doc.original_filename);
+    res.download(resolvedPath, doc.original_filename || path.basename(resolvedPath));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.get('/:id', param('id').isInt({ min: 1 }), (req, res) => {
+router.get('/:id', requirePermission('documents', 'view'), param('id').isInt({ min: 1 }), (req, res) => {
   const db = req.db;
   if (!db) return res.status(401).json({ error: 'Authentification requise' });
   const err = validationResult(req);
@@ -118,7 +127,7 @@ router.get('/:id', param('id').isInt({ min: 1 }), (req, res) => {
 });
 
 // POST /api/documents
-router.post('/', upload.single('file'), (req, res) => {
+router.post('/', requirePermission('documents', 'create'), upload.single('file'), (req, res) => {
   const db = req.db;
   if (!db) return res.status(401).json({ error: 'Authentification requise' });
   try {
@@ -126,7 +135,8 @@ router.post('/', upload.single('file'), (req, res) => {
       return res.status(400).json({ error: 'Aucun fichier fourni' });
     }
 
-    const { entity_type, entity_id, document_type, description } = req.body;
+    const { entity_id, document_type, description } = req.body;
+    const entity_type = sanitizeEntityType(req.body && req.body.entity_type);
     const userId = req.user?.id || null;
 
     const result = db.prepare(`
@@ -153,7 +163,7 @@ router.post('/', upload.single('file'), (req, res) => {
 });
 
 // DELETE /api/documents/:id
-router.delete('/:id', param('id').isInt({ min: 1 }), (req, res) => {
+router.delete('/:id', requirePermission('documents', 'delete'), param('id').isInt({ min: 1 }), (req, res) => {
   const db = req.db;
   if (!db) return res.status(401).json({ error: 'Authentification requise' });
   const err = validationResult(req);
@@ -164,9 +174,10 @@ router.delete('/:id', param('id').isInt({ min: 1 }), (req, res) => {
       return res.status(404).json({ error: 'Document non trouvé' });
     }
 
-    // Supprimer le fichier physique
-    if (fs.existsSync(doc.file_path)) {
-      fs.unlinkSync(doc.file_path);
+    const resolvedPath = path.resolve(doc.file_path);
+    const uploadsResolved = path.resolve(uploadsDir);
+    if (resolvedPath.startsWith(uploadsResolved) && resolvedPath !== uploadsResolved && fs.existsSync(resolvedPath)) {
+      fs.unlinkSync(resolvedPath);
     }
 
     db.prepare('DELETE FROM documents WHERE id = ?').run(req.params.id);

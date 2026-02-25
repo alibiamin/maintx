@@ -1,6 +1,7 @@
 /**
  * API publique : formulaire de demande d'intervention (sans authentification)
- * Lié au domaine de l'application. Utilise la base client par défaut (GMAO_DEFAULT_CLIENT_DB ou gmao.db).
+ * En multi-tenant : lier la requête à un client via ?tenant=id ou header X-Tenant-Id.
+ * Sans tenant : base client par défaut (GMAO_DEFAULT_CLIENT_DB).
  */
 
 const express = require('express');
@@ -16,12 +17,47 @@ function getDefaultDb() {
 }
 
 /**
+ * Résout la base client pour le portail public : ?tenant=id ou X-Tenant-Id.
+ * Si tenant fourni : vérifie existence et status (active/trial), retourne la base du tenant.
+ * Sinon : base par défaut.
+ * @returns {{ db, tenantId: number|null, error?: string }}
+ */
+function getPublicRequestDb(req) {
+  const tenantParam = req.query.tenant || req.headers['x-tenant-id'];
+  const tenantId = tenantParam != null && tenantParam !== '' ? parseInt(String(tenantParam).trim(), 10) : null;
+  if (tenantId == null || Number.isNaN(tenantId)) {
+    return { db: getDefaultDb(), tenantId: null };
+  }
+  try {
+    const adminDb = dbModule.getAdminDb();
+    let row;
+    try {
+      row = adminDb.prepare('SELECT id, status, deleted_at FROM tenants WHERE id = ?').get(tenantId);
+    } catch (e) {
+      if (e.message && e.message.includes('no such column')) {
+        row = adminDb.prepare('SELECT id FROM tenants WHERE id = ?').get(tenantId);
+        if (row) { row.status = 'active'; row.deleted_at = null; }
+      } else throw e;
+    }
+    if (!row) return { db: null, tenantId, error: 'Tenant inconnu' };
+    const status = (row.status && String(row.status).trim()) || 'active';
+    if (status === 'deleted' || row.deleted_at) return { db: null, tenantId, error: 'Client supprimé' };
+    if (status === 'suspended' || status === 'expired') return { db: null, tenantId, error: 'Client suspendu ou expiré' };
+    const db = dbModule.getClientDb(tenantId);
+    return { db, tenantId };
+  } catch (e) {
+    return { db: getDefaultDb(), tenantId: null, error: e.message };
+  }
+}
+
+/**
  * GET /api/public/equipment
  * Liste minimale des équipements (id, code, name) pour le formulaire public.
  */
 router.get('/equipment', (req, res) => {
   try {
-    const db = getDefaultDb();
+    const { db, error } = getPublicRequestDb(req);
+    if (error && !db) return res.status(403).json({ error: 'Client inaccessible pour ce formulaire.' });
     const hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='equipment'").get();
     if (!hasTable) return res.json([]);
     const rows = db.prepare(`
@@ -56,7 +92,8 @@ router.post('/intervention-request', [
   const { title, description, equipmentId, priority, requesterName, requesterEmail, requesterPhone } = req.body;
 
   try {
-    const db = getDefaultDb();
+    const { db, error } = getPublicRequestDb(req);
+    if (error && !db) return res.status(403).json({ error: 'Client inaccessible pour ce formulaire.' });
     const hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='intervention_requests'").get();
     if (!hasTable) return res.status(503).json({ error: 'Service temporairement indisponible.' });
 

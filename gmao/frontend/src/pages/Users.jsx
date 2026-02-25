@@ -18,7 +18,7 @@ export default function Users() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
-  const isAdmin = user?.role === 'administrateur';
+  const isAdmin = user?.isAdmin === true;
 
   useEffect(() => {
     api.get('/users').then(r => setUsers(r.data)).catch(console.error).finally(() => setLoading(false));

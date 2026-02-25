@@ -4,7 +4,7 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const codification = require('../services/codification');
 
 const router = express.Router();
@@ -17,7 +17,7 @@ function generateOrderNumber(db) {
   return `CMD-${year}-${String(num).padStart(4, '0')}`;
 }
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('suppliers', 'view'), (req, res) => {
   const db = req.db;
   const { search } = req.query;
   let sql = 'SELECT * FROM suppliers WHERE 1=1';
@@ -29,7 +29,7 @@ router.get('/', (req, res) => {
 });
 
 // Commandes - routes avant :id pour éviter conflit
-router.get('/orders', (req, res) => {
+router.get('/orders', requirePermission('suppliers', 'view'), (req, res) => {
   const db = req.db;
   const rows = db.prepare(`
     SELECT so.*, s.name as supplier_name, u.first_name || ' ' || u.last_name as created_by_name
@@ -41,7 +41,7 @@ router.get('/orders', (req, res) => {
   res.json(rows);
 });
 
-router.get('/orders/:orderId', param('orderId').isInt(), (req, res) => {
+router.get('/orders/:orderId', requirePermission('suppliers', 'view'), param('orderId').isInt(), (req, res) => {
   const db = req.db;
   const order = db.prepare(`
     SELECT so.*, s.name as supplier_name, s.contact_person, s.email, s.phone
@@ -59,7 +59,7 @@ router.get('/orders/:orderId', param('orderId').isInt(), (req, res) => {
   res.json({ ...order, lines });
 });
 
-router.post('/orders', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/orders', requirePermission('suppliers', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('supplierId').isInt()
 ], (req, res) => {
   const db = req.db;
@@ -95,14 +95,14 @@ router.post('/orders/:orderId/lines', authorize(ROLES.ADMIN, ROLES.RESPONSABLE),
   res.status(201).json(line);
 });
 
-router.get('/:id', param('id').isInt(), (req, res) => {
+router.get('/:id', requirePermission('suppliers', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const row = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Fournisseur non trouve' });
   res.json(row);
 });
 
-router.get('/:id/orders', param('id').isInt(), (req, res) => {
+router.get('/:id/orders', requirePermission('suppliers', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const rows = db.prepare(`
     SELECT so.*, u.first_name || ' ' || u.last_name as created_by_name
@@ -114,7 +114,7 @@ router.get('/:id/orders', param('id').isInt(), (req, res) => {
   res.json(rows);
 });
 
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('suppliers', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').notEmpty().trim()
 ], (req, res) => {
   const db = req.db;
@@ -136,7 +136,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.put('/:id', requirePermission('suppliers', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = req.params.id;
   const existing = db.prepare('SELECT id FROM suppliers WHERE id = ?').get(id);

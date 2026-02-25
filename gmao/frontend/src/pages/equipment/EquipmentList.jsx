@@ -24,6 +24,7 @@ import {
 import { Search, AccountTree, Add } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { Can } from '../../components/RequirePermission';
 import { useActionPanel } from '../../context/ActionPanelContext';
 import { useSnackbar } from '../../context/SnackbarContext';
 
@@ -43,7 +44,7 @@ export default function EquipmentList() {
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [sortBy, setSortBy] = useState('code');
   const [sortOrder, setSortOrder] = useState('asc');
-  const { user } = useAuth();
+  const { can } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const view = searchParams.get('view'); // 'history' | 'documents' | 'warranties' depuis le menu Gestion
@@ -51,7 +52,7 @@ export default function EquipmentList() {
   const snackbar = useSnackbar();
   const [selectedId, setSelectedId] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('equipment', 'update');
 
   useEffect(() => {
     setContext({ type: 'list', entityType: 'equipment' });
@@ -120,9 +121,11 @@ export default function EquipmentList() {
           <p style={{ margin: '4px 0 0', color: '#64748b' }}>Gestion des actifs et fiches techniques</p>
         </Box>
         <Box display="flex" gap={2}>
-          <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/app/equipment/creation/machine')}>
-            Nouvel équipement
-          </Button>
+          <Can resource="equipment" action="create">
+            <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/app/equipment/creation/machine')}>
+              Nouvel équipement
+            </Button>
+          </Can>
           <Button variant="outlined" startIcon={<AccountTree />} onClick={() => navigate('/app/equipment/map')}>
             Carte hiérarchie
           </Button>

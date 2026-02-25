@@ -18,9 +18,9 @@ export default function ExternalContractorsList() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ code: '', name: '', contactPerson: '', email: '', phone: '', address: '', notes: '' });
   const [saving, setSaving] = useState(false);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('external_contractors', 'update');
 
   const load = () => {
     setLoading(true);

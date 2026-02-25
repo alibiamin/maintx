@@ -27,10 +27,10 @@ export default function ProceduresList() {
   const [saving, setSaving] = useState(false);
   const [usageDialog, setUsageDialog] = useState(null);
   const [usageLoading, setUsageLoading] = useState(false);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
   const navigate = useNavigate();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('procedures', 'update');
 
   const load = () => {
     setLoading(true);

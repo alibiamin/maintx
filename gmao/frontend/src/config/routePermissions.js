@@ -1,0 +1,141 @@
+/**
+ * Correspondance route (path sous /app) → permission requise (resource + action).
+ * Utilisé pour protéger chaque page : sans la permission "view", pas d'accès (redirection /forbidden).
+ * Inspiré de la gestion des habilitations type Sage X3 (qui voit quoi).
+ *
+ * Clé = path tel que défini dans <Route path="..."> (sans /app).
+ * Valeur = { resource, action } ou null (accès sans permission spécifique, ex. dashboard si tout le monde a dashboard.view).
+ */
+
+export const ROUTE_PERMISSIONS = {
+  // Vue d'ensemble
+  '': { resource: 'dashboard', action: 'view' },
+  'dashboard/kpis': { resource: 'dashboard', action: 'view' },
+  'dashboard/activity': { resource: 'dashboard', action: 'view' },
+  // Équipements
+  'equipment': { resource: 'equipment', action: 'view' },
+  'equipment/creation/:type': { resource: 'equipment', action: 'create' },
+  'equipment/map': { resource: 'equipment', action: 'view' },
+  'equipment/categories': { resource: 'equipment', action: 'view' },
+  'equipment/models': { resource: 'equipment_models', action: 'view' },
+  'equipment/technical': { resource: 'equipment', action: 'view' },
+  'equipment/:id': { resource: 'equipment', action: 'view' },
+  'equipment/:id/technical': { resource: 'equipment', action: 'view' },
+  'equipment/:id/history': { resource: 'equipment', action: 'view' },
+  'equipment/:id/documents': { resource: 'documents', action: 'view' },
+  'equipment/:id/warranties': { resource: 'equipment', action: 'view' },
+  // Maintenance / OT
+  'work-orders': { resource: 'work_orders', action: 'view' },
+  'work-orders/new': { resource: 'work_orders', action: 'create' },
+  'work-orders/:id': { resource: 'work_orders', action: 'view' },
+  'my-work-orders': { resource: 'work_orders', action: 'view' },
+  'maintenance/creation/:type': { resource: 'work_orders', action: 'create' },
+  'intervention-requests': { resource: 'intervention_requests', action: 'view' },
+  'sites': { resource: 'sites', action: 'view' },
+  'sites/lines': { resource: 'sites', action: 'view' },
+  'sites/map': { resource: 'sites', action: 'view' },
+  'planning': { resource: 'planning', action: 'view' },
+  'planning/assignments': { resource: 'planning', action: 'view' },
+  'planning/resources': { resource: 'planning', action: 'view' },
+  'maintenance-plans': { resource: 'maintenance_plans', action: 'view' },
+  'maintenance-plans/due': { resource: 'maintenance_plans', action: 'view' },
+  'maintenance-projects': { resource: 'maintenance_projects', action: 'view' },
+  'maintenance-projects/new': { resource: 'maintenance_projects', action: 'create' },
+  'maintenance-projects/:id': { resource: 'maintenance_projects', action: 'view' },
+  'maintenance-projects/:id/edit': { resource: 'maintenance_projects', action: 'update' },
+  'checklists': { resource: 'checklists', action: 'view' },
+  'procedures': { resource: 'procedures', action: 'view' },
+  'maintenance/root-causes': { resource: 'root_causes', action: 'view' },
+  'maintenance/satisfaction': { resource: 'satisfaction', action: 'view' },
+  'maintenance/shutdowns': { resource: 'planned_shutdowns', action: 'view' },
+  'maintenance/regulatory-checks': { resource: 'regulatory_checks', action: 'view' },
+  // Outils
+  'tools': { resource: 'tools', action: 'view' },
+  'tools/creation/:type': { resource: 'tools', action: 'create' },
+  'tools/assignments': { resource: 'tools', action: 'view' },
+  'tools/calibrations': { resource: 'tools', action: 'view' },
+  // Stock
+  'stock': { resource: 'stock', action: 'view' },
+  'stock/creation/:type': { resource: 'stock', action: 'create' },
+  'stock/parts/:id': { resource: 'stock', action: 'view' },
+  'stock/movements': { resource: 'stock', action: 'view' },
+  'stock/inventories': { resource: 'stock', action: 'view' },
+  'stock/alerts': { resource: 'stock', action: 'view' },
+  'stock/entries': { resource: 'stock', action: 'view' },
+  'stock/exits': { resource: 'stock', action: 'view' },
+  'stock/transfers': { resource: 'stock', action: 'view' },
+  'stock/reorders': { resource: 'stock', action: 'view' },
+  'stock/quality': { resource: 'stock', action: 'view' },
+  'stock/locations': { resource: 'stock_locations', action: 'view' },
+  'stock/reservations': { resource: 'stock_reservations', action: 'view' },
+  'stock/warehouses': { resource: 'warehouses', action: 'view' },
+  'stock/reorder-rules': { resource: 'reorder_rules', action: 'view' },
+  // Fournisseurs & Achats
+  'suppliers': { resource: 'suppliers', action: 'view' },
+  'suppliers/creation/:type': { resource: 'suppliers', action: 'create' },
+  'suppliers/orders': { resource: 'suppliers', action: 'view' },
+  'suppliers/purchase-requests': { resource: 'purchase_requests', action: 'view' },
+  'suppliers/price-requests': { resource: 'price_requests', action: 'view' },
+  'suppliers/invoices': { resource: 'supplier_invoices', action: 'view' },
+  'contracts': { resource: 'contracts', action: 'view' },
+  // Sous-traitance
+  'subcontracting/contractors': { resource: 'external_contractors', action: 'view' },
+  'subcontracting/orders': { resource: 'subcontract_orders', action: 'view' },
+  // Budget
+  'budgets': { resource: 'budgets', action: 'view' },
+  // Effectif & Formation
+  'technicians': { resource: 'technicians', action: 'view' },
+  'technicians/team': { resource: 'technicians', action: 'view' },
+  'technicians/competencies': { resource: 'competencies', action: 'view' },
+  'technicians/type-competencies': { resource: 'competencies', action: 'view' },
+  'technicians/:id': { resource: 'technicians', action: 'view' },
+  'training/catalog': { resource: 'training_catalog', action: 'view' },
+  'training/plans': { resource: 'training_plans', action: 'view' },
+  'effectif/presence': { resource: 'presence', action: 'view' },
+  'effectif/pointage': { resource: 'time_entries', action: 'view' },
+  // Rapports & Analyse
+  'reports': { resource: 'reports', action: 'view' },
+  'reports/mtbf-mttr': { resource: 'reports', action: 'view' },
+  'reports/exports': { resource: 'reports', action: 'view' },
+  'decision-support': { resource: 'reports', action: 'view' },
+  'standards': { resource: 'standards', action: 'view' },
+  // Catalogue / Paramétrage
+  'catalogue/part-families': { resource: 'part_families', action: 'view' },
+  'catalogue/brands': { resource: 'brands', action: 'view' },
+  'catalogue/wo-templates': { resource: 'work_order_templates', action: 'view' },
+  'failure-codes': { resource: 'failure_codes', action: 'view' },
+  'settings': { resource: 'settings', action: 'view' },
+  'settings/creation/:type': { resource: 'users', action: 'create' },
+  'settings/roles': { resource: 'settings', action: 'view' },
+  'settings/email-templates': { resource: 'settings', action: 'view' },
+  'users': { resource: 'users', action: 'view' },
+  // Exploitation (import/export)
+  'exploitation': { resource: 'exploitation', action: 'view' },
+  'exploitation/export': { resource: 'exploitation', action: 'view' },
+  'exploitation/import': { resource: 'exploitation', action: 'view' }
+};
+
+/**
+ * Retourne la permission pour un pathname (ex. /app/stock/creation/piece).
+ * Compare avec les clés de ROUTE_PERMISSIONS en normalisant :id, :type en segments.
+ */
+export function getPermissionForPath(pathname) {
+  const base = pathname.replace(/^\/app\/?/, '').replace(/\/$/, '') || '';
+  // Correspondance exacte
+  if (ROUTE_PERMISSIONS[base]) return ROUTE_PERMISSIONS[base];
+  // Correspondance avec paramètres : remplacer :id, :type par la valeur réelle pour matcher le pattern
+  const segments = base.split('/');
+  for (const key of Object.keys(ROUTE_PERMISSIONS)) {
+    const patternSegments = key.split('/');
+    if (patternSegments.length !== segments.length) continue;
+    let match = true;
+    for (let i = 0; i < patternSegments.length; i++) {
+      const p = patternSegments[i];
+      const s = segments[i];
+      if (p.startsWith(':')) continue; // :id, :type
+      if (p !== s) { match = false; break; }
+    }
+    if (match) return ROUTE_PERMISSIONS[key];
+  }
+  return null;
+}

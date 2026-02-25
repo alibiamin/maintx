@@ -4,7 +4,7 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
 const dbModule = require('../database/db');
 
@@ -46,11 +46,11 @@ function getNextRunAt(frequency, frequencyParam) {
   }
 }
 
-router.get('/types', (req, res) => {
+router.get('/types', requirePermission('scheduled_reports', 'view'), (req, res) => {
   res.json(REPORT_TYPES);
 });
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('scheduled_reports', 'view'), (req, res) => {
   const db = req.db;
   try {
     const rows = db.prepare(`
@@ -65,7 +65,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.get('/:id', param('id').isInt(), (req, res) => {
+router.get('/:id', requirePermission('scheduled_reports', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   try {
     const row = db.prepare('SELECT * FROM scheduled_reports WHERE id = ?').get(req.params.id);
@@ -77,7 +77,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
   }
 });
 
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('scheduled_reports', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('reportType').notEmpty().trim(),
   body('frequency').isIn(['daily', 'weekly', 'monthly']),
   body('frequencyParam').optional().trim(),
@@ -105,7 +105,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), [
+router.put('/:id', requirePermission('scheduled_reports', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), [
   body('frequency').optional().isIn(['daily', 'weekly', 'monthly']),
   body('recipientEmails').optional().trim(),
   body('isActive').optional().isBoolean()
@@ -140,7 +140,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(
   res.json(db.prepare('SELECT * FROM scheduled_reports WHERE id = ?').get(id));
 });
 
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('scheduled_reports', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const r = db.prepare('DELETE FROM scheduled_reports WHERE id = ?').run(req.params.id);
   if (r.changes === 0) return res.status(404).json({ error: 'Rapport planifié non trouvé' });

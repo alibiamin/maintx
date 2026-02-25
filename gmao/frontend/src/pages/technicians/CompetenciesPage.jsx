@@ -32,9 +32,9 @@ export default function CompetenciesPage() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ code: '', name: '', description: '' });
   const [saving, setSaving] = useState(false);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('competencies', 'update');
 
   const load = () => {
     api.get('/competencies').then(r => setList(r.data || [])).catch(() => setList([])).finally(() => setLoading(false));

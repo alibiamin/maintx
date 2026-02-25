@@ -4,11 +4,11 @@
 
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 
 router.use(authenticate);
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('contracts', 'view'), (req, res) => {
   const db = req.db;
   try {
     try {
@@ -54,7 +54,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.get('/expiring', (req, res) => {
+router.get('/expiring', requirePermission('contracts', 'view'), (req, res) => {
   const db = req.db;
   try {
     const days = parseInt(req.query.days || 30);
@@ -74,7 +74,7 @@ router.get('/expiring', (req, res) => {
   }
 });
 
-router.get('/:id', (req, res) => {
+router.get('/:id', requirePermission('contracts', 'view'), (req, res) => {
   const db = req.db;
   try {
     const contract = db.prepare(`
@@ -98,7 +98,7 @@ router.get('/:id', (req, res) => {
   }
 });
 
-router.post('/', (req, res) => {
+router.post('/', requirePermission('contracts', 'create'), (req, res) => {
   const db = req.db;
   try {
     const {
@@ -148,7 +148,7 @@ router.post('/', (req, res) => {
   }
 });
 
-router.put('/:id', (req, res) => {
+router.put('/:id', requirePermission('contracts', 'update'), (req, res) => {
   const db = req.db;
   try {
     const {
@@ -189,7 +189,7 @@ router.put('/:id', (req, res) => {
   }
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requirePermission('contracts', 'delete'), (req, res) => {
   const db = req.db;
   try {
     db.prepare('DELETE FROM maintenance_contracts WHERE id = ?').run(req.params.id);

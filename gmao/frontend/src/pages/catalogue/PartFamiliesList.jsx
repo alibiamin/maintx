@@ -46,9 +46,9 @@ export default function PartFamiliesList() {
   const [saving, setSaving] = useState(false);
   const [filterCategoryId, setFilterCategoryId] = useState('');
   const [filterFamilyId, setFilterFamilyId] = useState('');
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('part_families', 'update');
 
   const familiesFilteredByCategory = filterCategoryId ? families.filter((f) => String(f.category_id) === String(filterCategoryId)) : families;
   const subFamiliesFilteredByFamily = filterFamilyId ? subFamilies.filter((s) => String(s.part_family_id) === String(filterFamilyId)) : subFamilies;

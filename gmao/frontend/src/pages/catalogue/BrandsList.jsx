@@ -17,9 +17,9 @@ export default function BrandsList() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ code: '', name: '', description: '' });
   const [saving, setSaving] = useState(false);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('brands', 'update');
 
   const load = () => {
     setLoading(true);

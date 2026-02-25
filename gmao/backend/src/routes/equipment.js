@@ -4,7 +4,7 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, requirePermission, authorize, ROLES } = require('../middleware/auth');
 const codification = require('../services/codification');
 const auditService = require('../services/auditService');
 
@@ -58,7 +58,7 @@ function formatEquipment(row) {
  * Query: categoryId, ligneId, status, search, page (1-based), limit (default 20)
  * If page/limit provided: Response { data: [...], total: N }. Otherwise: array.
  */
-router.get('/', (req, res) => {
+router.get('/', requirePermission('equipment', 'view'), (req, res) => {
   const db = req.db;
   const { categoryId, ligneId, status, search, page, limit } = req.query;
   const usePagination = page !== undefined && page !== '';
@@ -98,7 +98,7 @@ router.get('/', (req, res) => {
  * Hiérarchie : Site → Département → Machine → Section → Composants → Sous-composants
  * (Si pas de table departements : Site → Lignes → Équipements)
  */
-router.get('/hierarchy-map', (req, res) => {
+router.get('/hierarchy-map', requirePermission('equipment', 'view'), (req, res) => {
   const db = req.db;
   const sites = db.prepare('SELECT id, code, name, address FROM sites ORDER BY code').all();
   let departements = [];
@@ -237,7 +237,7 @@ router.get('/hierarchy-map', (req, res) => {
   });
 });
 
-router.get('/tree', (req, res) => {
+router.get('/tree', requirePermission('equipment', 'view'), (req, res) => {
   const db = req.db;
   const rows = db.prepare(`
     SELECT e.*, c.name as category_name, l.name as ligne_name
@@ -261,7 +261,7 @@ router.get('/tree', (req, res) => {
   res.json(buildTree());
 });
 
-router.get('/categories', (req, res) => {
+router.get('/categories', requirePermission('equipment', 'view'), (req, res) => {
   const db = req.db;
   const rows = db.prepare(`
     SELECT c.id, c.name, c.description, c.parent_id,
@@ -294,7 +294,7 @@ router.get('/categories', (req, res) => {
   res.json(list);
 });
 
-router.post('/categories', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/categories', requirePermission('equipment', 'create'), [
   body('name').notEmpty().trim(),
   body('description').optional().trim(),
   body('parentId').optional().custom((val) => val === null || val === undefined || val === '' || Number.isInteger(Number(val)))
@@ -332,7 +332,7 @@ router.post('/categories', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/categories/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.put('/categories/:id', requirePermission('equipment', 'update'), [
   param('id').isInt(),
   body('name').notEmpty().trim(),
   body('description').optional().trim(),
@@ -883,7 +883,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
   res.json(formatEquipment(row));
 });
 
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('equipment', 'create'), [
   body('name').notEmpty().trim()
 ], (req, res) => {
   const db = req.db;
@@ -917,7 +917,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.put('/:id', requirePermission('equipment', 'update'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = req.params.id;
   const existing = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
@@ -947,7 +947,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(
   res.json(formatEquipment(row));
 });
 
-router.delete('/:id', authorize(ROLES.ADMIN), param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('equipment', 'delete'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = parseInt(req.params.id, 10);
   const eq = db.prepare('SELECT code, name FROM equipment WHERE id = ?').get(id);

@@ -21,8 +21,8 @@ export default function SuppliersList() {
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const { user } = useAuth();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const { can } = useAuth();
+  const canEdit = can('suppliers', 'update');
 
   useEffect(() => {
     setLoading(true);

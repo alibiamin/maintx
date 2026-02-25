@@ -4,12 +4,12 @@
 
 const express = require('express');
 const router = express.Router();
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const codification = require('../services/codification');
 
 router.use(authenticate);
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('tools', 'view'), (req, res) => {
   const db = req.db;
   try {
     try {
@@ -43,7 +43,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.get('/assignments', (req, res) => {
+router.get('/assignments', requirePermission('tools', 'view'), (req, res) => {
   const db = req.db;
   try {
     try {
@@ -74,7 +74,7 @@ router.get('/assignments', (req, res) => {
   }
 });
 
-router.get('/calibrations', (req, res) => {
+router.get('/calibrations', requirePermission('tools', 'view'), (req, res) => {
   const db = req.db;
   try {
     const rows = db.prepare(`
@@ -93,7 +93,72 @@ router.get('/calibrations', (req, res) => {
   }
 });
 
-router.get('/:id', (req, res) => {
+// Certificats d'étalonnage (métrologie)
+router.get('/:id/certificates', requirePermission('tools', 'view'), (req, res) => {
+  const db = req.db;
+  try {
+    const hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tool_calibration_certificates'").get();
+    if (!hasTable) return res.json([]);
+    const rows = db.prepare('SELECT * FROM tool_calibration_certificates WHERE tool_id = ? ORDER BY expiry_date DESC').all(req.params.id);
+    res.json(rows.map(r => ({
+      id: r.id,
+      toolId: r.tool_id,
+      certificateNumber: r.certificate_number,
+      issuedDate: r.issued_date,
+      expiryDate: r.expiry_date,
+      issuedBy: r.issued_by,
+      filePath: r.file_path,
+      notes: r.notes,
+      createdAt: r.created_at
+    })));
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) return res.json([]);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/:id/certificates', requirePermission('tools', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
+  try {
+    const tool = db.prepare('SELECT id FROM tools WHERE id = ?').get(req.params.id);
+    if (!tool) return res.status(404).json({ error: 'Outil non trouvé' });
+    const hasTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tool_calibration_certificates'").get();
+    if (!hasTable) return res.status(501).json({ error: 'Table tool_calibration_certificates absente.' });
+    const { certificateNumber, issuedDate, expiryDate, issuedBy, notes } = req.body;
+    if (!certificateNumber || !issuedDate || !expiryDate) return res.status(400).json({ error: 'Numéro, date d\'émission et date d\'expiration requis.' });
+    db.prepare(`
+      INSERT INTO tool_calibration_certificates (tool_id, certificate_number, issued_date, expiry_date, issued_by, notes)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(req.params.id, certificateNumber, issuedDate, expiryDate, issuedBy || null, notes || null);
+    const id = db.prepare('SELECT last_insert_rowid() as id').get().id;
+    const row = db.prepare('SELECT * FROM tool_calibration_certificates WHERE id = ?').get(id);
+    res.status(201).json({
+      id: row.id,
+      toolId: row.tool_id,
+      certificateNumber: row.certificate_number,
+      issuedDate: row.issued_date,
+      expiryDate: row.expiry_date,
+      issuedBy: row.issued_by,
+      notes: row.notes,
+      createdAt: row.created_at
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.delete('/:id/certificates/:certId', requirePermission('tools', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+  const db = req.db;
+  try {
+    const r = db.prepare('DELETE FROM tool_calibration_certificates WHERE id = ? AND tool_id = ?').run(req.params.certId, req.params.id);
+    if (r.changes === 0) return res.status(404).json({ error: 'Certificat non trouvé' });
+    res.json({ message: 'Certificat supprimé' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/:id', requirePermission('tools', 'view'), (req, res) => {
   const db = req.db;
   try {
     const tool = db.prepare('SELECT * FROM tools WHERE id = ?').get(req.params.id);
@@ -117,7 +182,7 @@ router.get('/:id', (req, res) => {
   }
 });
 
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.post('/', requirePermission('tools', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   try {
     const {
@@ -178,7 +243,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   }
 });
 
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.put('/:id', requirePermission('tools', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   try {
     const current = db.prepare('SELECT * FROM tools WHERE id = ?').get(req.params.id);
@@ -302,7 +367,7 @@ router.post('/:id/return', (req, res) => {
   }
 });
 
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.delete('/:id', requirePermission('tools', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   try {
     const tool = db.prepare('SELECT id FROM tools WHERE id = ?').get(req.params.id);

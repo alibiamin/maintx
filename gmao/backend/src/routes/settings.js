@@ -4,12 +4,13 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const codification = require('../services/codification');
 const { getIndicatorTargets } = require('../services/indicatorTargets');
 
 const router = express.Router();
 router.use(authenticate);
+router.use(requirePermission('settings', 'view'));
 
 router.get('/hourly-rate', (req, res) => {
   const db = req.db;
@@ -21,7 +22,7 @@ router.get('/hourly-rate', (req, res) => {
   }
 });
 
-router.post('/hourly-rate', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.post('/hourly-rate', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const { value } = req.body;
   const v = String(value || 45).replace(',', '.');
@@ -49,7 +50,7 @@ router.get('/currency', (req, res) => {
   const r = getCurrencyRow(db);
   res.json({ value: r?.value || '€' });
 });
-router.post('/currency', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.post('/currency', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const { value } = req.body;
   const v = value != null ? String(value).trim() || '€' : '€';
@@ -73,7 +74,7 @@ router.get('/codification', (req, res) => {
   }
 });
 
-router.put('/codification', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.put('/codification', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   try {
     const config = codification.setAllConfig(db, req.body);
@@ -110,7 +111,7 @@ router.get('/indicator-targets', (req, res) => {
   }
 });
 
-router.put('/indicator-targets', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.put('/indicator-targets', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const body = Array.isArray(req.body) ? req.body : (req.body?.targets ? req.body.targets : []);
   if (!body.length) return res.status(400).json({ error: 'Tableau d\'objectifs requis' });
@@ -159,7 +160,7 @@ router.put('/indicator-targets', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req
 });
 
 // ——— Rôles (lecture seule : liste des rôles et nombre d'utilisateurs) ———
-router.get('/roles', (req, res) => {
+router.get('/roles', requirePermission('settings', 'view'), (req, res) => {
   const db = req.db;
   try {
     const rows = db.prepare(`
@@ -192,7 +193,7 @@ router.get('/units', (req, res) => {
   }
 });
 
-router.post('/units', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.post('/units', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const { name, symbol } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Nom requis' });
@@ -206,7 +207,7 @@ router.post('/units', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   }
 });
 
-router.put('/units/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.put('/units/:id', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const id = parseInt(req.params.id, 10);
   const { name, symbol } = req.body || {};
@@ -223,7 +224,7 @@ router.put('/units/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) =
   }
 });
 
-router.delete('/units/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.delete('/units/:id', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const id = parseInt(req.params.id, 10);
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
@@ -267,7 +268,7 @@ router.get('/kpi-definitions', (req, res) => {
   }
 });
 
-router.post('/kpi-definitions', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.post('/kpi-definitions', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const { name, source_key, order_index, color, icon, is_visible } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Nom requis' });
@@ -296,7 +297,7 @@ router.post('/kpi-definitions', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req,
   }
 });
 
-router.put('/kpi-definitions/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.put('/kpi-definitions/:id', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const id = parseInt(req.params.id, 10);
   const { name, source_key, order_index, color, icon, is_visible } = req.body || {};
@@ -325,7 +326,7 @@ router.put('/kpi-definitions/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (r
   }
 });
 
-router.put('/kpi-definitions/reorder', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.put('/kpi-definitions/reorder', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const order = req.body?.order; // [ { id, order_index }, ... ]
   if (!Array.isArray(order) || order.length === 0) return res.status(400).json({ error: 'Tableau order requis' });
@@ -343,7 +344,7 @@ router.put('/kpi-definitions/reorder', authorize(ROLES.ADMIN, ROLES.RESPONSABLE)
   }
 });
 
-router.delete('/kpi-definitions/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.delete('/kpi-definitions/:id', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const id = parseInt(req.params.id, 10);
   if (!id || isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
@@ -379,7 +380,7 @@ router.get('/email-templates/:id', (req, res) => {
     throw e;
   }
 });
-router.post('/email-templates', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.post('/email-templates', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const { code, name, subjectTemplate, bodyTemplate, description } = req.body || {};
   if (!code || !name) return res.status(400).json({ error: 'code et name requis' });
@@ -396,7 +397,7 @@ router.post('/email-templates', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req,
     throw e;
   }
 });
-router.put('/email-templates/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.put('/email-templates/:id', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const id = req.params.id;
   const existing = db.prepare('SELECT * FROM email_templates WHERE id = ?').get(id);
@@ -407,7 +408,7 @@ router.put('/email-templates/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (r
   `).run(code ?? existing.code, name ?? existing.name, subjectTemplate !== undefined ? subjectTemplate : existing.subject_template, bodyTemplate !== undefined ? bodyTemplate : existing.body_template, description !== undefined ? description : existing.description, id);
   res.json(db.prepare('SELECT * FROM email_templates WHERE id = ?').get(id));
 });
-router.delete('/email-templates/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.delete('/email-templates/:id', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const r = db.prepare('DELETE FROM email_templates WHERE id = ?').run(req.params.id);
   if (r.changes === 0) return res.status(404).json({ error: 'Template non trouvé' });
@@ -424,7 +425,7 @@ router.get('/budget-alert-threshold', (req, res) => {
     res.json({ value: 90 });
   }
 });
-router.post('/budget-alert-threshold', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.post('/budget-alert-threshold', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const v = Math.min(100, Math.max(0, parseFloat(req.body?.value) || 90));
   try {
@@ -446,7 +447,7 @@ router.get('/approval-threshold-amount', (req, res) => {
     res.json({ value: 0 });
   }
 });
-router.post('/approval-threshold-amount', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
+router.post('/approval-threshold-amount', requirePermission('settings', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   const v = Math.max(0, parseFloat(req.body?.value) || 0);
   try {
@@ -459,7 +460,7 @@ router.post('/approval-threshold-amount', authorize(ROLES.ADMIN, ROLES.RESPONSAB
 });
 
 // ——— Sauvegarde base de données (réservé aux administrateurs) ———
-router.get('/backup', authorize(ROLES.ADMIN), (req, res) => {
+router.get('/backup', requirePermission('settings', 'update'), authorize(ROLES.ADMIN), (req, res) => {
   const db = req.db;
   try {
     db._save();

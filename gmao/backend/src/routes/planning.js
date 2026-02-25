@@ -3,10 +3,11 @@
  */
 
 const express = require('express');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requirePermission } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
+router.use(requirePermission('planning', 'view'));
 
 router.get('/gantt', (req, res) => {
   const db = req.db;

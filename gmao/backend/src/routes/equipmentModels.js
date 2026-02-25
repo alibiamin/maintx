@@ -4,7 +4,7 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
@@ -27,7 +27,7 @@ function formatModel(row) {
 /**
  * GET /api/equipment-models
  */
-router.get('/', (req, res) => {
+router.get('/', requirePermission('equipment_models', 'view'), (req, res) => {
   const db = req.db;
   const rows = db.prepare(`
     SELECT m.*, c.name as category_name
@@ -41,7 +41,7 @@ router.get('/', (req, res) => {
 /**
  * GET /api/equipment-models/:id
  */
-router.get('/:id', param('id').isInt(), (req, res) => {
+router.get('/:id', requirePermission('equipment_models', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const row = db.prepare(`
     SELECT m.*, c.name as category_name
@@ -56,7 +56,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
 /**
  * POST /api/equipment-models
  */
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('equipment_models', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('name').notEmpty().trim()
 ], (req, res) => {
   const db = req.db;
@@ -85,7 +85,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 /**
  * PUT /api/equipment-models/:id
  */
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.put('/:id', requirePermission('equipment_models', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('name').optional().notEmpty().trim()
 ], (req, res) => {
@@ -118,7 +118,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 /**
  * DELETE /api/equipment-models/:id
  */
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('equipment_models', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const result = db.prepare('DELETE FROM equipment_models WHERE id = ?').run(req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Modèle non trouvé' });

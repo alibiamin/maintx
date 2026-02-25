@@ -5,7 +5,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { body, param, query, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const dbModule = require('../database/db');
 
 const router = express.Router();
@@ -17,7 +17,7 @@ function getTechnicianListDb(req) {
 }
 
 // Créer un technicien (admin ou responsable). Multi-tenant : insertion dans la base admin avec tenant_id pour que le technicien apparaisse dans la liste.
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('technicians', 'create'), [
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 8 }),
   body('firstName').notEmpty().trim(),
@@ -28,14 +28,14 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   if (!err.isEmpty()) return res.status(400).json({ errors: err.array() });
   const {
     email, password, firstName, lastName, hourlyRate,
-    phone, address, city, postalCode, employeeNumber, jobTitle, department, hireDate, contractType,
-    tenantId: bodyTenantId
+    phone, address, city, postalCode, employeeNumber, jobTitle, department, hireDate, contractType
   } = req.body;
   const roleRow = adminDb.prepare("SELECT id FROM roles WHERE name = 'technicien'").get();
   if (!roleRow) return res.status(500).json({ error: 'Rôle technicien introuvable' });
   const hash = bcrypt.hashSync(password, 10);
   const rate = hourlyRate != null && hourlyRate !== '' ? parseFloat(String(hourlyRate).replace(',', '.')) : null;
-  const tenantId = bodyTenantId != null && bodyTenantId !== '' ? parseInt(bodyTenantId, 10) : req.tenantId;
+  // Sécurité : tenantId uniquement depuis le JWT (jamais depuis le body)
+  const tenantId = req.tenantId;
   try {
     let result;
     try {
@@ -75,7 +75,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 });
 
 // Suggestion d'affectation : ?workOrderId= ou ?typeId= → techniciens triés par adéquation + note (avant /:id)
-router.get('/suggest-assignment', (req, res) => {
+router.get('/suggest-assignment', requirePermission('work_orders', 'view'), (req, res) => {
   const db = req.db;
   const workOrderId = req.query.workOrderId ? parseInt(req.query.workOrderId) : null;
   const typeId = req.query.typeId ? parseInt(req.query.typeId) : null;
@@ -151,7 +151,7 @@ router.get('/suggest-assignment', (req, res) => {
 });
 
 // Liaisons type d'OT ↔ compétence (avant /:id)
-router.get('/type-competencies/list', (req, res) => {
+router.get('/type-competencies/list', requirePermission('technicians', 'view'), (req, res) => {
   const db = req.db;
   const rows = db.prepare(`
     SELECT tc.work_order_type_id, tc.competence_id, tc.required_level,
@@ -164,7 +164,7 @@ router.get('/type-competencies/list', (req, res) => {
   res.json(rows);
 });
 
-router.put('/type-competencies/save', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.put('/type-competencies/save', requirePermission('technicians', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('links').isArray(),
   body('links.*.work_order_type_id').isInt(),
   body('links.*.competence_id').isInt(),
@@ -195,7 +195,7 @@ router.put('/type-competencies/save', authorize(ROLES.ADMIN, ROLES.RESPONSABLE),
 // Chaque base (tenant) ne voit que ses techniciens : filtre strict par req.tenantId (pas de combo client).
 // Admin (tenantId null) : uniquement les techniciens sans client (tenant_id IS NULL).
 // Query: page (1-based), limit (default 20). With pagination: response { data: [...], total: N }
-router.get('/', (req, res) => {
+router.get('/', requirePermission('technicians', 'view'), (req, res) => {
   const adminDb = dbModule.getAdminDb();
   const { page, limit } = req.query;
   const usePagination = page !== undefined && page !== '';
@@ -351,7 +351,7 @@ router.get('/', (req, res) => {
 });
 
 // Hiérarchie équipe (tree) — avant /:id
-router.get('/team-hierarchy', (req, res) => {
+router.get('/team-hierarchy', requirePermission('technicians', 'view'), (req, res) => {
   const db = req.db;
   const rows = db.prepare(`
     SELECT u.id, u.first_name, u.last_name, u.manager_id, r.name as role_name
@@ -383,7 +383,7 @@ router.get('/team-hierarchy', (req, res) => {
 });
 
 // Détail d'un technicien + compétences + évaluations. Utilisateur depuis la base admin ; compétences/évaluations depuis la base client.
-router.get('/:id', param('id').isInt(), (req, res) => {
+router.get('/:id', requirePermission('technicians', 'view'), param('id').isInt(), (req, res) => {
   const adminDb = dbModule.getAdminDb();
   const dataDb = getTechnicianListDb(req);
   const id = parseInt(req.params.id);
@@ -447,7 +447,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
 });
 
 // Mise à jour du profil technicien (taux horaire, nom, prénom)
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.put('/:id', requirePermission('technicians', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('hourlyRate').optional()
 ], (req, res) => {
@@ -508,7 +508,7 @@ router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 });
 
 // Mise à jour des compétences d'un technicien
-router.put('/:id/competencies', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.put('/:id/competencies', requirePermission('technicians', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('competencies').isArray(),
   body('competencies.*.competence_id').isInt(),
@@ -538,7 +538,7 @@ router.put('/:id/competencies', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 });
 
 // Liste des évaluations d'un technicien
-router.get('/:id/evaluations', param('id').isInt(), (req, res) => {
+router.get('/:id/evaluations', requirePermission('technicians', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = parseInt(req.params.id);
   const rows = db.prepare(`
@@ -555,7 +555,7 @@ router.get('/:id/evaluations', param('id').isInt(), (req, res) => {
 });
 
 // Ajouter une évaluation. Stockée dans la base client du technicien (tenant_id) pour cohérence multi-tenant.
-router.post('/:id/evaluations', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/:id/evaluations', requirePermission('technicians', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('score').isInt({ min: 1, max: 5 }),
   body('comment').optional().trim(),
@@ -589,7 +589,7 @@ router.post('/:id/evaluations', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 });
 
 // ————— Formations / habilitations (avec date de validité) —————
-router.get('/:id/trainings', param('id').isInt(), (req, res) => {
+router.get('/:id/trainings', requirePermission('technicians', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = parseInt(req.params.id);
   const user = db.prepare(`
@@ -609,7 +609,7 @@ router.get('/:id/trainings', param('id').isInt(), (req, res) => {
   }
 });
 
-router.post('/:id/trainings', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/:id/trainings', requirePermission('technicians', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   body('name').notEmpty().trim(),
   body('description').optional().trim(),
@@ -643,7 +643,7 @@ router.post('/:id/trainings', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   }
 });
 
-router.put('/:id/trainings/:tid', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.put('/:id/trainings/:tid', requirePermission('technicians', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   param('tid').isInt(),
   body('name').optional().notEmpty().trim(),
@@ -679,7 +679,7 @@ router.put('/:id/trainings/:tid', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   res.json(row);
 });
 
-router.delete('/:id/trainings/:tid', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.delete('/:id/trainings/:tid', requirePermission('technicians', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt(),
   param('tid').isInt()
 ], (req, res) => {

@@ -7,7 +7,7 @@ const { body, param, validationResult } = require('express-validator');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const notificationService = require('../services/notificationService');
 const auditService = require('../services/auditService');
 const dbModule = require('../database/db');
@@ -15,12 +15,22 @@ const dbModule = require('../database/db');
 const router = express.Router();
 const woUploadsDir = path.join(__dirname, '../../uploads/work-order-attachments');
 if (!fs.existsSync(woUploadsDir)) fs.mkdirSync(woUploadsDir, { recursive: true });
+
+const ALLOWED_OT_EXT = /\.(jpe?g|png|gif|webp|pdf|doc|docx|xls|xlsx|txt|odt|ods|csv)$/i;
+const ALLOWED_OT_MIMES = /^(image\/(jpeg|png|gif|webp)|application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.(wordprocessingml|spreadsheetml)|text\/plain|application\/vnd\.oasis\.opendocument\.(text|spreadsheet)|text\/csv)/;
+
 const woUpload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, woUploadsDir),
     filename: (req, file, cb) => cb(null, `${Date.now()}-${(file.originalname || 'file').replace(/[^a-zA-Z0-9.-]/g, '_')}`)
   }),
-  limits: { fileSize: 15 * 1024 * 1024 }
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const extOk = ALLOWED_OT_EXT.test(path.extname(file.originalname || ''));
+    const mimeOk = ALLOWED_OT_MIMES.test(file.mimetype || '');
+    if (extOk && mimeOk) return cb(null, true);
+    cb(new Error('Type de fichier non autorisé. Autorisés : images, PDF, Office, texte, CSV.'));
+  }
 });
 router.use(authenticate);
 
@@ -253,7 +263,7 @@ function generateOTNumber(db) {
  * Query: status, assignedTo, equipmentId, priority, page (1-based), limit (default 20)
  * If page/limit provided: Response { data: [...], total: N }. Otherwise: array (backward compatible).
  */
-router.get('/', (req, res) => {
+router.get('/', requirePermission('work_orders', 'view'), (req, res) => {
   const db = req.db;
   const { status, assignedTo, equipmentId, priority, projectId, page, limit } = req.query;
   const usePagination = page !== undefined && page !== '';
@@ -295,7 +305,7 @@ router.get('/', (req, res) => {
 /**
  * GET /api/work-orders/types
  */
-router.get('/types', (req, res) => {
+router.get('/types', requirePermission('work_orders', 'view'), (req, res) => {
   const db = req.db;
   const types = db.prepare('SELECT * FROM work_order_types ORDER BY name').all();
   res.json(types);
@@ -305,7 +315,7 @@ router.get('/types', (req, res) => {
  * GET /api/work-orders/calendar
  * OT pour affichage calendrier
  */
-router.get('/calendar', (req, res) => {
+router.get('/calendar', requirePermission('work_orders', 'view'), (req, res) => {
   const db = req.db;
   const { start, end } = req.query;
   const s = start || '1900-01-01';
@@ -330,7 +340,7 @@ router.get('/calendar', (req, res) => {
 /**
  * GET /api/work-orders/:id/reservations — Réservations de pièces pour cet OT
  */
-router.get('/:id/reservations', param('id').isInt(), (req, res) => {
+router.get('/:id/reservations', requirePermission('work_orders', 'view'), param('id').isInt(), (req, res) => {
   if (validateIdParam(req, res)) return;
   const db = req.db;
   const woId = req.params.id;
@@ -374,7 +384,7 @@ router.get('/:id/reservations', param('id').isInt(), (req, res) => {
 /**
  * POST /api/work-orders/:id/reservations — Réserver des pièces pour l'OT
  */
-router.post('/:id/reservations', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), [
+router.post('/:id/reservations', requirePermission('work_orders', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), param('id').isInt(), [
   body('sparePartId').isInt(),
   body('quantity').isInt({ min: 1 }),
   body('notes').optional().trim()
@@ -910,7 +920,7 @@ router.delete('/:id/extra-fees/:feeId', authorize(ROLES.ADMIN, ROLES.RESPONSABLE
 /**
  * GET /api/work-orders/:id
  */
-router.get('/:id', param('id').isInt(), (req, res) => {
+router.get('/:id', requirePermission('work_orders', 'view'), param('id').isInt(), (req, res) => {
   if (validateIdParam(req, res)) return;
   const db = req.db;
   const row = db.prepare(`
@@ -1025,7 +1035,7 @@ router.get('/:id', param('id').isInt(), (req, res) => {
  * POST /api/work-orders
  * Création OT (déclaration panne ou planifié)
  */
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROLES.UTILISATEUR), [
+router.post('/', requirePermission('work_orders', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROLES.UTILISATEUR), [
   body('title').notEmpty().trim(),
   body('equipmentId').optional().isInt(),
   body('typeId').optional().isInt(),
@@ -1221,7 +1231,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN, ROL
  * PUT /api/work-orders/:id
  * Technicien : peut passer en cours, actual_start, actual_end. Clôture (completed) réservée au responsable ou admin.
  */
-router.put('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), [
+router.put('/:id', requirePermission('work_orders', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), [
   param('id').isInt(),
   body('status').optional().isIn(['pending', 'in_progress', 'completed', 'cancelled', 'deferred']),
   body('statusWorkflow').optional().isIn(['draft', 'planned', 'in_progress', 'to_validate', 'pending_approval', 'closed'])
@@ -1453,7 +1463,7 @@ router.put('/:id/approve', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id'
 /**
  * DELETE /api/work-orders/:id (annulation)
  */
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
+router.delete('/:id', requirePermission('work_orders', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
   const id = req.params.id;
   const wo = db.prepare('SELECT number FROM work_orders WHERE id = ?').get(id);

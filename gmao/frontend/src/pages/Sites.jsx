@@ -32,9 +32,9 @@ export default function Sites() {
   const [depForm, setDepForm] = useState({ siteId: '', code: '', name: '', description: '' });
   const [ligneForm, setLigneForm] = useState({ siteId: '', code: '', name: '' });
   const [submitting, setSubmitting] = useState(false);
-  const { user } = useAuth();
+  const { can } = useAuth();
   const snackbar = useSnackbar();
-  const canEdit = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('sites', 'update');
 
   const load = () => {
     setLoading(true);

@@ -22,6 +22,7 @@ import {
 import { Add, Visibility } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { Can } from '../../components/RequirePermission';
 import { useSnackbar } from '../../context/SnackbarContext';
 import InterventionFlow from '../../components/InterventionFlow';
 import { useTranslation } from 'react-i18next';
@@ -42,10 +43,10 @@ export default function WorkOrderList() {
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
   const [loadError, setLoadError] = useState(null);
-  const { user } = useAuth();
+  const { can } = useAuth();
   const navigate = useNavigate();
   const snackbar = useSnackbar();
-  const canCreate = ['administrateur', 'responsable_maintenance', 'technicien', 'utilisateur'].includes(user?.role);
+  const canCreate = can('work_orders', 'create');
 
   useEffect(() => {
     setFilterStatus(statusFromUrl);
@@ -84,11 +85,11 @@ export default function WorkOrderList() {
           <h2 style={{ margin: 0 }}>Ordres de travail</h2>
           <p style={{ margin: '4px 0 0', color: '#64748b' }}>Maintenance corrective et preventive</p>
         </Box>
-        {canCreate && (
+        <Can resource="work_orders" action="create">
           <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/app/work-orders/new')}>
             Declarer une panne
           </Button>
-        )}
+        </Can>
       </Box>
 
       <InterventionFlow workOrders={orders.filter(o => !['cancelled', 'deferred'].includes(o.status))} />

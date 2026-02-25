@@ -4,7 +4,7 @@
  */
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const dbModule = require('../database/db');
 
 const router = express.Router();
@@ -44,7 +44,7 @@ function enrichWithTechnicianNames(adminDb, rows) {
 }
 
 // Liste des saisies (filtres : technicianId, dateFrom, dateTo)
-router.get('/', [
+router.get('/', requirePermission('attendance_overrides', 'view'), [
   query('technicianId').optional().isInt().toInt(),
   query('dateFrom').optional().isISO8601(),
   query('dateTo').optional().isISO8601(),
@@ -111,7 +111,7 @@ router.get('/', [
 });
 
 // Créer ou remplacer une saisie pour (technicien, date)
-router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.post('/', requirePermission('attendance_overrides', 'create'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   body('technicianId').isInt().toInt(),
   body('date').notEmpty().trim(),
   body('status').isIn(OVERRIDE_STATUSES),
@@ -155,7 +155,7 @@ router.post('/', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
 });
 
 // Supprimer une saisie
-router.delete('/:id', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
+router.delete('/:id', requirePermission('attendance_overrides', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), [
   param('id').isInt().toInt()
 ], (req, res) => {
   const err = validationResult(req);

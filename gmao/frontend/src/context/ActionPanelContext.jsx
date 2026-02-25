@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -20,10 +20,13 @@ import {
   DialogActions,
   Button,
 } from '@mui/material';
-import { Close, PushPin, PushPinOutlined, Add, Edit, Delete, Print, Download, Visibility, FileCopy, Settings } from '@mui/icons-material';
+import { Close, PushPin, PushPinOutlined, Add, Edit, Delete, Print, Download, Visibility, FileCopy, Settings, Refresh, CalendarMonth, People, Schedule, MenuBook, Business, Assignment } from '@mui/icons-material';
 import api from '../services/api';
 import { getApiErrorMessage } from '../services/api';
 import { useSnackbar } from './SnackbarContext';
+import { getDefaultPageContext as getRouteContext, getPageTitle } from './actionPanelRoutes';
+
+export { getDefaultPageContext } from './actionPanelRoutes';
 
 const STORAGE_KEY = 'gmao-action-bar-pinned';
 const PANEL_WIDTH = 280;
@@ -34,6 +37,7 @@ const ENTITY_LABELS = {
   equipment: 'Équipement',
   'work-orders': 'Ordre de travail',
   'maintenance-plans': 'Plan de maintenance',
+  'maintenance-projects': 'Projet de maintenance',
   stock: 'Pièce',
   suppliers: 'Fournisseur',
   contracts: 'Contrat',
@@ -42,16 +46,20 @@ const ENTITY_LABELS = {
   sites: 'Site',
   users: 'Utilisateur',
   roles: 'Rôle',
-  warranties: 'Garantie'
+  warranties: 'Garantie',
+  technicians: 'Technicien',
+  budgets: 'Budget',
+  'failure-codes': 'Code défaut'
 };
 
 const APP_BASE = '/app';
 
-/** Page de création dédiée par type d'entité (chaque création dans son module, pas le menu Création). */
+/** Page de création dédiée par type d'entité. */
 function getCreationPath(entityType) {
   switch (entityType) {
     case 'work-orders': return `${APP_BASE}/work-orders/new`;
     case 'maintenance-plans': return `${APP_BASE}/maintenance/creation/plan`;
+    case 'maintenance-projects': return `${APP_BASE}/maintenance-projects/new`;
     case 'checklists': return `${APP_BASE}/maintenance/creation/checklist`;
     case 'stock': return `${APP_BASE}/stock/creation/piece`;
     case 'suppliers': return `${APP_BASE}/suppliers/creation/supplier`;
@@ -61,11 +69,13 @@ function getCreationPath(entityType) {
     case 'equipment': return `${APP_BASE}/equipment/creation/machine`;
     case 'users': return `${APP_BASE}/settings/creation/user`;
     case 'failure-codes': return `${APP_BASE}/settings/creation/failure-code`;
+    case 'technicians': return `${APP_BASE}/technicians`;
+    case 'budgets': return `${APP_BASE}/budgets`;
     default: return `${APP_BASE}/equipment/creation/machine`;
   }
 }
 
-/** Chemins réels par type d'entité (certains sont sous settings/, pas à la racine /app). */
+/** Chemins réels par type d'entité (certains sont sous settings/ ou ont une structure spécifique). */
 function getPathsForEntity(entityType, ent) {
   if (ent?.id == null) return { detailPath: null, editPath: null, detailNavigate: null };
   switch (entityType) {
@@ -75,8 +85,16 @@ function getPathsForEntity(entityType, ent) {
         editPath: `${APP_BASE}/settings/roles`,
         detailNavigate: (nav) => nav(`${APP_BASE}/settings/roles`, { state: { selectedRoleId: ent.id } }),
       };
+    case 'users':
+      return { detailPath: `${APP_BASE}/users`, editPath: `${APP_BASE}/users`, detailNavigate: (nav) => nav(`${APP_BASE}/users`) };
     case 'warranties':
       return { detailPath: null, editPath: null, detailNavigate: null };
+    case 'stock':
+      return {
+        detailPath: `${APP_BASE}/stock/parts/${ent.id}`,
+        editPath: `${APP_BASE}/stock/parts/${ent.id}`,
+        detailNavigate: (nav) => nav(`${APP_BASE}/stock/parts/${ent.id}`),
+      };
     case 'maintenance-projects':
       return {
         detailPath: `${APP_BASE}/maintenance-projects/${ent.id}`,
@@ -102,15 +120,67 @@ const DELETE_CONFIG = {
   'maintenance-projects': { apiPath: '/maintenance-projects', listPath: `${APP_BASE}/maintenance-projects` },
 };
 
-/** Construit titre + actions à partir du contexte page (liste / détail / entité sélectionnée). */
-function buildFromPageContext(pageContext, navigate, { onDeleteRequest } = {}) {
-  if (!pageContext || !pageContext.entityType) {
-    return { title: 'Actions', actions: [], entity: null };
+/** Actions communes pour les pages de type 'page' (sans entité). */
+function buildPageActions(pageId, navigate) {
+  const to = (path) => () => navigate(path.startsWith('/') ? path : `${APP_BASE}/${path}`);
+  const base = [
+    { id: 'refresh', label: 'Rafraîchir', icon: <Refresh />, onClick: () => window.location.reload() },
+    { divider: true },
+    { id: 'print', label: 'Imprimer', icon: <Print />, onClick: () => window.print() },
+    { id: 'export', label: 'Exporter', icon: <Download />, onClick: () => {} }
+  ];
+  switch (pageId) {
+    case 'my-work-orders':
+      return [{ id: 'add', label: 'Nouvel OT', icon: <Add />, variant: 'contained', onClick: to('work-orders/new') }, { divider: true }, ...base];
+    case 'planning':
+      return [{ id: 'calendar', label: 'Calendrier', icon: <CalendarMonth />, onClick: to('planning') }, { divider: true }, ...base];
+    case 'effectif':
+      return [
+        { id: 'presence', label: 'Présence', icon: <People />, onClick: to('effectif/presence') },
+        { id: 'pointage', label: 'Pointage', icon: <Schedule />, onClick: to('effectif/pointage') },
+        { divider: true },
+        ...base
+      ];
+    case 'training':
+      return [
+        { id: 'catalog', label: 'Catalogue formations', icon: <MenuBook />, onClick: to('training/catalog') },
+        { id: 'plans', label: 'Plans de formation', icon: <CalendarMonth />, onClick: to('training/plans') },
+        { divider: true },
+        ...base
+      ];
+    case 'subcontracting':
+      return [
+        { id: 'contractors', label: 'Sous-traitants', icon: <Business />, onClick: to('subcontracting/contractors') },
+        { id: 'orders', label: 'Ordres', icon: <Assignment />, onClick: to('subcontracting/orders') },
+        { divider: true },
+        ...base
+      ];
+    case 'maintenance-plans-due':
+      return [{ id: 'plans', label: 'Plans de maintenance', icon: <CalendarMonth />, onClick: to('maintenance-plans') }, { divider: true }, ...base];
+    default:
+      return base;
   }
+}
+
+/** Construit titre + actions à partir du contexte page (liste / détail / page). */
+function buildFromPageContext(pageContext, navigate, { onDeleteRequest } = {}) {
+  if (!pageContext) {
+    return { title: 'Actions', actions: [{ id: 'print', label: 'Imprimer', icon: <Print />, onClick: () => window.print() }, { id: 'refresh', label: 'Rafraîchir', icon: <Refresh />, onClick: () => window.location.reload() }], entity: null };
+  }
+
+  if (pageContext.type === 'page' && pageContext.pageId) {
+    const title = getPageTitle(pageContext.pageId);
+    const actions = buildPageActions(pageContext.pageId, navigate);
+    return { title, actions, entity: null };
+  }
+
   const { type, entityType, entity, selectedEntity } = pageContext;
+  if (!entityType) {
+    return { title: 'Actions', actions: buildPageActions('dashboard', navigate), entity: null };
+  }
+
   const ent = entity || selectedEntity;
   const label = ENTITY_LABELS[entityType] || entityType;
-  const hasEditRoute = entityType === 'maintenance-projects';
   const { detailPath, editPath, detailNavigate } = getPathsForEntity(entityType, ent);
   const canDelete = onDeleteRequest && DELETE_CONFIG[entityType] && ent?.id != null;
 
@@ -118,17 +188,17 @@ function buildFromPageContext(pageContext, navigate, { onDeleteRequest } = {}) {
   const hasDistinctEdit = editPath && editPath !== detailPath;
   const goEdit = hasDistinctEdit ? () => navigate(editPath) : (detailNavigate ? () => detailNavigate(navigate) : (editPath ? () => navigate(editPath) : goDetail));
   const deleteAction = canDelete
-    ? { id: 'delete', label: 'Supprimer', icon: <Delete />, display: 'button', variant: 'contained', color: 'error', onClick: () => onDeleteRequest(entityType, ent) }
+    ? { id: 'delete', label: 'Supprimer', icon: <Delete />, variant: 'contained', color: 'error', onClick: () => onDeleteRequest(entityType, ent) }
     : null;
 
   if (type === 'detail' && ent && (detailPath || detailNavigate)) {
     const actions = [
-      { id: 'view', label: 'Voir les détails', icon: <Visibility />, display: 'button', variant: 'contained', onClick: goDetail },
-      { id: 'edit', label: 'Modifier', icon: <Edit />, display: 'button', variant: 'outlined', onClick: goEdit },
-      { id: 'duplicate', label: 'Dupliquer', icon: <FileCopy />, display: 'button', variant: 'outlined', onClick: () => {} },
+      { id: 'view', label: 'Voir les détails', icon: <Visibility />, variant: 'contained', onClick: goDetail },
+      { id: 'edit', label: 'Modifier', icon: <Edit />, variant: 'outlined', onClick: goEdit },
+      { id: 'duplicate', label: 'Dupliquer', icon: <FileCopy />, variant: 'outlined', onClick: () => {} },
       { divider: true },
-      { id: 'print', label: 'Imprimer', icon: <Print />, display: 'standalone', onClick: () => window.print() },
-      { id: 'export', label: 'Exporter', icon: <Download />, display: 'standalone', onClick: () => {} },
+      { id: 'print', label: 'Imprimer', icon: <Print />, onClick: () => window.print() },
+      { id: 'export', label: 'Exporter', icon: <Download />, onClick: () => {} },
       ...(deleteAction ? [{ divider: true }, deleteAction] : [])
     ];
     return { title: ent.name || ent.code || label, actions, entity: ent };
@@ -136,38 +206,25 @@ function buildFromPageContext(pageContext, navigate, { onDeleteRequest } = {}) {
 
   if (type === 'list' && ent && (detailPath || detailNavigate)) {
     const actions = [
-      { id: 'view', label: 'Voir les détails', icon: <Visibility />, display: 'button', variant: 'contained', onClick: goDetail },
-      { id: 'edit', label: 'Modifier', icon: <Edit />, display: 'button', variant: 'outlined', onClick: goEdit },
+      { id: 'view', label: 'Voir les détails', icon: <Visibility />, variant: 'contained', onClick: goDetail },
+      { id: 'edit', label: 'Modifier', icon: <Edit />, variant: 'outlined', onClick: goEdit },
       { divider: true },
-      { id: 'print', label: 'Imprimer', icon: <Print />, display: 'standalone', onClick: () => window.print() },
-      { id: 'export', label: 'Exporter', icon: <Download />, display: 'standalone', onClick: () => {} },
+      { id: 'print', label: 'Imprimer', icon: <Print />, onClick: () => window.print() },
+      { id: 'export', label: 'Exporter', icon: <Download />, onClick: () => {} },
       ...(deleteAction ? [{ divider: true }, deleteAction] : [])
     ];
     return { title: ent.name || ent.code || label, actions, entity: ent };
   }
 
   const actions = [
-    { id: 'add', label: `Créer un ${label}`, icon: <Add />, display: 'button', variant: 'contained', onClick: () => navigate(getCreationPath(entityType)) },
-    { id: 'import', label: 'Importer', icon: <Download />, display: 'button', variant: 'outlined', onClick: () => {} },
+    { id: 'add', label: `Créer un ${label}`, icon: <Add />, variant: 'contained', onClick: () => navigate(getCreationPath(entityType)) },
+    { id: 'import', label: 'Importer', icon: <Download />, variant: 'outlined', onClick: () => {} },
     { divider: true },
-    { id: 'print', label: 'Imprimer la liste', icon: <Print />, display: 'standalone', onClick: () => window.print() },
-    { id: 'export', label: 'Exporter la liste', icon: <Download />, display: 'standalone', onClick: () => {} },
-    { id: 'settings', label: 'Paramètres', icon: <Settings />, display: 'standalone', onClick: () => {} }
+    { id: 'print', label: 'Imprimer la liste', icon: <Print />, onClick: () => window.print() },
+    { id: 'export', label: 'Exporter la liste', icon: <Download />, onClick: () => {} },
+    { id: 'settings', label: 'Paramètres', icon: <Settings />, onClick: () => {} }
   ];
   return { title: label, actions, entity: null };
-}
-
-/** Contexte par défaut selon le pathname. Ne retourne jamais null pour que la barre affiche toujours des actions. */
-export function getDefaultPageContext(pathname) {
-  let segs = pathname.split('/').filter(Boolean);
-  if (segs[0] === 'app') segs = segs.slice(1);
-  if (segs.length === 0) return { type: 'list', entityType: 'equipment' };
-  if (segs[0] === 'settings' && segs[1] === 'roles') return { type: 'list', entityType: 'roles' };
-  const entityType = segs[0];
-  if (segs.length >= 2 && !['map', 'categories', 'technical', 'new', 'roles', 'lines', 'assignments', 'resources', 'movements', 'inventories', 'alerts', 'entries', 'exits', 'transfers', 'reorders', 'orders', 'exports', 'calibrations', 'due', 'activity', 'kpis', 'creation'].includes(segs[1])) {
-    return { type: 'detail', entityType, id: segs[1] };
-  }
-  return { type: 'list', entityType };
 }
 
 const ActionPanelContext = createContext();
@@ -181,6 +238,7 @@ export const useActionPanel = () => {
 };
 
 export const ActionPanelProvider = ({ children }) => {
+  const location = useLocation();
   const [pinned, setPinnedState] = useState(() => {
     try {
       return localStorage.getItem(STORAGE_KEY) !== 'false';
@@ -190,6 +248,11 @@ export const ActionPanelProvider = ({ children }) => {
   });
   const [pageContext, setPageContextState] = useState(null);
   const [override, setOverride] = useState(null);
+
+  // À chaque changement de route, réinitialiser le contexte pour que le panneau affiche le défaut de la nouvelle page (puis la page peut appeler setContext).
+  useEffect(() => {
+    setPageContextState(null);
+  }, [location.pathname]);
 
   const setPinned = useCallback((value) => {
     setPinnedState(value);
@@ -271,12 +334,12 @@ export function ActionBar() {
     if (!deleteLoading) setDeleteDialog({ open: false, entityType: null, entity: null });
   }, [deleteLoading]);
 
-  const effectiveContext = pageContext ?? getDefaultPageContext(location.pathname);
+  const effectiveContext = pageContext ?? getRouteContext(location.pathname);
   const fromContext = buildFromPageContext(effectiveContext, navigate, { onDeleteRequest: handleDeleteRequest });
   const title = override ? override.title : fromContext.title;
   let actions = override ? (override.actions || []) : (fromContext.actions || []);
   if (!Array.isArray(actions) || actions.length === 0) {
-    const fallback = buildFromPageContext({ type: 'list', entityType: 'equipment' }, navigate, { onDeleteRequest: handleDeleteRequest });
+    const fallback = buildFromPageContext({ type: 'page', pageId: 'dashboard' }, navigate, { onDeleteRequest: handleDeleteRequest });
     actions = fallback.actions || [];
   }
   const entity = override ? override.entity : fromContext.entity;
@@ -376,7 +439,7 @@ export function ActionBar() {
         transition: theme.transitions.create(['width', 'min-width'], { duration: theme.transitions.duration.standard }),
       }}
     >
-      {/* En-tête fixe */}
+      {/* En-tête fixe — titre dynamique selon la page */}
       <Box
         sx={{
           flexShrink: 0,
@@ -389,10 +452,11 @@ export function ActionBar() {
           flexDirection: 'column',
           justifyContent: 'center',
         }}
+        aria-live="polite"
       >
         <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
           <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: theme.palette.text.primary, lineHeight: 1.3 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, color: theme.palette.text.primary, lineHeight: 1.3 }} component="h2">
               {title || 'Actions'}
             </Typography>
             {entity && (entity.code || entity.name) && (

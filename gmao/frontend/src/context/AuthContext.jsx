@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import api from '../services/api';
+import api, { setAuthHeader, setRefreshCallbacks } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -8,42 +8,62 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('xmaint-token');
-    if (token) {
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      const timeoutId = setTimeout(() => setLoading(false), 10000);
-      api.get('/auth/me')
-        .then((res) => setUser(res.data))
-        .catch(() => {
-          localStorage.removeItem('xmaint-token');
-          delete api.defaults.headers.common['Authorization'];
-        })
-        .finally(() => {
-          clearTimeout(timeoutId);
-          setLoading(false);
-        });
-      return () => clearTimeout(timeoutId);
-    } else {
-      setLoading(false);
-    }
+    setRefreshCallbacks(
+      (accessToken, newUser) => {
+        setAuthHeader(accessToken);
+        if (newUser) setUser(newUser);
+      },
+      () => {
+        setAuthHeader(null);
+        setUser(null);
+      }
+    );
+    return () => setRefreshCallbacks(null, null);
+  }, []);
+
+  useEffect(() => {
+    api.post('/auth/refresh')
+      .then((res) => {
+        const { accessToken, user: u } = res.data || {};
+        if (accessToken && u) {
+          setAuthHeader(accessToken);
+          setUser(u);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   const login = async (email, password) => {
     const res = await api.post('/auth/login', { email, password });
-    const { token, user: u } = res.data;
-    localStorage.setItem('xmaint-token', token);
-    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    const { accessToken, user: u } = res.data;
+    setAuthHeader(accessToken);
     setUser(u);
     return u;
   };
 
-  const logout = () => {
-    localStorage.removeItem('xmaint-token');
-    delete api.defaults.headers.common['Authorization'];
+  const logout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch (_) {}
+    setAuthHeader(null);
     setUser(null);
   };
 
-  const value = { user, loading, login, logout, isAuthenticated: !!user };
+  const refreshMe = async () => {
+    try {
+      const res = await api.get('/auth/me');
+      setUser(prev => (prev ? { ...prev, ...res.data, permissions: res.data.permissions ?? prev.permissions } : res.data));
+      return res.data;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  const permissions = user?.permissions ?? [];
+  const can = (resource, action) => permissions.includes(`${resource}.${action}`);
+
+  const value = { user, loading, login, logout, refreshMe, isAuthenticated: !!user, permissions, can };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

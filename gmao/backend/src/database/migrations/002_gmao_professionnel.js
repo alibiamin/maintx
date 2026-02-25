@@ -18,18 +18,18 @@ async function migrate(db) {
     )
   `);
 
-  // Colonne failure_code_id sur work_orders
+  // Colonne failure_code_id sur work_orders (table peut ne pas exister si DB créée sans init)
   try {
     db.exec('ALTER TABLE work_orders ADD COLUMN failure_code_id INTEGER REFERENCES failure_codes(id)');
   } catch (e) {
-    if (!e.message?.includes('duplicate column')) throw e;
+    if (!e.message?.includes('duplicate column') && !e.message?.includes('no such table')) throw e;
   }
 
   // Plans réglementaires (is_regulatory)
   try {
     db.exec('ALTER TABLE maintenance_plans ADD COLUMN is_regulatory INTEGER DEFAULT 0');
   } catch (e) {
-    if (!e.message?.includes('duplicate column')) throw e;
+    if (!e.message?.includes('duplicate column') && !e.message?.includes('no such table')) throw e;
   }
 
   // Taux horaire technicien (pour coûts) - on peut stocker dans une table param
@@ -57,7 +57,11 @@ async function migrate(db) {
     db.prepare('INSERT OR IGNORE INTO failure_codes (code, name, category) VALUES (?, ?, ?)').run(c.code, c.name, c.category);
   }
 
-  db.exec('CREATE INDEX IF NOT EXISTS idx_work_orders_failure_code ON work_orders(failure_code_id)');
+  try {
+    db.exec('CREATE INDEX IF NOT EXISTS idx_work_orders_failure_code ON work_orders(failure_code_id)');
+  } catch (e) {
+    if (!e.message?.includes('no such table')) throw e;
+  }
 }
 
 module.exports = { migrate };

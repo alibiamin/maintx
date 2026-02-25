@@ -4,12 +4,12 @@
 
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authenticate);
 
-router.get('/', (req, res) => {
+router.get('/', requirePermission('satisfaction', 'view'), (req, res) => {
   const db = req.db;
   try {
     const { workOrderId } = req.query;
@@ -30,7 +30,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.get('/by-work-order/:workOrderId', param('workOrderId').isInt(), (req, res) => {
+router.get('/by-work-order/:workOrderId', requirePermission('satisfaction', 'view'), param('workOrderId').isInt(), (req, res) => {
   const db = req.db;
   try {
     const row = db.prepare(`
@@ -47,7 +47,7 @@ router.get('/by-work-order/:workOrderId', param('workOrderId').isInt(), (req, re
   }
 });
 
-router.post('/', [
+router.post('/', requirePermission('satisfaction', 'create'), [
   body('workOrderId').isInt(),
   body('rating').optional().isInt({ min: 1, max: 5 }),
   body('comment').optional().trim()

@@ -3,13 +3,14 @@
  */
 
 const express = require('express');
-const { authenticate, authorize, ROLES } = require('../middleware/auth');
+const { authenticate, authorize, requirePermission, ROLES } = require('../middleware/auth');
 const getWorkOrderCosts = require('./workOrders').getWorkOrderCosts;
 const { getIndicatorTargets, getTargetByKey, getStatusForKey } = require('../services/indicatorTargets');
 const { getMttr, getMtbf } = require('../services/mttrMtbf');
 
 const router = express.Router();
 router.use(authenticate);
+router.use(requirePermission('dashboard', 'view'));
 
 // SLA en heures par priorité (Coswin-like)
 const SLA_HOURS = { critical: 2, high: 8, medium: 24, low: 72 };

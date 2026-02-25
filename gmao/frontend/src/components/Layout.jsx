@@ -79,9 +79,29 @@ const APP_BASE = '/app';
 const INTERVENTION_REQUEST_CHANNEL = 'gmao-intervention-request';
 const PENDING_POLL_INTERVAL_MS = 20000;
 
-/** Liste plate de tous les menus (sans catégories). */
+/** Correspondance menu id → resource permission (pour filtrer le menu selon les permissions). */
+const MENU_RESOURCE_MAP = {
+  dashboard: 'dashboard',
+  equipment: 'equipment',
+  sites: 'sites',
+  maintenance: 'work_orders',
+  tools: 'tools',
+  stock: 'stock',
+  suppliers: 'suppliers',
+  subcontracting: 'external_contractors',
+  budget: 'budgets',
+  effectif: 'technicians',
+  reports: 'reports',
+  decisionSupport: 'reports',
+  standards: 'standards',
+  exploitation: 'exploitation',
+  settings: 'settings'
+};
+
+/** Liste plate de tous les menus — réorganisée pour une UX claire : vue principale → détails → création. */
 function getRawMenus() {
   return [
+    // ——— Vue d'ensemble ———
     { id: 'dashboard', labelKey: 'menu.dashboard', icon: <DashboardIcon />, path: APP_BASE, sections: [
       { titleKey: 'section.dashboard_0', items: [
         { labelKey: 'item.dashboard_overview', path: APP_BASE },
@@ -89,6 +109,7 @@ function getRawMenus() {
         { labelKey: 'item.dashboard_activity', path: `${APP_BASE}/dashboard/activity` }
       ]}
     ]},
+    // ——— Actifs & Sites ———
     { id: 'equipment', labelKey: 'menu.equipment', icon: <BuildIcon />, path: `${APP_BASE}/equipment`, sections: [
       { titleKey: 'section.equipment_0', items: [
         { labelKey: 'item.equipment_list', path: `${APP_BASE}/equipment` },
@@ -103,77 +124,50 @@ function getRawMenus() {
         { labelKey: 'item.management_warranties', path: `${APP_BASE}/equipment?view=warranties` }
       ]},
       { titleKey: 'section.equipment_creation', items: [
-        { labelKey: 'item.creation_site', path: `${APP_BASE}/equipment/creation/site` },
-        { labelKey: 'item.creation_departement', path: `${APP_BASE}/equipment/creation/departement` },
-        { labelKey: 'item.creation_ligne', path: `${APP_BASE}/equipment/creation/ligne` },
-        { labelKey: 'item.creation_machine', path: `${APP_BASE}/equipment/creation/machine` },
-        { labelKey: 'item.creation_section', path: `${APP_BASE}/equipment/creation/section` },
-        { labelKey: 'item.creation_composant', path: `${APP_BASE}/equipment/creation/composant` },
-        { labelKey: 'item.creation_sous_composant', path: `${APP_BASE}/equipment/creation/sous_composant` }
+        { labelKey: 'item.creation_site', path: `${APP_BASE}/equipment/creation/site`, action: 'create' },
+        { labelKey: 'item.creation_departement', path: `${APP_BASE}/equipment/creation/departement`, action: 'create' },
+        { labelKey: 'item.creation_ligne', path: `${APP_BASE}/equipment/creation/ligne`, action: 'create' },
+        { labelKey: 'item.creation_machine', path: `${APP_BASE}/equipment/creation/machine`, action: 'create' },
+        { labelKey: 'item.creation_section', path: `${APP_BASE}/equipment/creation/section`, action: 'create' },
+        { labelKey: 'item.creation_composant', path: `${APP_BASE}/equipment/creation/composant`, action: 'create' },
+        { labelKey: 'item.creation_sous_composant', path: `${APP_BASE}/equipment/creation/sous_composant`, action: 'create' }
       ]}
     ]},
+    { id: 'sites', labelKey: 'menu.sites', icon: <BusinessIcon />, path: `${APP_BASE}/sites`, sections: [
+      { titleKey: 'section.sites_0', items: [
+        { labelKey: 'item.sites_list', path: `${APP_BASE}/sites` },
+        { labelKey: 'item.sites_lines', path: `${APP_BASE}/sites/lines` },
+        { labelKey: 'item.sites_map', path: `${APP_BASE}/sites/map` }
+      ]}
+    ]},
+    // ——— Maintenance ———
     { id: 'maintenance', labelKey: 'menu.maintenance', icon: <AssignmentIcon />, path: `${APP_BASE}/work-orders`, sections: [
       { titleKey: 'section.maintenance_0', items: [
-        { labelKey: 'item.wo_list', path: `${APP_BASE}/work-orders` },
         { labelKey: 'item.my_wo_today', path: `${APP_BASE}/my-work-orders` },
+        { labelKey: 'item.wo_list', path: `${APP_BASE}/work-orders` },
         { labelKey: 'item.wo_declare', path: `${APP_BASE}/work-orders/new` },
         { labelKey: 'item.intervention_requests', path: `${APP_BASE}/intervention-requests` },
         { labelKey: 'item.wo_in_progress', path: `${APP_BASE}/work-orders?status=in_progress` },
         { labelKey: 'item.wo_pending', path: `${APP_BASE}/work-orders?status=pending` }
       ]},
       { titleKey: 'section.maintenance_1', items: [
+        { labelKey: 'item.planning_calendar', path: `${APP_BASE}/planning` },
+        { labelKey: 'item.planning_assignments', path: `${APP_BASE}/planning/assignments` },
+        { labelKey: 'item.planning_resources', path: `${APP_BASE}/planning/resources` },
         { labelKey: 'item.plans', path: `${APP_BASE}/maintenance-plans` },
+        { labelKey: 'item.due', path: `${APP_BASE}/maintenance-plans/due` },
         { labelKey: 'item.projects', path: `${APP_BASE}/maintenance-projects` },
         { labelKey: 'item.checklists', path: `${APP_BASE}/checklists` },
         { labelKey: 'item.procedures', path: `${APP_BASE}/procedures` },
-        { labelKey: 'item.due', path: `${APP_BASE}/maintenance-plans/due` },
         { labelKey: 'item.root_causes', path: `${APP_BASE}/maintenance/root-causes` },
-        { labelKey: 'item.satisfaction', path: `${APP_BASE}/maintenance/satisfaction` }
+        { labelKey: 'item.satisfaction', path: `${APP_BASE}/maintenance/satisfaction` },
+        { labelKey: 'item.planned_shutdowns', path: `${APP_BASE}/maintenance/shutdowns` },
+        { labelKey: 'item.regulatory_checks', path: `${APP_BASE}/maintenance/regulatory-checks` }
       ]},
       { titleKey: 'section.maintenance_creation', items: [
-        { labelKey: 'item.creation_plan_maintenance', path: `${APP_BASE}/maintenance/creation/plan` },
-        { labelKey: 'item.creation_checklist', path: `${APP_BASE}/maintenance/creation/checklist` },
-        { labelKey: 'item.creation_ordre_travail', path: `${APP_BASE}/work-orders/new` }
-      ]},
-      { titleKey: 'section.maintenance_2', items: [
-        { labelKey: 'item.planning_calendar', path: `${APP_BASE}/planning` },
-        { labelKey: 'item.planning_assignments', path: `${APP_BASE}/planning/assignments` },
-        { labelKey: 'item.planning_resources', path: `${APP_BASE}/planning/resources` }
-      ]}
-    ]},
-    { id: 'stock', labelKey: 'menu.stock', icon: <StockIcon />, path: `${APP_BASE}/stock`, sections: [
-      { titleKey: 'section.stock_0', items: [
-        { labelKey: 'item.stock_list', path: `${APP_BASE}/stock` },
-        { labelKey: 'item.stock_movements', path: `${APP_BASE}/stock/movements` },
-        { labelKey: 'item.stock_inventories', path: `${APP_BASE}/stock/inventories` },
-        { labelKey: 'item.stock_alerts', path: `${APP_BASE}/stock/alerts` },
-        { labelKey: 'item.stock_locations', path: `${APP_BASE}/stock/locations` },
-        { labelKey: 'item.stock_reservations', path: `${APP_BASE}/stock/reservations` }
-      ]},
-      { titleKey: 'section.stock_1', items: [
-        { labelKey: 'item.stock_entries', path: `${APP_BASE}/stock/entries` },
-        { labelKey: 'item.stock_exits', path: `${APP_BASE}/stock/exits` },
-        { labelKey: 'item.stock_transfers', path: `${APP_BASE}/stock/transfers` },
-        { labelKey: 'item.stock_reorders', path: `${APP_BASE}/stock/reorders` },
-        { labelKey: 'item.stock_quality', path: `${APP_BASE}/stock/quality` }
-      ]},
-      { titleKey: 'section.stock_creation', items: [
-        { labelKey: 'item.creation_piece', path: `${APP_BASE}/stock/creation/piece` },
-        { labelKey: 'item.creation_entree_stock', path: `${APP_BASE}/stock/creation/entry` },
-        { labelKey: 'item.creation_sortie_stock', path: `${APP_BASE}/stock/creation/exit` },
-        { labelKey: 'item.creation_transfert_stock', path: `${APP_BASE}/stock/creation/transfer` }
-      ]}
-    ]},
-    { id: 'suppliers', labelKey: 'menu.suppliers', icon: <SupplierIcon />, path: `${APP_BASE}/suppliers`, sections: [
-      { titleKey: 'section.suppliers_0', items: [
-        { labelKey: 'item.suppliers_list', path: `${APP_BASE}/suppliers` },
-        { labelKey: 'item.contracts', path: `${APP_BASE}/contracts` },
-        { labelKey: 'item.suppliers_orders', path: `${APP_BASE}/suppliers/orders` }
-      ]},
-      { titleKey: 'section.suppliers_creation', items: [
-        { labelKey: 'item.creation_fournisseur', path: `${APP_BASE}/suppliers/creation/supplier` },
-        { labelKey: 'item.creation_commande_fournisseur', path: `${APP_BASE}/suppliers/creation/order` },
-        { labelKey: 'item.creation_contrat', path: `${APP_BASE}/suppliers/creation/contract` }
+        { labelKey: 'item.creation_ordre_travail', path: `${APP_BASE}/work-orders/new`, action: 'create' },
+        { labelKey: 'item.creation_plan_maintenance', path: `${APP_BASE}/maintenance/creation/plan`, action: 'create' },
+        { labelKey: 'item.creation_checklist', path: `${APP_BASE}/maintenance/creation/checklist`, action: 'create' }
       ]}
     ]},
     { id: 'tools', labelKey: 'menu.tools', icon: <ToolsIcon />, path: `${APP_BASE}/tools`, sections: [
@@ -183,13 +177,49 @@ function getRawMenus() {
         { labelKey: 'item.tools_calibrations', path: `${APP_BASE}/tools/calibrations` }
       ]},
       { titleKey: 'section.tools_creation', items: [
-        { labelKey: 'item.creation_outil', path: `${APP_BASE}/tools/creation/tool` },
-        { labelKey: 'item.creation_assignation_outil', path: `${APP_BASE}/tools/creation/assignment` }
+        { labelKey: 'item.creation_outil', path: `${APP_BASE}/tools/creation/tool`, action: 'create' },
+        { labelKey: 'item.creation_assignation_outil', path: `${APP_BASE}/tools/creation/assignment`, action: 'create' }
       ]}
     ]},
-    { id: 'budget', labelKey: 'menu.budget', icon: <BudgetIcon />, path: `${APP_BASE}/budgets`, sections: [
-      { titleKey: 'section.budget_0', items: [
-        { labelKey: 'item.budgets_list', path: `${APP_BASE}/budgets` }
+    // ——— Stock & Achats ———
+    { id: 'stock', labelKey: 'menu.stock', icon: <StockIcon />, path: `${APP_BASE}/stock`, sections: [
+      { titleKey: 'section.stock_0', items: [
+        { labelKey: 'item.stock_list', path: `${APP_BASE}/stock` },
+        { labelKey: 'item.stock_movements', path: `${APP_BASE}/stock/movements` },
+        { labelKey: 'item.stock_alerts', path: `${APP_BASE}/stock/alerts` },
+        { labelKey: 'item.stock_locations', path: `${APP_BASE}/stock/locations` },
+        { labelKey: 'item.stock_reservations', path: `${APP_BASE}/stock/reservations` },
+        { labelKey: 'item.stock_warehouses', path: `${APP_BASE}/stock/warehouses` },
+        { labelKey: 'item.stock_reorder_rules', path: `${APP_BASE}/stock/reorder-rules` },
+        { labelKey: 'item.stock_inventories', path: `${APP_BASE}/stock/inventories` }
+      ]},
+      { titleKey: 'section.stock_1', items: [
+        { labelKey: 'item.stock_entries', path: `${APP_BASE}/stock/entries` },
+        { labelKey: 'item.stock_exits', path: `${APP_BASE}/stock/exits` },
+        { labelKey: 'item.stock_transfers', path: `${APP_BASE}/stock/transfers` },
+        { labelKey: 'item.stock_reorders', path: `${APP_BASE}/stock/reorders` },
+        { labelKey: 'item.stock_quality', path: `${APP_BASE}/stock/quality` }
+      ]},
+      { titleKey: 'section.stock_creation', items: [
+        { labelKey: 'item.creation_piece', path: `${APP_BASE}/stock/creation/piece`, action: 'create' },
+        { labelKey: 'item.creation_entree_stock', path: `${APP_BASE}/stock/creation/entry`, action: 'create' },
+        { labelKey: 'item.creation_sortie_stock', path: `${APP_BASE}/stock/creation/exit`, action: 'create' },
+        { labelKey: 'item.creation_transfert_stock', path: `${APP_BASE}/stock/creation/transfer`, action: 'create' }
+      ]}
+    ]},
+    { id: 'suppliers', labelKey: 'menu.suppliers', icon: <SupplierIcon />, path: `${APP_BASE}/suppliers`, sections: [
+      { titleKey: 'section.suppliers_0', items: [
+        { labelKey: 'item.suppliers_list', path: `${APP_BASE}/suppliers` },
+        { labelKey: 'item.suppliers_orders', path: `${APP_BASE}/suppliers/orders` },
+        { labelKey: 'item.suppliers_purchase_requests', path: `${APP_BASE}/suppliers/purchase-requests` },
+        { labelKey: 'item.suppliers_price_requests', path: `${APP_BASE}/suppliers/price-requests` },
+        { labelKey: 'item.suppliers_invoices', path: `${APP_BASE}/suppliers/invoices` },
+        { labelKey: 'item.contracts', path: `${APP_BASE}/contracts` }
+      ]},
+      { titleKey: 'section.suppliers_creation', items: [
+        { labelKey: 'item.creation_fournisseur', path: `${APP_BASE}/suppliers/creation/supplier`, action: 'create' },
+        { labelKey: 'item.creation_commande_fournisseur', path: `${APP_BASE}/suppliers/creation/order`, action: 'create' },
+        { labelKey: 'item.creation_contrat', path: `${APP_BASE}/suppliers/creation/contract`, action: 'create' }
       ]}
     ]},
     { id: 'subcontracting', labelKey: 'menu.subcontracting', icon: <SubcontractIcon />, path: `${APP_BASE}/subcontracting/contractors`, sections: [
@@ -198,6 +228,30 @@ function getRawMenus() {
         { labelKey: 'item.subcontract_orders', path: `${APP_BASE}/subcontracting/orders` }
       ]}
     ]},
+    // ——— Budget ———
+    { id: 'budget', labelKey: 'menu.budget', icon: <BudgetIcon />, path: `${APP_BASE}/budgets`, sections: [
+      { titleKey: 'section.budget_0', items: [
+        { labelKey: 'item.budgets_list', path: `${APP_BASE}/budgets` }
+      ]}
+    ]},
+    // ——— Effectif & Formation ———
+    { id: 'effectif', labelKey: 'menu.effectif', icon: <PeopleIcon />, path: `${APP_BASE}/technicians`, sections: [
+      { titleKey: 'section.effectif_0', items: [
+        { labelKey: 'item.technicians_list', path: `${APP_BASE}/technicians` },
+        { labelKey: 'item.technicians_team', path: `${APP_BASE}/technicians/team` },
+        { labelKey: 'item.technicians_competencies', path: `${APP_BASE}/technicians/competencies` },
+        { labelKey: 'item.technicians_rules', path: `${APP_BASE}/technicians/type-competencies` }
+      ]},
+      { titleKey: 'section.training_0', items: [
+        { labelKey: 'item.training_catalog', path: `${APP_BASE}/training/catalog` },
+        { labelKey: 'item.training_plans', path: `${APP_BASE}/training/plans` }
+      ]},
+      { titleKey: 'section.effectif_1', items: [
+        { labelKey: 'item.effectif_presence', path: `${APP_BASE}/effectif/presence` },
+        { labelKey: 'item.effectif_pointage', path: `${APP_BASE}/effectif/pointage` }
+      ]}
+    ]},
+    // ——— Rapports & Référentiels ———
     { id: 'reports', labelKey: 'menu.reports', icon: <ReportsIcon />, path: `${APP_BASE}/reports`, sections: [
       { titleKey: 'section.reports_0', items: [
         { labelKey: 'item.reports_costs', path: `${APP_BASE}/reports` },
@@ -216,57 +270,36 @@ function getRawMenus() {
         { labelKey: 'item.standards_library', path: `${APP_BASE}/standards` }
       ]}
     ]},
-    { id: 'sites', labelKey: 'menu.sites', icon: <BusinessIcon />, path: `${APP_BASE}/sites`, sections: [
-      { titleKey: 'section.sites_0', items: [
-        { labelKey: 'item.sites_list', path: `${APP_BASE}/sites` },
-        { labelKey: 'item.sites_lines', path: `${APP_BASE}/sites/lines` },
-        { labelKey: 'item.sites_map', path: `${APP_BASE}/sites/map` }
-      ]}
-    ]},
-    { id: 'effectif', labelKey: 'menu.effectif', icon: <PeopleIcon />, path: `${APP_BASE}/technicians`, sections: [
-      { titleKey: 'section.effectif_0', items: [
-        { labelKey: 'item.technicians_list', path: `${APP_BASE}/technicians` },
-        { labelKey: 'item.technicians_competencies', path: `${APP_BASE}/technicians/competencies` },
-        { labelKey: 'item.technicians_rules', path: `${APP_BASE}/technicians/type-competencies` },
-        { labelKey: 'item.technicians_team', path: `${APP_BASE}/technicians/team` }
-      ]},
-      { titleKey: 'section.training_0', items: [
-        { labelKey: 'item.training_catalog', path: `${APP_BASE}/training/catalog` },
-        { labelKey: 'item.training_plans', path: `${APP_BASE}/training/plans` }
-      ]},
-      { titleKey: 'section.effectif_1', items: [
-        { labelKey: 'item.effectif_presence', path: `${APP_BASE}/effectif/presence` },
-        { labelKey: 'item.effectif_pointage', path: `${APP_BASE}/effectif/pointage` }
-      ]}
-    ]},
+    // ——— Données ———
     { id: 'exploitation', labelKey: 'menu.exploitation', icon: <ImportExportIcon />, path: `${APP_BASE}/exploitation/export`, sections: [
       { titleKey: 'section.exploitation_0', items: [
         { labelKey: 'item.exploitation_export', path: `${APP_BASE}/exploitation/export` },
         { labelKey: 'item.exploitation_import', path: `${APP_BASE}/exploitation/import` }
       ]}
     ]},
+    // ——— Paramétrage ———
     { id: 'settings', labelKey: 'menu.settings', icon: <SettingsIcon />, path: `${APP_BASE}/settings`, sections: [
       { titleKey: 'section.settings_0', items: [
         { labelKey: 'item.settings_config', path: `${APP_BASE}/settings` },
         { labelKey: 'item.settings_alerts', path: `${APP_BASE}/settings?tab=alertes` },
+        { labelKey: 'item.settings_users', path: `${APP_BASE}/users` },
+        { labelKey: 'item.settings_roles', path: `${APP_BASE}/settings/roles` },
+        { labelKey: 'item.settings_tenants', path: `${APP_BASE}/settings/tenants`, maintxAdminOnly: true },
         { labelKey: 'item.failure_codes', path: `${APP_BASE}/failure-codes` },
         { labelKey: 'item.part_families', path: `${APP_BASE}/catalogue/part-families` },
         { labelKey: 'item.brands', path: `${APP_BASE}/catalogue/brands` },
         { labelKey: 'item.wo_templates', path: `${APP_BASE}/catalogue/wo-templates` },
-        { labelKey: 'item.settings_users', path: `${APP_BASE}/users` },
-        { labelKey: 'item.settings_roles', path: `${APP_BASE}/settings/roles` },
-        { labelKey: 'item.settings_tenants', path: `${APP_BASE}/settings/tenants` },
         { labelKey: 'item.email_templates', path: `${APP_BASE}/settings/email-templates` }
       ]},
       { titleKey: 'section.settings_creation', items: [
-        { labelKey: 'item.creation_user', path: `${APP_BASE}/settings/creation/user` },
-        { labelKey: 'item.creation_failure_code', path: `${APP_BASE}/settings/creation/failure-code` }
+        { labelKey: 'item.creation_user', path: `${APP_BASE}/settings/creation/user`, action: 'create' },
+        { labelKey: 'item.creation_failure_code', path: `${APP_BASE}/settings/creation/failure-code`, action: 'create' }
       ]}
     ]}
   ];
 }
 
-/** Catégories du menu : chaque catégorie regroupe des menus par domaine. */
+/** Catégories du menu : ordre logique pour l'UX (vue d'ensemble → actifs → maintenance → logistique → finance → effectif → analyse → données → paramétrage). */
 function getMenuCategories(rawMenus) {
   const byId = (id) => rawMenus.find((m) => m.id === id);
   const categories = [
@@ -280,11 +313,13 @@ function getMenuCategories(rawMenus) {
     { id: 'data', labelKey: 'menuCategory.data', menuIds: ['exploitation'] },
     { id: 'settings', labelKey: 'menuCategory.settings', menuIds: ['settings'] }
   ];
-  return categories.map((cat) => ({
-    id: cat.id,
-    labelKey: cat.labelKey,
-    items: cat.menuIds.map(byId).filter(Boolean)
-  })).filter((cat) => cat.items.length > 0);
+  return categories
+    .map((cat) => ({
+      id: cat.id,
+      labelKey: cat.labelKey,
+      items: cat.menuIds.map(byId).filter(Boolean)
+    }))
+    .filter((cat) => cat.items.length > 0);
 }
 
 /** Liste plate des menus (pour currentMenuId, selectedMenu, etc.). */
@@ -310,10 +345,18 @@ export default function Layout() {
   const searchInputRef = useRef(null);
   const searchDebounceRef = useRef(null);
   const lastPendingCountRef = useRef(-1);
-  const { user, logout } = useAuth();
+  const { user, logout, permissions, can } = useAuth();
   const snackbar = useSnackbar();
 
-  const rawMenus = React.useMemo(() => getRawMenus(), []);
+  const rawMenus = React.useMemo(() => {
+    const raw = getRawMenus();
+    if (!permissions || permissions.length === 0) return raw;
+    return raw.filter((m) => {
+      const resource = MENU_RESOURCE_MAP[m.id];
+      if (!resource) return true;
+      return can(resource, 'view');
+    });
+  }, [permissions, can]);
   const menuCategories = React.useMemo(() => getMenuCategories(rawMenus), [rawMenus]);
   const menuStructure = React.useMemo(() => getMenuStructure(rawMenus, menuCategories), [rawMenus, menuCategories]);
   const getPathLabel = (pathSeg) => (pathSeg === '' ? t('path._home') : t(`path.${pathSeg}`));
@@ -1175,7 +1218,14 @@ export default function Layout() {
                   {selectedMenu.sections.map((section, sectionIndex) => {
                     const sectionKey = `${selectedMenuId}-${sectionIndex}`;
                     const isExpanded = expandedSections[sectionKey] !== false;
-                    const filteredSectionItems = filterItems(section.items);
+                    const menuResource = selectedMenuId ? MENU_RESOURCE_MAP[selectedMenuId] : null;
+                    const filteredSectionItems = filterItems(section.items)
+                      .filter((item) => !(item.maintxAdminOnly && !user?.isAdmin))
+                      .filter((item) => {
+                        const resource = item.resource ?? menuResource;
+                        const action = item.action ?? 'view';
+                        return resource && can(resource, action);
+                      });
 
                     if (filteredSectionItems.length === 0) return null;
 

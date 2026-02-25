@@ -82,10 +82,10 @@ export default function WorkOrderDetail() {
   const [phaseSaving, setPhaseSaving] = useState(false);
   const [extraFeeForm, setExtraFeeForm] = useState({ description: '', amount: '' });
   const [extraFeeSaving, setExtraFeeSaving] = useState(false);
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const snackbar = useSnackbar();
-  const canEdit = ['administrateur', 'responsable_maintenance', 'technicien'].includes(user?.role);
-  const canClose = ['administrateur', 'responsable_maintenance'].includes(user?.role);
+  const canEdit = can('work_orders', 'update');
+  const canClose = can('work_orders', 'update');
 
   const loadOrder = () => {
     if (id === 'new') return;

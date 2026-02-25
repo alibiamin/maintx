@@ -1,12 +1,13 @@
-import React, { lazy, Suspense, useState, useEffect } from 'react';
+import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Box, CircularProgress } from '@mui/material';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import Landing from './pages/Landing';
 import DemandeInterventionForm from './pages/DemandeInterventionForm';
 import Layout from './components/Layout';
-import AppLoadingScreen from './components/AppLoadingScreen';
-import AppLoadingScreenWithMinDelay from './components/AppLoadingScreenWithMinDelay';
+import RequirePermission, { ForbiddenPage, RequireMaintxAdmin } from './components/RequirePermission';
+import { ROUTE_PERMISSIONS } from './config/routePermissions';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const DashboardKPIs = lazy(() => import('./pages/DashboardKPIs'));
@@ -83,33 +84,45 @@ const StockLocationsList = lazy(() => import('./pages/stock/StockLocationsList')
 const StockReservationsList = lazy(() => import('./pages/stock/StockReservationsList'));
 const RootCausesList = lazy(() => import('./pages/maintenance/RootCausesList'));
 const SatisfactionList = lazy(() => import('./pages/maintenance/SatisfactionList'));
+const PlannedShutdownsList = lazy(() => import('./pages/maintenance/PlannedShutdownsList'));
+const RegulatoryChecksList = lazy(() => import('./pages/maintenance/RegulatoryChecksList'));
+const PurchaseRequestsList = lazy(() => import('./pages/suppliers/PurchaseRequestsList'));
+const PriceRequestsList = lazy(() => import('./pages/suppliers/PriceRequestsList'));
+const SupplierInvoicesList = lazy(() => import('./pages/suppliers/SupplierInvoicesList'));
+const WarehousesList = lazy(() => import('./pages/stock/WarehousesList'));
+const ReorderRulesList = lazy(() => import('./pages/stock/ReorderRulesList'));
 const ReportsMtbfMttr = lazy(() => import('./pages/ReportsMtbfMttr'));
 const SettingsEmailTemplates = lazy(() => import('./pages/SettingsEmailTemplates'));
 const DecisionSupport = lazy(() => import('./pages/DecisionSupport'));
 const BibliothequeNormes = lazy(() => import('./pages/BibliothequeNormes'));
 
-const LOADING_MIN_MS = 3000;
+function LoadingFallback() {
+  return (
+    <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+      <CircularProgress />
+    </Box>
+  );
+}
+
+/** Enveloppe la route avec RequirePermission si une permission est définie pour ce path. */
+function RouteGuard({ path, children }) {
+  const perm = ROUTE_PERMISSIONS[path];
+  if (!perm) return children;
+  return <RequirePermission resource={perm.resource} action={perm.action}>{children}</RequirePermission>;
+}
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
   const location = useLocation();
-  const content = !isAuthenticated ? <Navigate to="/login" replace state={{ from: location }} /> : <Suspense fallback={<AppLoadingScreen />}>{children}</Suspense>;
-  return (
-    <AppLoadingScreenWithMinDelay loading={loading} minDisplayMs={LOADING_MIN_MS}>
-      {content}
-    </AppLoadingScreenWithMinDelay>
-  );
+  if (loading) return <LoadingFallback />;
+  if (!isAuthenticated) return <Navigate to="/login" replace state={{ from: location }} />;
+  return <Suspense fallback={<LoadingFallback />}>{children}</Suspense>;
 }
 
 /** Affiche l’écran de chargement au moins 3 s à l’ouverture du site (avant login ou dashboard). */
 function AppInitialLoader({ children }) {
-  const [initialDone, setInitialDone] = useState(false);
   const { loading: authLoading } = useAuth();
-  useEffect(() => {
-    const t = setTimeout(() => setInitialDone(true), LOADING_MIN_MS);
-    return () => clearTimeout(t);
-  }, []);
-  if (!initialDone || authLoading) return <AppLoadingScreen />;
+  if (authLoading) return <LoadingFallback />;
   return children;
 }
 
@@ -119,94 +132,102 @@ export default function App() {
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/demande-intervention" element={<PrivateRoute><DemandeInterventionForm /></PrivateRoute>} />
+      <Route path="/forbidden" element={<PrivateRoute><ForbiddenPage /></PrivateRoute>} />
       <Route path="/app" element={<AppInitialLoader><PrivateRoute><Layout /></PrivateRoute></AppInitialLoader>}>
-        <Route index element={<Dashboard />} />
-        <Route path="dashboard/kpis" element={<DashboardKPIs />} />
-        <Route path="dashboard/activity" element={<DashboardActivity />} />
-        <Route path="equipment" element={<EquipmentList />} />
-        <Route path="equipment/creation/:type" element={<Creation />} />
-        <Route path="equipment/map" element={<EquipmentMap />} />
-        <Route path="equipment/categories" element={<EquipmentCategories />} />
-        <Route path="equipment/models" element={<EquipmentModelsList />} />
-        <Route path="equipment/technical" element={<EquipmentTechnicalList />} />
-        <Route path="equipment/:id" element={<EquipmentDetail />} />
-        <Route path="equipment/:id/technical" element={<EquipmentTechnical />} />
-        <Route path="equipment/:id/history" element={<EquipmentHistory />} />
-        <Route path="equipment/:id/documents" element={<EquipmentDocuments />} />
-        <Route path="equipment/:id/warranties" element={<EquipmentWarranties />} />
-        <Route path="work-orders" element={<WorkOrderList />} />
-        <Route path="maintenance/creation/:type" element={<Creation />} />
-        <Route path="my-work-orders" element={<MyWorkOrdersToday />} />
-        <Route path="work-orders/new" element={<WorkOrderForm />} />
-        <Route path="work-orders/:id" element={<WorkOrderDetail />} />
-        <Route path="intervention-requests" element={<InterventionRequests />} />
-        <Route path="planning" element={<Planning />} />
-        <Route path="planning/assignments" element={<PlanningAssignments />} />
-        <Route path="planning/resources" element={<PlanningResources />} />
-        <Route path="maintenance-plans" element={<MaintenancePlans />} />
-        <Route path="maintenance-plans/due" element={<MaintenancePlansDue />} />
-        <Route path="maintenance-projects" element={<MaintenanceProjectsList />} />
-        <Route path="maintenance-projects/new" element={<MaintenanceProjectForm />} />
-        <Route path="maintenance-projects/:id/edit" element={<MaintenanceProjectForm />} />
-        <Route path="maintenance-projects/:id" element={<MaintenanceProjectDetail />} />
-        <Route path="stock" element={<StockList />} />
-        <Route path="stock/creation/:type" element={<Creation />} />
-        <Route path="stock/parts/:id" element={<StockFiche />} />
-        <Route path="stock/movements" element={<StockMovements />} />
-        <Route path="stock/inventories" element={<StockInventories />} />
-        <Route path="stock/alerts" element={<StockAlerts />} />
-        <Route path="stock/entries" element={<StockEntries />} />
-        <Route path="stock/exits" element={<StockExits />} />
-        <Route path="stock/transfers" element={<StockTransfers />} />
-        <Route path="stock/reorders" element={<StockReorders />} />
-        <Route path="stock/quality" element={<StockQuality />} />
-        <Route path="suppliers" element={<SuppliersList />} />
-        <Route path="suppliers/creation/:type" element={<Creation />} />
-        <Route path="suppliers/orders" element={<SuppliersOrders />} />
-        <Route path="sites" element={<Sites />} />
-        <Route path="sites/lines" element={<SitesLines />} />
-        <Route path="sites/map" element={<SitesMap />} />
-        <Route path="catalogue/part-families" element={<PartFamiliesList />} />
-        <Route path="catalogue/brands" element={<BrandsList />} />
-        <Route path="catalogue/wo-templates" element={<WOTemplatesList />} />
-        <Route path="budgets" element={<BudgetsList />} />
-        <Route path="subcontracting/contractors" element={<ExternalContractorsList />} />
-        <Route path="subcontracting/orders" element={<SubcontractOrdersList />} />
-        <Route path="training/catalog" element={<TrainingCatalogList />} />
-        <Route path="training/plans" element={<TrainingPlansList />} />
-        <Route path="stock/locations" element={<StockLocationsList />} />
-        <Route path="stock/reservations" element={<StockReservationsList />} />
-        <Route path="maintenance/root-causes" element={<RootCausesList />} />
-        <Route path="maintenance/satisfaction" element={<SatisfactionList />} />
-        <Route path="reports" element={<Reports />} />
-        <Route path="reports/mtbf-mttr" element={<ReportsMtbfMttr />} />
-        <Route path="reports/exports" element={<ReportsExports />} />
-        <Route path="decision-support" element={<DecisionSupport />} />
-        <Route path="standards" element={<BibliothequeNormes />} />
-        <Route path="settings/email-templates" element={<SettingsEmailTemplates />} />
-        <Route path="contracts" element={<Contracts />} />
-        <Route path="tools" element={<Tools />} />
-        <Route path="tools/creation/:type" element={<Creation />} />
-        <Route path="tools/assignments" element={<ToolsAssignments />} />
-        <Route path="tools/calibrations" element={<ToolsCalibrations />} />
-        <Route path="checklists" element={<Checklists />} />
-        <Route path="procedures" element={<ProceduresList />} />
-        <Route path="settings" element={<Settings />} />
-        <Route path="settings/creation/:type" element={<Creation />} />
-        <Route path="settings/roles" element={<SettingsRoles />} />
-        <Route path="settings/tenants" element={<SettingsTenants />} />
-        <Route path="failure-codes" element={<FailureCodesList />} />
-        <Route path="exploitation" element={<ExploitationData />} />
-        <Route path="exploitation/export" element={<ExploitationData />} />
-        <Route path="exploitation/import" element={<ExploitationData />} />
-        <Route path="users" element={<Users />} />
-        <Route path="technicians" element={<TechnicianList />} />
-        <Route path="technicians/team" element={<TeamPage />} />
-        <Route path="technicians/competencies" element={<CompetenciesPage />} />
-        <Route path="technicians/type-competencies" element={<TypeCompetenciesPage />} />
-        <Route path="technicians/:id" element={<TechnicianDetail />} />
-        <Route path="effectif/presence" element={<PresencePage />} />
-        <Route path="effectif/pointage" element={<PointagePage />} />
+        <Route index element={<RouteGuard path=""><Dashboard /></RouteGuard>} />
+        <Route path="dashboard/kpis" element={<RouteGuard path="dashboard/kpis"><DashboardKPIs /></RouteGuard>} />
+        <Route path="dashboard/activity" element={<RouteGuard path="dashboard/activity"><DashboardActivity /></RouteGuard>} />
+        <Route path="equipment" element={<RouteGuard path="equipment"><EquipmentList /></RouteGuard>} />
+        <Route path="equipment/creation/:type" element={<RouteGuard path="equipment/creation/:type"><Creation /></RouteGuard>} />
+        <Route path="equipment/map" element={<RouteGuard path="equipment/map"><EquipmentMap /></RouteGuard>} />
+        <Route path="equipment/categories" element={<RouteGuard path="equipment/categories"><EquipmentCategories /></RouteGuard>} />
+        <Route path="equipment/models" element={<RouteGuard path="equipment/models"><EquipmentModelsList /></RouteGuard>} />
+        <Route path="equipment/technical" element={<RouteGuard path="equipment/technical"><EquipmentTechnicalList /></RouteGuard>} />
+        <Route path="equipment/:id" element={<RouteGuard path="equipment/:id"><EquipmentDetail /></RouteGuard>} />
+        <Route path="equipment/:id/technical" element={<RouteGuard path="equipment/:id/technical"><EquipmentTechnical /></RouteGuard>} />
+        <Route path="equipment/:id/history" element={<RouteGuard path="equipment/:id/history"><EquipmentHistory /></RouteGuard>} />
+        <Route path="equipment/:id/documents" element={<RouteGuard path="equipment/:id/documents"><EquipmentDocuments /></RouteGuard>} />
+        <Route path="equipment/:id/warranties" element={<RouteGuard path="equipment/:id/warranties"><EquipmentWarranties /></RouteGuard>} />
+        <Route path="work-orders" element={<RouteGuard path="work-orders"><WorkOrderList /></RouteGuard>} />
+        <Route path="maintenance/creation/:type" element={<RouteGuard path="maintenance/creation/:type"><Creation /></RouteGuard>} />
+        <Route path="my-work-orders" element={<RouteGuard path="my-work-orders"><MyWorkOrdersToday /></RouteGuard>} />
+        <Route path="work-orders/new" element={<RouteGuard path="work-orders/new"><WorkOrderForm /></RouteGuard>} />
+        <Route path="work-orders/:id" element={<RouteGuard path="work-orders/:id"><WorkOrderDetail /></RouteGuard>} />
+        <Route path="intervention-requests" element={<RouteGuard path="intervention-requests"><InterventionRequests /></RouteGuard>} />
+        <Route path="planning" element={<RouteGuard path="planning"><Planning /></RouteGuard>} />
+        <Route path="planning/assignments" element={<RouteGuard path="planning/assignments"><PlanningAssignments /></RouteGuard>} />
+        <Route path="planning/resources" element={<RouteGuard path="planning/resources"><PlanningResources /></RouteGuard>} />
+        <Route path="maintenance-plans" element={<RouteGuard path="maintenance-plans"><MaintenancePlans /></RouteGuard>} />
+        <Route path="maintenance-plans/due" element={<RouteGuard path="maintenance-plans/due"><MaintenancePlansDue /></RouteGuard>} />
+        <Route path="maintenance-projects" element={<RouteGuard path="maintenance-projects"><MaintenanceProjectsList /></RouteGuard>} />
+        <Route path="maintenance-projects/new" element={<RouteGuard path="maintenance-projects/new"><MaintenanceProjectForm /></RouteGuard>} />
+        <Route path="maintenance-projects/:id/edit" element={<RouteGuard path="maintenance-projects/:id/edit"><MaintenanceProjectForm /></RouteGuard>} />
+        <Route path="maintenance-projects/:id" element={<RouteGuard path="maintenance-projects/:id"><MaintenanceProjectDetail /></RouteGuard>} />
+        <Route path="stock" element={<RouteGuard path="stock"><StockList /></RouteGuard>} />
+        <Route path="stock/creation/:type" element={<RouteGuard path="stock/creation/:type"><Creation /></RouteGuard>} />
+        <Route path="stock/parts/:id" element={<RouteGuard path="stock/parts/:id"><StockFiche /></RouteGuard>} />
+        <Route path="stock/movements" element={<RouteGuard path="stock/movements"><StockMovements /></RouteGuard>} />
+        <Route path="stock/inventories" element={<RouteGuard path="stock/inventories"><StockInventories /></RouteGuard>} />
+        <Route path="stock/alerts" element={<RouteGuard path="stock/alerts"><StockAlerts /></RouteGuard>} />
+        <Route path="stock/entries" element={<RouteGuard path="stock/entries"><StockEntries /></RouteGuard>} />
+        <Route path="stock/exits" element={<RouteGuard path="stock/exits"><StockExits /></RouteGuard>} />
+        <Route path="stock/transfers" element={<RouteGuard path="stock/transfers"><StockTransfers /></RouteGuard>} />
+        <Route path="stock/reorders" element={<RouteGuard path="stock/reorders"><StockReorders /></RouteGuard>} />
+        <Route path="stock/quality" element={<RouteGuard path="stock/quality"><StockQuality /></RouteGuard>} />
+        <Route path="suppliers" element={<RouteGuard path="suppliers"><SuppliersList /></RouteGuard>} />
+        <Route path="suppliers/creation/:type" element={<RouteGuard path="suppliers/creation/:type"><Creation /></RouteGuard>} />
+        <Route path="suppliers/orders" element={<RouteGuard path="suppliers/orders"><SuppliersOrders /></RouteGuard>} />
+        <Route path="sites" element={<RouteGuard path="sites"><Sites /></RouteGuard>} />
+        <Route path="sites/lines" element={<RouteGuard path="sites/lines"><SitesLines /></RouteGuard>} />
+        <Route path="sites/map" element={<RouteGuard path="sites/map"><SitesMap /></RouteGuard>} />
+        <Route path="catalogue/part-families" element={<RouteGuard path="catalogue/part-families"><PartFamiliesList /></RouteGuard>} />
+        <Route path="catalogue/brands" element={<RouteGuard path="catalogue/brands"><BrandsList /></RouteGuard>} />
+        <Route path="catalogue/wo-templates" element={<RouteGuard path="catalogue/wo-templates"><WOTemplatesList /></RouteGuard>} />
+        <Route path="budgets" element={<RouteGuard path="budgets"><BudgetsList /></RouteGuard>} />
+        <Route path="subcontracting/contractors" element={<RouteGuard path="subcontracting/contractors"><ExternalContractorsList /></RouteGuard>} />
+        <Route path="subcontracting/orders" element={<RouteGuard path="subcontracting/orders"><SubcontractOrdersList /></RouteGuard>} />
+        <Route path="training/catalog" element={<RouteGuard path="training/catalog"><TrainingCatalogList /></RouteGuard>} />
+        <Route path="training/plans" element={<RouteGuard path="training/plans"><TrainingPlansList /></RouteGuard>} />
+        <Route path="stock/locations" element={<RouteGuard path="stock/locations"><StockLocationsList /></RouteGuard>} />
+        <Route path="stock/reservations" element={<RouteGuard path="stock/reservations"><StockReservationsList /></RouteGuard>} />
+        <Route path="maintenance/root-causes" element={<RouteGuard path="maintenance/root-causes"><RootCausesList /></RouteGuard>} />
+        <Route path="maintenance/satisfaction" element={<RouteGuard path="maintenance/satisfaction"><SatisfactionList /></RouteGuard>} />
+        <Route path="maintenance/shutdowns" element={<RouteGuard path="maintenance/shutdowns"><PlannedShutdownsList /></RouteGuard>} />
+        <Route path="maintenance/regulatory-checks" element={<RouteGuard path="maintenance/regulatory-checks"><RegulatoryChecksList /></RouteGuard>} />
+        <Route path="suppliers/purchase-requests" element={<RouteGuard path="suppliers/purchase-requests"><PurchaseRequestsList /></RouteGuard>} />
+        <Route path="suppliers/price-requests" element={<RouteGuard path="suppliers/price-requests"><PriceRequestsList /></RouteGuard>} />
+        <Route path="suppliers/invoices" element={<RouteGuard path="suppliers/invoices"><SupplierInvoicesList /></RouteGuard>} />
+        <Route path="stock/warehouses" element={<RouteGuard path="stock/warehouses"><WarehousesList /></RouteGuard>} />
+        <Route path="stock/reorder-rules" element={<RouteGuard path="stock/reorder-rules"><ReorderRulesList /></RouteGuard>} />
+        <Route path="reports" element={<RouteGuard path="reports"><Reports /></RouteGuard>} />
+        <Route path="reports/mtbf-mttr" element={<RouteGuard path="reports/mtbf-mttr"><ReportsMtbfMttr /></RouteGuard>} />
+        <Route path="reports/exports" element={<RouteGuard path="reports/exports"><ReportsExports /></RouteGuard>} />
+        <Route path="decision-support" element={<RouteGuard path="decision-support"><DecisionSupport /></RouteGuard>} />
+        <Route path="standards" element={<RouteGuard path="standards"><BibliothequeNormes /></RouteGuard>} />
+        <Route path="settings/email-templates" element={<RouteGuard path="settings/email-templates"><SettingsEmailTemplates /></RouteGuard>} />
+        <Route path="contracts" element={<RouteGuard path="contracts"><Contracts /></RouteGuard>} />
+        <Route path="tools" element={<RouteGuard path="tools"><Tools /></RouteGuard>} />
+        <Route path="tools/creation/:type" element={<RouteGuard path="tools/creation/:type"><Creation /></RouteGuard>} />
+        <Route path="tools/assignments" element={<RouteGuard path="tools/assignments"><ToolsAssignments /></RouteGuard>} />
+        <Route path="tools/calibrations" element={<RouteGuard path="tools/calibrations"><ToolsCalibrations /></RouteGuard>} />
+        <Route path="checklists" element={<RouteGuard path="checklists"><Checklists /></RouteGuard>} />
+        <Route path="procedures" element={<RouteGuard path="procedures"><ProceduresList /></RouteGuard>} />
+        <Route path="settings" element={<RouteGuard path="settings"><Settings /></RouteGuard>} />
+        <Route path="settings/creation/:type" element={<RouteGuard path="settings/creation/:type"><Creation /></RouteGuard>} />
+        <Route path="settings/roles" element={<RouteGuard path="settings/roles"><SettingsRoles /></RouteGuard>} />
+        <Route path="settings/tenants" element={<RequireMaintxAdmin><SettingsTenants /></RequireMaintxAdmin>} />
+        <Route path="failure-codes" element={<RouteGuard path="failure-codes"><FailureCodesList /></RouteGuard>} />
+        <Route path="exploitation" element={<RouteGuard path="exploitation"><ExploitationData /></RouteGuard>} />
+        <Route path="exploitation/export" element={<RouteGuard path="exploitation/export"><ExploitationData /></RouteGuard>} />
+        <Route path="exploitation/import" element={<RouteGuard path="exploitation/import"><ExploitationData /></RouteGuard>} />
+        <Route path="users" element={<RouteGuard path="users"><Users /></RouteGuard>} />
+        <Route path="technicians" element={<RouteGuard path="technicians"><TechnicianList /></RouteGuard>} />
+        <Route path="technicians/team" element={<RouteGuard path="technicians/team"><TeamPage /></RouteGuard>} />
+        <Route path="technicians/competencies" element={<RouteGuard path="technicians/competencies"><CompetenciesPage /></RouteGuard>} />
+        <Route path="technicians/type-competencies" element={<RouteGuard path="technicians/type-competencies"><TypeCompetenciesPage /></RouteGuard>} />
+        <Route path="technicians/:id" element={<RouteGuard path="technicians/:id"><TechnicianDetail /></RouteGuard>} />
+        <Route path="effectif/presence" element={<RouteGuard path="effectif/presence"><PresencePage /></RouteGuard>} />
+        <Route path="effectif/pointage" element={<RouteGuard path="effectif/pointage"><PointagePage /></RouteGuard>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

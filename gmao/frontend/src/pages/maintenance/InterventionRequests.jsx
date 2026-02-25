@@ -39,7 +39,7 @@ const STATUS_MAP = { pending: 'pending', validated: 'validated', rejected: 'reje
 export default function InterventionRequests() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -50,7 +50,7 @@ export default function InterventionRequests() {
   const [rejectDialog, setRejectDialog] = useState({ open: false, id: null, reason: '' });
   const [form, setForm] = useState({ title: '', description: '', equipmentId: '', priority: 'medium' });
   const [submitting, setSubmitting] = useState(false);
-  const canValidate = user?.role === 'administrateur' || user?.role === 'responsable_maintenance';
+  const canValidate = can('intervention_requests', 'update');
 
   const fetchRequests = () => {
     setLoading(true);
