@@ -9,6 +9,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>MAINTX - Gestion de Maintenance | maintx.org</title>
+    <!-- CSP : autoriser Google Fonts et Unsplash. Si votre hébergeur envoie déjà un en-tête CSP, ajoutez ces sources côté serveur (voir docs/CSP_HEADERS.md). -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://images.unsplash.com data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://maintx.org https://*.maintx.org;" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
