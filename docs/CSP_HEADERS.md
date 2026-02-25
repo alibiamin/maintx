@@ -11,8 +11,9 @@ Si les polices Google (Outfit) ou les images Unsplash sont bloquées en producti
 | **style-src** | `'self' 'unsafe-inline' https://fonts.googleapis.com` |
 | **font-src**  | `'self' https://fonts.gstatic.com` |
 | **img-src**   | `'self' https://images.unsplash.com data: blob:` |
+| **connect-src** | `'self' https://maintx.org https://www.maintx.org https://fonts.googleapis.com https://fonts.gstatic.com` (obligatoire si Service Worker ou fetch vers Google Fonts) |
 
-Le reste (default-src, script-src, connect-src) peut rester comme aujourd’hui.
+Le reste (default-src, script-src) peut rester comme aujourd’hui.
 
 ## Exemples par hébergeur
 
@@ -38,13 +39,13 @@ Le reste (default-src, script-src, connect-src) peut rester comme aujourd’hui.
 
 ```
 /*
-  Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://images.unsplash.com data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://maintx.org https://*.maintx.org;
+  Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://images.unsplash.com data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://maintx.org https://*.maintx.org https://fonts.googleapis.com https://fonts.gstatic.com;
 ```
 
 ### Nginx
 
 ```nginx
-add_header Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://images.unsplash.com data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://maintx.org https://*.maintx.org;";
+add_header Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://images.unsplash.com data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://maintx.org https://*.maintx.org https://fonts.googleapis.com https://fonts.gstatic.com;";
 ```
 
 Après modification, redéployer ou recharger la config du serveur.
