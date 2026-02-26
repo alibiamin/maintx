@@ -60,6 +60,37 @@ const lightSweep = keyframes`
   100% { opacity: 0; transform: translateX(100%) skewX(-12deg); }
 `;
 
+/* Transition épique vers la section offres */
+const offersReveal = keyframes`
+  from {
+    opacity: 0;
+    transform: translateY(48px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+`;
+
+const offersCardStagger = keyframes`
+  from {
+    opacity: 0;
+    transform: translateY(36px) scale(0.94);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+`;
+
+const offersShine = keyframes`
+  0%   { opacity: 0; transform: translateX(-100%) scaleX(0.5); }
+  60%  { opacity: 0.4; }
+  100% { opacity: 0; transform: translateX(100%) scaleX(0.5); }
+`;
+
 export default function Landing() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -231,22 +262,24 @@ export default function Landing() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          perspective: '1200px',
+          perspective: '900px',
+          perspectiveOrigin: '50% 50%',
           px: 2
                   }}
                 >
                   <Box
                     sx={{
-            position: 'relative',
-            width: '100%',
-            maxWidth: 1200,
-            height: 'min(98vh, 1000px)',
-            minHeight: 720,
-            transformStyle: 'preserve-3d',
-            transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-            transition: 'transform 0.75s cubic-bezier(0.4, 0, 0.2, 1)'
-          }}
-        >
+                      position: 'relative',
+                      width: '100%',
+                      maxWidth: 1200,
+                      height: 'min(98vh, 1000px)',
+                      minHeight: 720,
+                      transformStyle: 'preserve-3d',
+                      transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+                      transition: 'transform 0.9s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                      willChange: 'transform'
+                    }}
+                  >
           {/* Face avant : hero + description moderne */}
           <Box
             sx={{
@@ -431,7 +464,7 @@ export default function Landing() {
             </Stack>
           </Box>
 
-          {/* Face arrière : design épuré, tout visible sans scroll */}
+          {/* Face arrière : section offres — entrée animée */}
           <Box
             role="region"
             aria-label={t('landing.flipTitle')}
@@ -452,49 +485,76 @@ export default function Landing() {
               gap: 0
             }}
           >
-            {/* Barre titre + Retour */}
-            <Box sx={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box sx={{ width: 32, height: 3, borderRadius: 2, bgcolor: green }} />
-                <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, fontSize: '1rem' }}>{t('landing.flipTitle')}</Typography>
+            <Box key={flipped} sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+              {/* Lueur de passage (shine) */}
+              <Box
+                sx={{
+                  position: 'absolute',
+                  inset: 0,
+                  pointerEvents: 'none',
+                  background: `linear-gradient(105deg, transparent 0%, ${alpha(green, 0.12)} 45%, transparent 55%)`,
+                  animation: `${offersShine} 1.2s ease-out 0.4s both`,
+                  zIndex: 0
+                }}
+              />
+              {/* Barre titre + Retour */}
+              <Box
+                sx={{
+                  flexShrink: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  mb: 1.5,
+                  position: 'relative',
+                  zIndex: 1,
+                  animation: `${offersReveal} 0.65s cubic-bezier(0.34, 1.2, 0.64, 1) 0.05s both`
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ width: 32, height: 3, borderRadius: 2, bgcolor: green }} />
+                  <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, fontSize: '1rem' }}>{t('landing.flipTitle')}</Typography>
+                </Box>
+                <Button size="small" startIcon={<ArrowBack />} onClick={() => setFlipped(false)} sx={{ color: green, borderColor: alpha(green, 0.5), '&:hover': { borderColor: green, bgcolor: alpha(green, 0.08) } }} variant="outlined">
+                  {t('landing.flipBack')}
+                </Button>
               </Box>
-              <Button size="small" startIcon={<ArrowBack />} onClick={() => setFlipped(false)} sx={{ color: green, borderColor: alpha(green, 0.5), '&:hover': { borderColor: green, bgcolor: alpha(green, 0.08) } }} variant="outlined">
-                {t('landing.flipBack')}
-              </Button>
-            </Box>
 
-            {/* Bloc description : court et professionnel */}
-            <Box
-              sx={{
-                flexShrink: 0,
-                mb: 2,
-                p: 1.5,
-                borderRadius: 2,
-                bgcolor: alpha(green, 0.06),
-                border: `1px solid ${alpha(green, 0.18)}`
-              }}
-            >
-              <Typography sx={{ color: '#fff', fontSize: '0.95rem', lineHeight: 1.6, fontWeight: 500 }}>
-                {t('landing.flipDescription')}
-              </Typography>
-            </Box>
+              {/* Bloc description */}
+              <Box
+                sx={{
+                  flexShrink: 0,
+                  mb: 2,
+                  p: 1.5,
+                  borderRadius: 2,
+                  bgcolor: alpha(green, 0.06),
+                  border: `1px solid ${alpha(green, 0.18)}`,
+                  position: 'relative',
+                  zIndex: 1,
+                  animation: `${offersReveal} 0.6s cubic-bezier(0.34, 1.2, 0.64, 1) 0.15s both`
+                }}
+              >
+                <Typography sx={{ color: '#fff', fontSize: '0.95rem', lineHeight: 1.6, fontWeight: 500 }}>
+                  {t('landing.flipDescription')}
+                </Typography>
+              </Box>
 
-            {/* Contenu principal : Forfaits — design détaillé et attractif */}
-            <Grid container spacing={2} sx={{ flex: 1, minHeight: 0 }}>
-              <Grid item xs={12} sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, mb: 0.5, px: 0.5, letterSpacing: '-0.02em' }}>{t('landing.plansTitle')}</Typography>
-                <Typography variant="body2" sx={{ color: alpha('#fff', 0.78), display: 'block', mb: 2, px: 0.5, maxWidth: 640, lineHeight: 1.5 }}>{t('landing.plansSubtitle')}</Typography>
-                <Grid container spacing={2} sx={{ flex: 1, minHeight: 0, alignContent: 'flex-start' }}>
-                  {[
+              {/* Contenu principal : Forfaits */}
+              <Grid container spacing={2} sx={{ flex: 1, minHeight: 0, position: 'relative', zIndex: 1 }}>
+                <Grid item xs={12} sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                  <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, mb: 0.5, px: 0.5, letterSpacing: '-0.02em', animation: `${offersReveal} 0.55s cubic-bezier(0.34, 1.2, 0.64, 1) 0.22s both` }}>{t('landing.plansTitle')}</Typography>
+                  <Typography variant="body2" sx={{ color: alpha('#fff', 0.78), display: 'block', mb: 2, px: 0.5, maxWidth: 640, lineHeight: 1.5, animation: `${offersReveal} 0.5s cubic-bezier(0.34, 1.2, 0.64, 1) 0.28s both` }}>{t('landing.plansSubtitle')}</Typography>
+                  <Grid container spacing={2} sx={{ flex: 1, minHeight: 0, alignContent: 'flex-start' }}>
+                    {[
                     { code: 'starter', nameKey: 'plan1Name', descKey: 'plan1Desc', priceKey: 'plan1Price', periodKey: 'plan1Period', features: ['plan1Feature1', 'plan1Feature2', 'plan1Feature3', 'plan1Feature4', 'plan1Feature5', 'plan1Feature6'], highlighted: false },
                     { code: 'pro', nameKey: 'plan2Name', descKey: 'plan2Desc', priceKey: 'plan2Price', periodKey: 'plan2Period', features: ['plan2Feature1', 'plan2Feature2', 'plan2Feature3', 'plan2Feature4', 'plan2Feature5', 'plan2Feature6'], highlighted: true },
                     { code: 'enterprise', nameKey: 'plan3Name', descKey: 'plan3Desc', priceKey: 'plan3Price', periodKey: 'plan3Period', features: ['plan3Feature1', 'plan3Feature2', 'plan3Feature3', 'plan3Feature4', 'plan3Feature5'], highlighted: false }
-                  ].map((plan) => {
+                  ].map((plan, cardIndex) => {
                     const offer = offers.find((o) => o.code === plan.code);
                     const hasPeriod = t(`landing.${plan.periodKey}`);
                     const priceText = offer != null
                       ? (offer.price != null ? (hasPeriod ? `${offer.price}` : `${offer.price} €`) : t('landing.plan3Price'))
                       : t(`landing.${plan.priceKey}`);
+                    const cardDelay = 0.35 + cardIndex * 0.14;
                     return (
                       <Grid item xs={12} md={4} key={plan.nameKey} sx={{ display: 'flex', minHeight: 0 }}>
                         <Card
@@ -506,6 +566,7 @@ export default function Landing() {
                             flexDirection: 'column',
                             borderRadius: 3,
                             overflow: 'visible',
+                            animation: `${offersCardStagger} 0.7s cubic-bezier(0.34, 1.2, 0.64, 1) ${cardDelay}s both`,
                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                             ...(plan.highlighted
                               ? { background: `linear-gradient(180deg, ${alpha(green, 0.18)} 0%, ${alpha('#0d1218', 0.98)} 35%)` }
@@ -623,9 +684,10 @@ export default function Landing() {
                     );
                   })}
                 </Grid>
-                            </Grid>
-            </Grid>
-          </Box>
+                  </Grid>
+                </Grid>
+              </Box>
+            </Box>
 
           <Box sx={{ display: 'none' }} aria-hidden="true">
                 <Button
@@ -655,32 +717,92 @@ export default function Landing() {
                 </Box>
               </Box>
 
-      {/* Dialog demande de démo */}
-      <Dialog open={demoDialogOpen} onClose={() => !demoSubmitting && setDemoDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 2 } }}>
-        <DialogTitle sx={{ borderBottom: '1px solid', borderColor: 'divider', pb: 1.5 }}>{t('landing.demoFormTitle')}</DialogTitle>
-        <form onSubmit={handleDemoSubmit}>
-          <DialogContent sx={{ pt: 2 }}>
-            {demoSuccess ? (
-              <Typography color="primary" fontWeight={600}>{t('landing.demoSuccess')}</Typography>
-            ) : (
-              <Stack spacing={2}>
-                {demoError && <Typography variant="body2" color="error">{demoError}</Typography>}
-                <TextField required label={t('landing.demoFirstName')} value={demoForm.firstName} onChange={(e) => setDemoForm((f) => ({ ...f, firstName: e.target.value }))} fullWidth size="small" autoComplete="given-name" />
-                <TextField required label={t('landing.demoLastName')} value={demoForm.lastName} onChange={(e) => setDemoForm((f) => ({ ...f, lastName: e.target.value }))} fullWidth size="small" autoComplete="family-name" />
-                <TextField required type="email" label={t('landing.demoEmail')} value={demoForm.email} onChange={(e) => setDemoForm((f) => ({ ...f, email: e.target.value }))} fullWidth size="small" autoComplete="email" />
-                <TextField label={t('landing.demoCompany')} value={demoForm.company} onChange={(e) => setDemoForm((f) => ({ ...f, company: e.target.value }))} fullWidth size="small" autoComplete="organization" />
-                <TextField label={t('landing.demoPhone')} value={demoForm.phone} onChange={(e) => setDemoForm((f) => ({ ...f, phone: e.target.value }))} fullWidth size="small" autoComplete="tel" />
-                <TextField label={t('landing.demoMessage')} value={demoForm.message} onChange={(e) => setDemoForm((f) => ({ ...f, message: e.target.value }))} fullWidth size="small" multiline rows={3} />
-              </Stack>
+      {/* Dialog demande de démo — même animation que la section offres */}
+      <Dialog
+        open={demoDialogOpen}
+        onClose={() => !demoSubmitting && setDemoDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            overflow: 'hidden',
+            boxShadow: `0 24px 64px ${alpha('#000', 0.4)}`,
+            animation: `${offersReveal} 0.5s cubic-bezier(0.34, 1.2, 0.64, 1) both`
+          }
+        }}
+        TransitionProps={{ timeout: 400 }}
+      >
+        <Box key={demoDialogOpen ? 'demo-open' : 'demo-closed'} sx={{ position: 'relative', overflow: 'hidden' }}>
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              pointerEvents: 'none',
+              background: `linear-gradient(105deg, transparent 0%, ${alpha(green, 0.08)} 45%, transparent 55%)`,
+              animation: `${offersShine} 1s ease-out 0.25s both`,
+              zIndex: 0
+            }}
+          />
+          <DialogTitle
+            sx={{
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+              pb: 1.5,
+              position: 'relative',
+              zIndex: 1,
+              animation: `${offersReveal} 0.5s cubic-bezier(0.34, 1.2, 0.64, 1) 0.05s both`
+            }}
+          >
+            {t('landing.demoFormTitle')}
+          </DialogTitle>
+          <form onSubmit={handleDemoSubmit}>
+            <DialogContent sx={{ pt: 2, position: 'relative', zIndex: 1 }}>
+              {demoSuccess ? (
+                <Typography color="primary" fontWeight={600} sx={{ animation: `${offersReveal} 0.5s cubic-bezier(0.34, 1.2, 0.64, 1) 0.05s both` }}>{t('landing.demoSuccess')}</Typography>
+              ) : (
+                <Stack spacing={2}>
+                  {demoError && (
+                    <Typography variant="body2" color="error" sx={{ animation: `${offersReveal} 0.4s cubic-bezier(0.34, 1.2, 0.64, 1) 0.02s both` }}>{demoError}</Typography>
+                  )}
+                  <Box sx={{ animation: `${offersCardStagger} 0.5s cubic-bezier(0.34, 1.2, 0.64, 1) 0.08s both` }}>
+                    <TextField required label={t('landing.demoFirstName')} value={demoForm.firstName} onChange={(e) => setDemoForm((f) => ({ ...f, firstName: e.target.value }))} fullWidth size="small" autoComplete="given-name" />
+                  </Box>
+                  <Box sx={{ animation: `${offersCardStagger} 0.5s cubic-bezier(0.34, 1.2, 0.64, 1) 0.12s both` }}>
+                    <TextField required label={t('landing.demoLastName')} value={demoForm.lastName} onChange={(e) => setDemoForm((f) => ({ ...f, lastName: e.target.value }))} fullWidth size="small" autoComplete="family-name" />
+                  </Box>
+                  <Box sx={{ animation: `${offersCardStagger} 0.5s cubic-bezier(0.34, 1.2, 0.64, 1) 0.16s both` }}>
+                    <TextField required type="email" label={t('landing.demoEmail')} value={demoForm.email} onChange={(e) => setDemoForm((f) => ({ ...f, email: e.target.value }))} fullWidth size="small" autoComplete="email" />
+                  </Box>
+                  <Box sx={{ animation: `${offersCardStagger} 0.5s cubic-bezier(0.34, 1.2, 0.64, 1) 0.2s both` }}>
+                    <TextField label={t('landing.demoCompany')} value={demoForm.company} onChange={(e) => setDemoForm((f) => ({ ...f, company: e.target.value }))} fullWidth size="small" autoComplete="organization" />
+                  </Box>
+                  <Box sx={{ animation: `${offersCardStagger} 0.5s cubic-bezier(0.34, 1.2, 0.64, 1) 0.24s both` }}>
+                    <TextField label={t('landing.demoPhone')} value={demoForm.phone} onChange={(e) => setDemoForm((f) => ({ ...f, phone: e.target.value }))} fullWidth size="small" autoComplete="tel" />
+                  </Box>
+                  <Box sx={{ animation: `${offersCardStagger} 0.5s cubic-bezier(0.34, 1.2, 0.64, 1) 0.28s both` }}>
+                    <TextField label={t('landing.demoMessage')} value={demoForm.message} onChange={(e) => setDemoForm((f) => ({ ...f, message: e.target.value }))} fullWidth size="small" multiline rows={3} />
+                  </Box>
+                </Stack>
+              )}
+            </DialogContent>
+            {!demoSuccess && (
+              <DialogActions
+                sx={{
+                  px: 3,
+                  pb: 2,
+                  pt: 0,
+                  position: 'relative',
+                  zIndex: 1,
+                  animation: `${offersReveal} 0.45s cubic-bezier(0.34, 1.2, 0.64, 1) 0.32s both`
+                }}
+              >
+                <Button onClick={() => setDemoDialogOpen(false)} disabled={demoSubmitting}>{t('landing.demoCancel')}</Button>
+                <Button type="submit" variant="contained" disabled={demoSubmitting}>{demoSubmitting ? t('landing.demoSending') : t('landing.demoSubmit')}</Button>
+              </DialogActions>
             )}
-          </DialogContent>
-          {!demoSuccess && (
-            <DialogActions sx={{ px: 3, pb: 2, pt: 0 }}>
-              <Button onClick={() => setDemoDialogOpen(false)} disabled={demoSubmitting}>{t('landing.demoCancel')}</Button>
-              <Button type="submit" variant="contained" disabled={demoSubmitting}>{demoSubmitting ? t('landing.demoSending') : t('landing.demoSubmit')}</Button>
-            </DialogActions>
-          )}
-        </form>
+          </form>
+        </Box>
       </Dialog>
 
       {/* Footer : © 2026 MAINTX + email */}
