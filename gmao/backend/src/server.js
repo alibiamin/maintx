@@ -137,7 +137,11 @@ app.get('/', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 const publicInterventionRequestRoutes = require('./routes/publicInterventionRequest');
+const publicOffersRoutes = require('./routes/publicOffers');
 app.use('/api/public', publicInterventionRequestRoutes);
+app.use('/api/public', publicOffersRoutes);
+const contactRoutes = require('./routes/contact');
+app.use('/api/contact', contactRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/equipment', equipmentRoutes);
 app.use('/api/work-orders', workOrdersRoutes);
@@ -293,7 +297,7 @@ async function start() {
 
   // Migrations sur gmao.db : uniquement celles qui concernent la base admin (tenants, users.tenant_id).
   // Les autres migrations (sites, equipment, work_orders, etc.) s'appliquent à la base client (default.db) via runClientMigrations.
-  const ADMIN_MIGRATIONS = ['026_tenants.js', '027_users_tenant_id.js', '028_tenants_license_dates.js', '060_refresh_tokens.js', '061_permissions.js', '062_dashboard_permissions.js', '064_audit_logs.js', '065_tenant_status_deleted_at.js', '066_users_revoked_at.js', '067_tenant_usage.js', '068_tenant_enabled_modules.js'];
+  const ADMIN_MIGRATIONS = ['026_tenants.js', '027_users_tenant_id.js', '028_tenants_license_dates.js', '060_refresh_tokens.js', '061_permissions.js', '062_dashboard_permissions.js', '064_audit_logs.js', '065_tenant_status_deleted_at.js', '066_users_revoked_at.js', '067_tenant_usage.js', '068_tenant_enabled_modules.js', '077_subscription_plans.js'];
   try {
     const path = require('path');
     const fs = require('fs');

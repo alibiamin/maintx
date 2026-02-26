@@ -32,14 +32,18 @@ const EVENT_LABELS = {
 function getTransporter() {
   const host = process.env.SMTP_HOST;
   if (!host) return null;
+  const port = parseInt(process.env.SMTP_PORT, 10) || 587;
+  const secure = process.env.SMTP_SECURE === 'true';
   return nodemailer.createTransport({
     host,
-    port: parseInt(process.env.SMTP_PORT, 10) || 587,
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: process.env.SMTP_USER ? {
+    port,
+    secure,
+    requireTLS: !secure && port === 587,
+    auth: process.env.SMTP_USER && process.env.SMTP_PASS ? {
       user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS || ''
-    } : undefined
+      pass: process.env.SMTP_PASS
+    } : undefined,
+    tls: port === 465 && secure ? { rejectUnauthorized: true } : undefined
   });
 }
 
@@ -47,16 +51,21 @@ async function sendEmail(to, subject, text, html) {
   const transport = getTransporter();
   if (!transport || !to) return;
   const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@maintx.org';
+  const toStr = Array.isArray(to) ? to.join(', ') : to;
   try {
-    await transport.sendMail({
+    const result = await transport.sendMail({
       from,
-      to: Array.isArray(to) ? to.join(', ') : to,
+      to: toStr,
       subject: subject || 'Notification xmaint',
       text: text || '',
       html: html || (text ? text.replace(/\n/g, '<br>') : '')
     });
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[notificationService] Email sent to', toStr, 'messageId:', result.messageId);
+    }
   } catch (err) {
     console.warn('[notificationService] Email error:', err.message);
+    throw err;
   }
 }
 

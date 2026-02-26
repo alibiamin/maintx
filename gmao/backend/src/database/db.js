@@ -109,7 +109,7 @@ function getAdminDb() {
 }
 
 /** Fichiers de migration à ne pas exécuter sur la base client (réservés à gmao.db admin) */
-const CLIENT_SKIP_MIGRATIONS = ['026_tenants.js', '027_users_tenant_id.js', '028_tenants_license_dates.js', '060_refresh_tokens.js', '061_permissions.js', '062_dashboard_permissions.js', '065_tenant_status_deleted_at.js', '066_users_revoked_at.js', '068_tenant_enabled_modules.js'];
+const CLIENT_SKIP_MIGRATIONS = ['026_tenants.js', '027_users_tenant_id.js', '028_tenants_license_dates.js', '060_refresh_tokens.js', '061_permissions.js', '062_dashboard_permissions.js', '065_tenant_status_deleted_at.js', '066_users_revoked_at.js', '068_tenant_enabled_modules.js', '077_subscription_plans.js'];
 
 /**
  * Migrations à appliquer sur les bases client : schéma GMAO complet (001-056 sauf tenants).

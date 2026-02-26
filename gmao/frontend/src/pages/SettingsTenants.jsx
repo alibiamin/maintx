@@ -44,12 +44,51 @@ export default function SettingsTenants() {
   });
   const [editForm, setEditForm] = useState({ name: '', licenseStart: '', licenseEnd: '', enabledModules: null });
   const [moduleList, setModuleList] = useState({ codes: [], labels: {}, packs: [] });
+  const [offers, setOffers] = useState([]);
+  const [offersLoading, setOffersLoading] = useState(true);
+  const [offerPriceEdit, setOfferPriceEdit] = useState({}); // code -> value (string)
+  const [savingOfferCode, setSavingOfferCode] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     loadTenants();
   }, []);
+
+  useEffect(() => {
+    loadOffers();
+  }, []);
+
+  const loadOffers = async () => {
+    setOffersLoading(true);
+    try {
+      const res = await api.get('/tenants/offers');
+      setOffers(Array.isArray(res.data) ? res.data : []);
+      setOfferPriceEdit({});
+    } catch (e) {
+      console.error(e);
+      setOffers([]);
+    } finally {
+      setOffersLoading(false);
+    }
+  };
+
+  const handleSaveOffer = async (code) => {
+    const raw = offerPriceEdit[code];
+    const price = raw === '' || raw == null ? null : parseFloat(String(raw).replace(',', '.'));
+    if (price !== null && Number.isNaN(price)) return;
+    setSavingOfferCode(code);
+    try {
+      await api.put(`/tenants/offers/${code}`, { price });
+      setOfferPriceEdit((prev) => ({ ...prev, [code]: undefined }));
+      loadOffers();
+    } catch (e) {
+      console.error(e);
+      alert(e.response?.data?.error || 'Erreur lors de l\'enregistrement du prix.');
+    } finally {
+      setSavingOfferCode(null);
+    }
+  };
 
   useEffect(() => {
     api.get('/tenants/modules')
@@ -235,6 +274,72 @@ export default function SettingsTenants() {
                     </TableCell>
                   </TableRow>
                 ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card sx={{ borderRadius: 2, mt: 3 }}>
+        <CardContent>
+          <Typography variant="h6" fontWeight={700} gutterBottom>
+            Tarifs des offres
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Prix affichés sur la page d&apos;accueil (landing). Les offres sont utilisées pour la démo et les demandes de devis.
+          </Typography>
+          {offersLoading ? (
+            <Box display="flex" justifyContent="center" py={2}>
+              <CircularProgress size={28} />
+            </Box>
+          ) : offers.length === 0 ? (
+            <Typography color="text.secondary" variant="body2">
+              Aucune offre configurée. Exécutez les migrations sur la base admin (gmao.db).
+            </Typography>
+          ) : (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Offre</TableCell>
+                  <TableCell>Prix (€/mois)</TableCell>
+                  <TableCell align="right">Action</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {offers.map((o) => {
+                  const editVal = offerPriceEdit[o.code];
+                  const displayPrice = editVal !== undefined ? editVal : (o.price != null ? String(o.price) : '');
+                  const isSaving = savingOfferCode === o.code;
+                  return (
+                    <TableRow key={o.code}>
+                      <TableCell>
+                        <Typography fontWeight={600}>{o.name}</Typography>
+                        <Typography variant="caption" color="text.secondary">{o.code}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <TextField
+                          size="small"
+                          type="text"
+                          placeholder="Sur devis si vide"
+                          value={displayPrice}
+                          onChange={(e) => setOfferPriceEdit((prev) => ({ ...prev, [o.code]: e.target.value }))}
+                          sx={{ maxWidth: 140 }}
+                          inputProps={{ inputMode: 'decimal' }}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Button
+                          size="small"
+                          variant="contained"
+                          disabled={isSaving}
+                          onClick={() => handleSaveOffer(o.code)}
+                        >
+                          {isSaving ? <CircularProgress size={18} /> : 'Enregistrer'}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}

@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Typography, Button, Stack, Grid, Card, CardContent } from '@mui/material';
+import { Box, Typography, Button, Stack, Grid, Card, CardContent, Dialog, DialogTitle, DialogContent, DialogActions, TextField } from '@mui/material';
 import { useTheme, alpha, keyframes } from '@mui/material/styles';
-import { Login, ArrowForward, ArrowBack, Build, Assignment, Inventory, Schedule, List, Email, ContactMail } from '@mui/icons-material';
+import { Login, ArrowForward, ArrowBack, Build, Assignment, Inventory, Schedule, List, Email, ContactMail, CheckCircle } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import api from '../services/api';
+import { getApiErrorMessage } from '../services/api';
 
 const HERO_IMAGE = 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1920&q=85&auto=format&fit=crop';
-const CONTACT_EMAIL = 'contact@maintx.org';
+const CONTACT_EMAIL = 'admin@maintx.org';
 
 /* Animations type Figma : entrées progressives, easing fluide */
 const fadeUp = keyframes`
@@ -65,6 +67,42 @@ export default function Landing() {
   const green = theme.palette.primary.main;
   const [mounted, setMounted] = useState(false);
   const [flipped, setFlipped] = useState(false);
+  const [demoDialogOpen, setDemoDialogOpen] = useState(false);
+  const [demoForm, setDemoForm] = useState({ firstName: '', lastName: '', email: '', company: '', phone: '', message: '' });
+  const [demoSubmitting, setDemoSubmitting] = useState(false);
+  const [demoError, setDemoError] = useState('');
+  const [demoSuccess, setDemoSuccess] = useState(false);
+  const [offers, setOffers] = useState([]);
+
+  useEffect(() => {
+    api.get('/public/offers')
+      .then((res) => setOffers(Array.isArray(res.data?.plans) ? res.data.plans : []))
+      .catch(() => setOffers([]));
+  }, []);
+
+  const handleDemoSubmit = (e) => {
+    e.preventDefault();
+    setDemoError('');
+    setDemoSubmitting(true);
+    api.post('/contact/demo', {
+      firstName: demoForm.firstName.trim(),
+      lastName: demoForm.lastName.trim(),
+      email: demoForm.email.trim(),
+      company: demoForm.company.trim() || undefined,
+      phone: demoForm.phone.trim() || undefined,
+      message: demoForm.message.trim() || undefined
+    })
+      .then(() => {
+        setDemoSuccess(true);
+        setDemoForm({ firstName: '', lastName: '', email: '', company: '', phone: '', message: '' });
+        setTimeout(() => {
+          setDemoDialogOpen(false);
+          setDemoSuccess(false);
+        }, 2000);
+      })
+      .catch((err) => setDemoError(getApiErrorMessage(err, t('landing.demoError'))))
+      .finally(() => setDemoSubmitting(false));
+  };
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
@@ -80,6 +118,8 @@ export default function Landing() {
         alignItems: 'center',
         justifyContent: 'center',
         overflow: 'hidden',
+        /* Couleur de fond avant chargement de l'image (évite le flash blanc) */
+        backgroundColor: '#0a0e12',
         /* Image de fond */
         backgroundImage: `url(${HERO_IMAGE})`,
         backgroundSize: 'cover',
@@ -199,104 +239,186 @@ export default function Landing() {
                     sx={{
             position: 'relative',
             width: '100%',
-            maxWidth: 920,
-            height: 'min(92vh, 720px)',
-            minHeight: 480,
+            maxWidth: 1200,
+            height: 'min(98vh, 1000px)',
+            minHeight: 720,
             transformStyle: 'preserve-3d',
             transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
             transition: 'transform 0.75s cubic-bezier(0.4, 0, 0.2, 1)'
           }}
         >
-          {/* Face avant : MAINTX + CTAs */}
+          {/* Face avant : hero + description moderne */}
           <Box
-        sx={{
-            position: 'absolute',
-            inset: 0,
+            sx={{
+              position: 'absolute',
+              inset: 0,
               backfaceVisibility: 'hidden',
               WebkitBackfaceVisibility: 'hidden',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              textAlign: 'center'
+              textAlign: 'center',
+              px: 2
             }}
           >
-                <Typography
+            {/* Badge au-dessus du titre */}
+            <Box
+              component="span"
+              sx={{
+                display: 'inline-block',
+                px: 2,
+                py: 0.75,
+                mb: 2,
+                borderRadius: 100,
+                border: `1px solid ${alpha(green, 0.4)}`,
+                bgcolor: alpha(green, 0.08),
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                letterSpacing: '0.2em',
+                color: green,
+                textTransform: 'uppercase',
+                animation: mounted ? `${fadeUp} 0.6s cubic-bezier(0.16, 1, 0.3, 1) both` : 'none'
+              }}
+            >
+              {t('landing.tagline')}
+            </Box>
+
+            {/* Titre MAINTX */}
+            <Typography
               component="h1"
-                  sx={{
-                fontSize: { xs: '4.5rem', sm: '8rem', md: '12rem', lg: '14rem' },
+              sx={{
+                fontSize: { xs: '4rem', sm: '7rem', md: '11rem', lg: '13rem' },
                 fontWeight: 900,
                 letterSpacing: { xs: '0.06em', md: '0.12em' },
                 lineHeight: 1,
                 whiteSpace: 'nowrap',
-                animation: mounted ? `${scaleIn} 0.9s cubic-bezier(0.16, 1, 0.3, 1) both` : 'none',
+                animation: mounted ? `${scaleIn} 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both` : 'none',
                 color: '#fff',
                 textShadow: `0 2px 40px ${alpha(green, 0.4)}`
               }}
             >
               <Box component="span" sx={{ color: '#fff' }}>MAINT</Box>
-                  <Box
-                    component="span"
-                    sx={{
+              <Box
+                component="span"
+                sx={{
                   color: green,
                   display: 'inline',
                   animation: mounted ? `${softGlow} 4s ease-in-out infinite 0.5s` : 'none'
-                    }}
-                  >
-                    X
-                  </Box>
+                }}
+              >
+                X
+              </Box>
             </Typography>
-                  <Typography
-                    sx={{
-                mt: 2,
-                mb: 4,
-                fontSize: { xs: '0.85rem', md: '1.1rem' },
-                letterSpacing: '0.28em',
-                color: alpha('#fff', 0.85),
-                animation: mounted ? `${fadeUp} 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both` : 'none'
+
+            {/* Sous-titre + phrase d’accroche */}
+            <Typography
+              variant="h2"
+              sx={{
+                mt: 1.5,
+                fontSize: { xs: '1rem', sm: '1.25rem', md: '1.4rem' },
+                fontWeight: 600,
+                letterSpacing: '0.02em',
+                color: alpha('#fff', 0.95),
+                animation: mounted ? `${fadeUp} 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both` : 'none'
               }}
             >
-              {t('landing.tagline')}
-                  </Typography>
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={2}
+              {t('landing.subtitle')}
+            </Typography>
+            <Typography
+              sx={{
+                mt: 1.5,
+                maxWidth: 520,
+                mx: 'auto',
+                fontSize: { xs: '0.9rem', md: '1rem' },
+                lineHeight: 1.65,
+                color: alpha('#fff', 0.78),
+                animation: mounted ? `${fadeUp} 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both` : 'none'
+              }}
+            >
+              {t('landing.lead')}
+            </Typography>
+
+            {/* Pills valeur : équipements, OT, stock, préventif */}
+            <Stack
+              direction="row"
+              flexWrap="wrap"
+              justifyContent="center"
+              spacing={1.5}
+              sx={{
+                mt: 3,
+                mb: 3,
+                animation: mounted ? `${fadeUp} 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both` : 'none'
+              }}
+            >
+              {[
+                { icon: Build, key: 'feature1Title' },
+                { icon: Assignment, key: 'feature2Title' },
+                { icon: Inventory, key: 'feature3Title' },
+                { icon: Schedule, key: 'feature4Title' }
+              ].map(({ icon: Icon, key }) => (
+                <Box
+                  key={key}
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 0.75,
+                    px: 1.5,
+                    py: 0.75,
+                    borderRadius: 2,
+                    bgcolor: alpha('#fff', 0.06),
+                    border: `1px solid ${alpha(green, 0.2)}`,
+                    color: alpha('#fff', 0.9),
+                    fontSize: '0.8rem',
+                    fontWeight: 500
+                  }}
+                >
+                  <Icon sx={{ fontSize: 18, color: green }} />
+                  {t(`landing.${key}`)}
+                </Box>
+              ))}
+            </Stack>
+
+            {/* CTAs */}
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={2}
               justifyContent="center"
               sx={{ animation: mounted ? `${fadeUp} 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both` : 'none' }}
-                >
-                  <Button
-                    size="large"
+            >
+              <Button
+                size="large"
                 variant="contained"
-                    startIcon={<Login />}
-                    onClick={() => navigate('/login')}
-                    sx={{
-                      px: 4,
+                startIcon={<Login />}
+                onClick={() => navigate('/login')}
+                sx={{
+                  px: 4,
                   py: 1.6,
-                      borderRadius: 2,
+                  borderRadius: 2,
                   fontWeight: 600,
                   backgroundColor: green,
                   boxShadow: `0 16px 48px ${alpha(green, 0.4)}`,
                   transition: 'transform 0.25s ease, box-shadow 0.25s ease',
-                      '&:hover': {
+                  '&:hover': {
                     transform: 'translateY(-3px)',
                     boxShadow: `0 24px 56px ${alpha(green, 0.5)}`
                   }
                 }}
               >
                 {t('landing.ctaLogin')}
-                  </Button>
-                  <Button
-                    size="large"
+              </Button>
+              <Button
+                size="large"
                 variant="outlined"
-                    endIcon={<ArrowForward />}
+                endIcon={<ArrowForward />}
                 onClick={() => setFlipped(true)}
-                    sx={{
-                      px: 4,
+                sx={{
+                  px: 4,
                   py: 1.6,
-                      borderRadius: 2,
+                  borderRadius: 2,
                   borderColor: alpha(green, 0.7),
                   color: green,
-                      '&:hover': {
+                  '&:hover': {
                     borderColor: green,
                     backgroundColor: alpha(green, 0.08),
                     transform: 'translateY(-3px)'
@@ -305,15 +427,15 @@ export default function Landing() {
                 }}
               >
                 {t('landing.ctaDiscover')}
-                  </Button>
-                </Stack>
-                  </Box>
+              </Button>
+            </Stack>
+          </Box>
 
-          {/* Face arrière : description — occupe tout l'espace */}
+          {/* Face arrière : design épuré, tout visible sans scroll */}
           <Box
             role="region"
             aria-label={t('landing.flipTitle')}
-        sx={{
+            sx={{
               position: 'absolute',
               inset: 0,
               backfaceVisibility: 'hidden',
@@ -321,101 +443,191 @@ export default function Landing() {
               transform: 'rotateY(180deg)',
               display: 'flex',
               flexDirection: 'column',
-              bgcolor: alpha('#0a0e12', 0.97),
+              bgcolor: alpha('#0a0e12', 0.98),
               borderRadius: 3,
-              border: `1px solid ${alpha(green, 0.25)}`,
-              boxShadow: `0 24px 80px ${alpha('#000', 0.5)}, 0 0 0 1px ${alpha(green, 0.08)}`,
-              p: { xs: 2, sm: 2.5 },
+              border: `1px solid ${alpha(green, 0.2)}`,
+              boxShadow: `0 32px 64px ${alpha('#000', 0.5)}`,
+              p: { xs: 1.5, sm: 2 },
               overflow: 'hidden',
               gap: 0
             }}
           >
-            <Box sx={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-              <Box sx={{ width: 40, height: 3, borderRadius: 2, bgcolor: green, opacity: 0.9 }} />
-              <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
-                {t('landing.flipTitle')}
-                      </Typography>
-      </Box>
-
-            <Grid container spacing={1.5} sx={{ flex: 1, minHeight: 0, alignContent: 'stretch' }}>
-              {/* Colonne gauche : À propos + En détail — remplissent la hauteur */}
-              <Grid item xs={12} md={5} sx={{ display: 'flex', minHeight: 0 }}>
-                <Stack spacing={1.5} sx={{ flex: 1, minHeight: 0, width: '100%' }}>
-                  <Card sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: alpha(green, 0.06), border: `1px solid ${alpha(green, 0.2)}`, borderRadius: 1.5 }}>
-                    <CardContent sx={{ p: 1.5, flex: 1, display: 'flex', flexDirection: 'column', '&:last-child': { pb: 1.5 } }}>
-                      <Typography variant="subtitle2" sx={{ color: green, fontWeight: 600, mb: 0.5 }}>
-                        {t('landing.flipAboutTitle')}
-                  </Typography>
-                      <Typography sx={{ color: alpha('#fff', 0.88), fontSize: '0.8rem', lineHeight: 1.5, flex: 1 }}>
-                        {t('landing.flipAboutText')}
-                  </Typography>
-                    </CardContent>
-                  </Card>
-                  <Card sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: alpha('#0d1218', 0.6), border: `1px solid ${alpha(green, 0.18)}`, borderRadius: 1.5 }}>
-                    <CardContent sx={{ p: 1.5, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, '&:last-child': { pb: 1.5 } }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5, flexShrink: 0 }}>
-                        <List sx={{ fontSize: 16, color: green }} />
-                        <Typography variant="subtitle2" sx={{ color: green, fontWeight: 600, fontSize: '0.8rem' }}>
-                          {t('landing.flipDetailTitle')}
-                            </Typography>
-                          </Box>
-                      <Stack component="ul" spacing={0.25} sx={{ m: 0, pl: 2, listStyleType: 'disc', flex: 1, '& li': { color: alpha('#fff', 0.82), fontSize: '0.75rem', lineHeight: 1.4 } }}>
-                        <Typography component="li">{t('landing.flipDetail1')}</Typography>
-                        <Typography component="li">{t('landing.flipDetail2')}</Typography>
-                        <Typography component="li">{t('landing.flipDetail3')}</Typography>
-                        <Typography component="li">{t('landing.flipDetail4')}</Typography>
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                </Stack>
-                  </Grid>
-
-              {/* Colonne droite : 4 features + Contact — remplissent la hauteur */}
-              <Grid item xs={12} md={7} sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                <Grid container spacing={1.5} sx={{ flex: 1, minHeight: 0, alignContent: 'stretch' }}>
-                  {[
-                    { Icon: Build, titleKey: 'feature1Title', descKey: 'feature1Desc' },
-                    { Icon: Assignment, titleKey: 'feature2Title', descKey: 'feature2Desc' },
-                    { Icon: Inventory, titleKey: 'feature3Title', descKey: 'feature3Desc' },
-                    { Icon: Schedule, titleKey: 'feature4Title', descKey: 'feature4Desc' }
-                  ].map(({ Icon, titleKey, descKey }) => (
-                    <Grid item xs={12} sm={6} key={titleKey} sx={{ display: 'flex', minHeight: 0 }}>
-                      <Card sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', bgcolor: alpha('#0d1218', 0.8), border: `1px solid ${alpha(green, 0.15)}`, borderRadius: 1.5, '&:hover': { borderColor: alpha(green, 0.3) } }}>
-                        <CardContent sx={{ p: 1.5, flex: 1, display: 'flex', flexDirection: 'column', '&:last-child': { pb: 1.5 } }}>
-                          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, flex: 1 }}>
-                            <Box sx={{ width: 32, height: 32, borderRadius: 1, bgcolor: alpha(green, 0.15), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <Icon sx={{ fontSize: 18, color: green }} />
-                </Box>
-                            <Box sx={{ flex: 1, minWidth: 0 }}>
-                              <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600, fontSize: '0.8rem' }}>{t(`landing.${titleKey}`)}</Typography>
-                              <Typography variant="body2" sx={{ color: alpha('#fff', 0.75), fontSize: '0.75rem', lineHeight: 1.4 }}>{t(`landing.${descKey}`)}</Typography>
+            {/* Barre titre + Retour */}
+            <Box sx={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ width: 32, height: 3, borderRadius: 2, bgcolor: green }} />
+                <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, fontSize: '1rem' }}>{t('landing.flipTitle')}</Typography>
               </Box>
-                          </Box>
-                        </CardContent>
-                      </Card>
-            </Grid>
-                  ))}
-          </Grid>
-                <Card sx={{ flexShrink: 0, mt: 1.5, bgcolor: alpha(green, 0.06), border: `1px solid ${alpha(green, 0.25)}`, borderRadius: 1.5 }}>
-                  <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5 }}>
-                      <ContactMail sx={{ fontSize: 18, color: green }} />
-                      <Typography variant="subtitle2" sx={{ color: green, fontWeight: 600, fontSize: '0.8rem' }}>{t('landing.flipContactTitle')}</Typography>
-                      <Typography sx={{ color: alpha('#fff', 0.85), fontSize: '0.8rem' }}>{t('landing.flipContactText')}</Typography>
-                      <Box component="a" href={`mailto:${CONTACT_EMAIL}`} sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, color: green, fontSize: '0.8rem', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}>
-                        <Email sx={{ fontSize: 16 }} />
-                        {t('landing.flipContactEmail')}
-      </Box>
-                      <Button component="a" href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(t('landing.flipContactDemo'))}`} variant="contained" size="small" sx={{ bgcolor: green, '&:hover': { bgcolor: theme.palette.primary.dark }, fontSize: '0.75rem', py: 0.5, px: 1.5 }}>
-                        {t('landing.flipContactDemo')}
-                      </Button>
+              <Button size="small" startIcon={<ArrowBack />} onClick={() => setFlipped(false)} sx={{ color: green, borderColor: alpha(green, 0.5), '&:hover': { borderColor: green, bgcolor: alpha(green, 0.08) } }} variant="outlined">
+                {t('landing.flipBack')}
+              </Button>
             </Box>
-                      </CardContent>
-                    </Card>
-                </Grid>
-          </Grid>
 
-            <Box sx={{ flexShrink: 0, pt: 1.5, display: 'flex', justifyContent: 'center' }}>
+            {/* Bloc description : court et professionnel */}
+            <Box
+              sx={{
+                flexShrink: 0,
+                mb: 2,
+                p: 1.5,
+                borderRadius: 2,
+                bgcolor: alpha(green, 0.06),
+                border: `1px solid ${alpha(green, 0.18)}`
+              }}
+            >
+              <Typography sx={{ color: '#fff', fontSize: '0.95rem', lineHeight: 1.6, fontWeight: 500 }}>
+                {t('landing.flipDescription')}
+              </Typography>
+            </Box>
+
+            {/* Contenu principal : Forfaits — design détaillé et attractif */}
+            <Grid container spacing={2} sx={{ flex: 1, minHeight: 0 }}>
+              <Grid item xs={12} sx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <Typography variant="h5" sx={{ color: '#fff', fontWeight: 800, mb: 0.5, px: 0.5, letterSpacing: '-0.02em' }}>{t('landing.plansTitle')}</Typography>
+                <Typography variant="body2" sx={{ color: alpha('#fff', 0.78), display: 'block', mb: 2, px: 0.5, maxWidth: 640, lineHeight: 1.5 }}>{t('landing.plansSubtitle')}</Typography>
+                <Grid container spacing={2} sx={{ flex: 1, minHeight: 0, alignContent: 'flex-start' }}>
+                  {[
+                    { code: 'starter', nameKey: 'plan1Name', descKey: 'plan1Desc', priceKey: 'plan1Price', periodKey: 'plan1Period', features: ['plan1Feature1', 'plan1Feature2', 'plan1Feature3', 'plan1Feature4', 'plan1Feature5', 'plan1Feature6'], highlighted: false },
+                    { code: 'pro', nameKey: 'plan2Name', descKey: 'plan2Desc', priceKey: 'plan2Price', periodKey: 'plan2Period', features: ['plan2Feature1', 'plan2Feature2', 'plan2Feature3', 'plan2Feature4', 'plan2Feature5', 'plan2Feature6'], highlighted: true },
+                    { code: 'enterprise', nameKey: 'plan3Name', descKey: 'plan3Desc', priceKey: 'plan3Price', periodKey: 'plan3Period', features: ['plan3Feature1', 'plan3Feature2', 'plan3Feature3', 'plan3Feature4', 'plan3Feature5'], highlighted: false }
+                  ].map((plan) => {
+                    const offer = offers.find((o) => o.code === plan.code);
+                    const hasPeriod = t(`landing.${plan.periodKey}`);
+                    const priceText = offer != null
+                      ? (offer.price != null ? (hasPeriod ? `${offer.price}` : `${offer.price} €`) : t('landing.plan3Price'))
+                      : t(`landing.${plan.priceKey}`);
+                    return (
+                      <Grid item xs={12} md={4} key={plan.nameKey} sx={{ display: 'flex', minHeight: 0 }}>
+                        <Card
+                          elevation={0}
+                          sx={{
+                            flex: 1,
+                            position: 'relative',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            borderRadius: 3,
+                            overflow: 'visible',
+                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                            ...(plan.highlighted
+                              ? { background: `linear-gradient(180deg, ${alpha(green, 0.18)} 0%, ${alpha('#0d1218', 0.98)} 35%)` }
+                              : { bgcolor: alpha('#0d1218', 0.98) }),
+                            border: `2px solid ${plan.highlighted ? green : alpha(green, 0.22)}`,
+                            boxShadow: plan.highlighted
+                              ? `0 12px 40px ${alpha(green, 0.15)}, 0 0 0 1px ${alpha(green, 0.1)}`
+                              : `0 6px 24px ${alpha('#000', 0.25)}`,
+                            '&:hover': {
+                              borderColor: plan.highlighted ? green : alpha(green, 0.5),
+                              boxShadow: plan.highlighted
+                                ? `0 16px 48px ${alpha(green, 0.2)}, 0 0 0 1px ${alpha(green, 0.15)}`
+                                : `0 12px 32px ${alpha(green, 0.12)}`,
+                              transform: 'translateY(-4px)'
+                            }
+                          }}
+                        >
+                          {plan.highlighted && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                top: -12,
+                                left: '50%',
+                                transform: 'translateX(-50%)',
+                                px: 2,
+                                py: 0.5,
+                                borderRadius: 2,
+                                bgcolor: green,
+                                color: '#fff',
+                                fontSize: '0.7rem',
+                                fontWeight: 800,
+                                letterSpacing: '0.08em',
+                                textTransform: 'uppercase',
+                                boxShadow: `0 4px 12px ${alpha(green, 0.45)}`
+                              }}
+                            >
+                              {t('landing.planPopular')}
+                            </Box>
+                          )}
+                          <CardContent sx={{ p: 2.5, flex: 1, display: 'flex', flexDirection: 'column', '&:last-child': { pb: 2.5 } }}>
+                            <Typography variant="h6" sx={{ color: plan.highlighted ? green : '#fff', fontWeight: 800, fontSize: '1.25rem', mb: 0.5, letterSpacing: '-0.02em' }}>
+                              {t(`landing.${plan.nameKey}`)}
+                            </Typography>
+                            {plan.descKey && t(`landing.${plan.descKey}`) && (
+                              <Typography variant="body2" sx={{ color: alpha('#fff', 0.7), fontSize: '0.8rem', lineHeight: 1.45, mb: 1.5 }}>
+                                {t(`landing.${plan.descKey}`)}
+                              </Typography>
+                            )}
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'baseline',
+                                gap: 0.5,
+                                mb: 2,
+                                py: 1.25,
+                                px: 1.5,
+                                borderRadius: 2,
+                                bgcolor: alpha(green, 0.08),
+                                border: `1px solid ${alpha(green, 0.2)}`
+                              }}
+                            >
+                              <Typography component="span" sx={{ color: green, fontWeight: 900, fontSize: '1.85rem', lineHeight: 1, letterSpacing: '-0.03em' }}>
+                                {priceText}
+                              </Typography>
+                              {hasPeriod && (
+                                <Typography component="span" sx={{ color: alpha('#fff', 0.65), fontSize: '0.8rem', fontWeight: 500 }}>
+                                  {t(`landing.${plan.periodKey}`)}
+                                </Typography>
+                              )}
+                            </Box>
+                            <Typography variant="caption" sx={{ color: alpha('#fff', 0.55), textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, mb: 1 }}>
+                              {t('landing.planFeaturesLabel')}
+                            </Typography>
+                            <Stack spacing={0.85} sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+                              {plan.features.map((fk) => (
+                                <Box key={fk} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                                  <CheckCircle sx={{ fontSize: 20, color: green, flexShrink: 0, mt: 0.1 }} />
+                                  <Typography sx={{ color: alpha('#fff', 0.92), fontSize: '0.825rem', lineHeight: 1.45, fontWeight: 500 }}>
+                                    {t(`landing.${fk}`)}
+                                  </Typography>
+                                </Box>
+                              ))}
+                            </Stack>
+                            <Button
+                              type="button"
+                              fullWidth
+                              variant={plan.highlighted ? 'contained' : 'outlined'}
+                              size="medium"
+                              onClick={() => setDemoDialogOpen(true)}
+                              sx={{
+                                mt: 2,
+                                py: 1.35,
+                                borderRadius: 2,
+                                fontSize: '0.9rem',
+                                fontWeight: 700,
+                                textTransform: 'none',
+                                borderWidth: 2,
+                                borderColor: green,
+                                color: plan.highlighted ? '#fff' : green,
+                                bgcolor: plan.highlighted ? green : 'transparent',
+                                boxShadow: plan.highlighted ? `0 4px 14px ${alpha(green, 0.35)}` : 'none',
+                                '&:hover': {
+                                  borderWidth: 2,
+                                  borderColor: green,
+                                  bgcolor: plan.highlighted ? theme.palette.primary.dark : alpha(green, 0.12),
+                                  boxShadow: plan.highlighted ? `0 6px 20px ${alpha(green, 0.4)}` : 'none'
+                                }
+                              }}
+                            >
+                              {t('landing.planCta')}
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    );
+                  })}
+                </Grid>
+                            </Grid>
+            </Grid>
+          </Box>
+
+          <Box sx={{ display: 'none' }} aria-hidden="true">
                 <Button
                   size="large"
                   variant="outlined"
@@ -439,28 +651,62 @@ export default function Landing() {
             >
               {t('landing.flipBack')}
                 </Button>
-      </Box>
+          </Box>
                 </Box>
-                      </Box>
-      </Box>
+              </Box>
 
-      {/* Footer minimal */}
+      {/* Dialog demande de démo */}
+      <Dialog open={demoDialogOpen} onClose={() => !demoSubmitting && setDemoDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 2 } }}>
+        <DialogTitle sx={{ borderBottom: '1px solid', borderColor: 'divider', pb: 1.5 }}>{t('landing.demoFormTitle')}</DialogTitle>
+        <form onSubmit={handleDemoSubmit}>
+          <DialogContent sx={{ pt: 2 }}>
+            {demoSuccess ? (
+              <Typography color="primary" fontWeight={600}>{t('landing.demoSuccess')}</Typography>
+            ) : (
+              <Stack spacing={2}>
+                {demoError && <Typography variant="body2" color="error">{demoError}</Typography>}
+                <TextField required label={t('landing.demoFirstName')} value={demoForm.firstName} onChange={(e) => setDemoForm((f) => ({ ...f, firstName: e.target.value }))} fullWidth size="small" autoComplete="given-name" />
+                <TextField required label={t('landing.demoLastName')} value={demoForm.lastName} onChange={(e) => setDemoForm((f) => ({ ...f, lastName: e.target.value }))} fullWidth size="small" autoComplete="family-name" />
+                <TextField required type="email" label={t('landing.demoEmail')} value={demoForm.email} onChange={(e) => setDemoForm((f) => ({ ...f, email: e.target.value }))} fullWidth size="small" autoComplete="email" />
+                <TextField label={t('landing.demoCompany')} value={demoForm.company} onChange={(e) => setDemoForm((f) => ({ ...f, company: e.target.value }))} fullWidth size="small" autoComplete="organization" />
+                <TextField label={t('landing.demoPhone')} value={demoForm.phone} onChange={(e) => setDemoForm((f) => ({ ...f, phone: e.target.value }))} fullWidth size="small" autoComplete="tel" />
+                <TextField label={t('landing.demoMessage')} value={demoForm.message} onChange={(e) => setDemoForm((f) => ({ ...f, message: e.target.value }))} fullWidth size="small" multiline rows={3} />
+              </Stack>
+            )}
+          </DialogContent>
+          {!demoSuccess && (
+            <DialogActions sx={{ px: 3, pb: 2, pt: 0 }}>
+              <Button onClick={() => setDemoDialogOpen(false)} disabled={demoSubmitting}>{t('landing.demoCancel')}</Button>
+              <Button type="submit" variant="contained" disabled={demoSubmitting}>{demoSubmitting ? t('landing.demoSending') : t('landing.demoSubmit')}</Button>
+            </DialogActions>
+          )}
+        </form>
+      </Dialog>
+
+      {/* Footer : © 2026 MAINTX + email */}
       <Box
         id="footer"
         component="footer"
-                sx={{
+        sx={{
           position: 'absolute',
           bottom: 0,
           left: 0,
           right: 0,
           py: 2,
           textAlign: 'center',
-          zIndex: 1
+          zIndex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 0.5
         }}
       >
-        <Typography variant="caption" sx={{ color: alpha('#fff', 0.45) }}>
-          © {new Date().getFullYear()} MAINTX. {t('landing.footerRights')}
-            </Typography>
+        <Typography variant="caption" sx={{ color: alpha('#fff', 0.5) }}>
+          © 2026 MAINTX. {t('landing.footerRights')}
+        </Typography>
+        <Box component="a" href={`mailto:${CONTACT_EMAIL}`} sx={{ color: alpha('#fff', 0.6), fontSize: '0.8rem', textDecoration: 'none', '&:hover': { color: green, textDecoration: 'underline' } }}>
+          {CONTACT_EMAIL}
+        </Box>
       </Box>
     </Box>
   );

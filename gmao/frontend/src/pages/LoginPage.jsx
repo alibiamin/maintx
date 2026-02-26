@@ -35,7 +35,7 @@ const SOCIAL_LINKS = [
   { id: 'facebook', label: 'Facebook', href: 'https://www.facebook.com/maintx', icon: 'fb', color: '#1877f2' },
   { id: 'linkedin', label: 'LinkedIn', href: 'https://www.linkedin.com/company/maintx', icon: 'in', color: '#0a66c2' },
   { id: 'x', label: 'X (Twitter)', href: 'https://x.com/maintx', icon: 'x', color: '#000' },
-  { id: 'mail', label: 'Email', href: 'mailto:contact@maintx.org', icon: 'mail', color: '#2EB23E' }
+  { id: 'mail', label: 'Email', href: 'mailto:admin@maintx.org', icon: 'mail', color: '#2EB23E' }
 ];
 
 const features = [

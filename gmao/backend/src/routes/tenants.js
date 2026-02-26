@@ -28,6 +28,65 @@ router.get('/modules', (req, res) => {
   res.json({ codes: getAllModuleCodes(), labels: MODULE_LABELS, packs: getModulePacks() });
 });
 
+/**
+ * GET /api/tenants/offers
+ * Liste des offres d'abonnement (prix paramétrables) pour l'admin MAINTX.
+ */
+router.get('/offers', (req, res) => {
+  try {
+    const adminDb = dbModule.getAdminDb();
+    const rows = adminDb.prepare(`
+      SELECT id, code, name, price, period, display_order AS displayOrder
+      FROM subscription_plans
+      ORDER BY display_order ASC
+    `).all();
+    res.json(rows);
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) {
+      return res.json([]);
+    }
+    throw e;
+  }
+});
+
+/**
+ * PUT /api/tenants/offers/:code
+ * Met à jour le prix (et optionnellement le nom) d'une offre. Body: { price?: number | null, name?: string }
+ */
+router.put('/offers/:code', [
+  param('code').isIn(['starter', 'pro', 'enterprise'])
+], (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  const code = req.params.code;
+  const { price, name } = req.body || {};
+  try {
+    const adminDb = dbModule.getAdminDb();
+    const updates = [];
+    const params = [];
+    if (price !== undefined) {
+      const p = price === null || price === '' || (typeof price === 'string' && price.trim() === '') ? null : parseFloat(price);
+      if (Number.isNaN(p) && p !== null) return res.status(400).json({ error: 'Prix invalide' });
+      updates.push('price = ?');
+      params.push(p);
+    }
+    if (name !== undefined && typeof name === 'string' && name.trim()) {
+      updates.push('name = ?');
+      params.push(name.trim());
+    }
+    if (updates.length === 0) return res.status(400).json({ error: 'Indiquez price et/ou name' });
+    params.push(code);
+    adminDb.prepare(`UPDATE subscription_plans SET ${updates.join(', ')} WHERE code = ?`).run(...params);
+    const row = adminDb.prepare('SELECT id, code, name, price, period, display_order AS displayOrder FROM subscription_plans WHERE code = ?').get(code);
+    res.json(row);
+  } catch (e) {
+    if (e.message && e.message.includes('no such table')) {
+      return res.status(500).json({ error: 'Table des offres absente. Exécutez les migrations.' });
+    }
+    throw e;
+  }
+});
+
 function parseEnabledModules(val) {
   if (val == null || typeof val !== 'string' || !val.trim()) return null;
   try {
