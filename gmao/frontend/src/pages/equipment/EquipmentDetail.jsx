@@ -29,7 +29,7 @@ import {
   FormControlLabel,
   Checkbox
 } from '@mui/material';
-import { ArrowBack, Delete, Add, ContentCopy, AttachMoney, Edit } from '@mui/icons-material';
+import { ArrowBack, Delete, Add, ContentCopy, AttachMoney, Edit, Chat as ChatIcon } from '@mui/icons-material';
 import api from '../../services/api';
 import { useSnackbar } from '../../context/SnackbarContext';
 import { useAuth } from '../../context/AuthContext';
@@ -343,6 +343,9 @@ export default function EquipmentDetail() {
     <Box>
       <Box display="flex" alignItems="center" gap={1} sx={{ mb: 2 }}>
         <Button startIcon={<ArrowBack />} onClick={() => navigate('/app/equipment')}>Retour</Button>
+        <Button startIcon={<ChatIcon />} variant="outlined" onClick={() => navigate(`/app/chat?createEq=${equipment?.id}`)} title="Discuter avec l’équipe sur cet équipement">
+          Discuter
+        </Button>
         {canEditEquipment && (
           <>
             <Button startIcon={<Edit />} variant="outlined" onClick={openEditMainDialog}>Modifier</Button>

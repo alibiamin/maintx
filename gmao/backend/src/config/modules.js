@@ -63,7 +63,8 @@ const PATH_TO_MODULE = {
   '/api/failure-codes': 'failure_codes',
   '/api/settings': 'settings',
   '/api/users': 'users',
-  '/api/permissions': 'permissions'
+  '/api/permissions': 'permissions',
+  '/api/chat': 'chat'
 };
 
 const sortedPrefixes = Object.keys(PATH_TO_MODULE).sort((a, b) => b.length - a.length);
@@ -192,7 +193,8 @@ const MODULE_LABELS = {
   failure_codes: 'Codes défaillance',
   settings: 'Paramètres',
   users: 'Utilisateurs',
-  permissions: 'Permissions'
+  permissions: 'Permissions',
+  chat: 'Chat / Messagerie'
 };
 
 module.exports = {

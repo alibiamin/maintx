@@ -35,6 +35,7 @@ const InterventionRequests = lazy(() => import('./pages/maintenance/Intervention
 const Planning = lazy(() => import('./pages/Planning'));
 const PlanningAssignments = lazy(() => import('./pages/PlanningAssignments'));
 const PlanningResources = lazy(() => import('./pages/PlanningResources'));
+const Chat = lazy(() => import('./pages/Chat'));
 const StockList = lazy(() => import('./pages/stock/StockList'));
 const StockMovements = lazy(() => import('./pages/stock/StockMovements'));
 const StockInventories = lazy(() => import('./pages/stock/StockInventories'));
@@ -174,6 +175,7 @@ export default function App() {
         <Route path="planning" element={<RouteGuard path="planning"><Planning /></RouteGuard>} />
         <Route path="planning/assignments" element={<RouteGuard path="planning/assignments"><PlanningAssignments /></RouteGuard>} />
         <Route path="planning/resources" element={<RouteGuard path="planning/resources"><PlanningResources /></RouteGuard>} />
+        <Route path="chat" element={<RouteGuard path="chat"><Chat /></RouteGuard>} />
         <Route path="maintenance-plans" element={<RouteGuard path="maintenance-plans"><MaintenancePlans /></RouteGuard>} />
         <Route path="maintenance-plans/due" element={<RouteGuard path="maintenance-plans/due"><MaintenancePlansDue /></RouteGuard>} />
         <Route path="maintenance-projects" element={<RouteGuard path="maintenance-projects"><MaintenanceProjectsList /></RouteGuard>} />

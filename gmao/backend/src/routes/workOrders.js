@@ -69,6 +69,85 @@ function getUsersByRole(db, tenantId, roleNames) {
   `).all(...roleNames).map((u) => u.id);
 }
 
+/** Formate une date ISO pour affichage dans les notifications chat */
+function formatWoDate(iso) {
+  if (!iso) return '—';
+  const s = (iso + '').slice(0, 16);
+  return s.replace('T', ' ');
+}
+
+/**
+ * Construit la liste des changements OT pour la notification chat (tous les champs modifiés).
+ * @param {object} db
+ * @param {object} previousRow - Ligne OT avant mise à jour (avec joins equipment_name, type_name, assigned_name)
+ * @param {object} newRow - Ligne OT après mise à jour
+ * @param {object} reqBody - req.body (pour procedureIds)
+ * @returns {string[]} Libellés de changements en français
+ */
+function buildWorkOrderChangeSummary(db, previousRow, newRow, reqBody) {
+  if (!previousRow || !newRow) return [];
+  const changes = [];
+  const prioLabels = { low: 'Basse', medium: 'Moyenne', high: 'Haute', critical: 'Critique' };
+  const statusLabels = { pending: 'En attente', in_progress: 'En cours', completed: 'Terminé', cancelled: 'Annulé', deferred: 'Reporté' };
+  const workflowLabels = { draft: 'Brouillon', planned: 'Planifié', in_progress: 'En cours', to_validate: 'À valider', pending_approval: 'En attente d\'approbation', closed: 'Clos' };
+
+  if ((newRow.title || '') !== (previousRow.title || '')) {
+    changes.push(`Titre : ${((previousRow.title || '—') + '').slice(0, 35)} → ${((newRow.title || '—') + '').slice(0, 35)}`);
+  }
+  if ((newRow.description || '') !== (previousRow.description || '')) {
+    changes.push('Description modifiée');
+  }
+  if ((newRow.equipment_id || null) !== (previousRow.equipment_id || null)) {
+    const prevEq = previousRow.equipment_name || previousRow.equipment_code || (previousRow.equipment_id ? `#${previousRow.equipment_id}` : '—');
+    const newEq = newRow.equipment_name || newRow.equipment_code || (newRow.equipment_id ? `#${newRow.equipment_id}` : '—');
+    changes.push(`Équipement : ${prevEq || '—'} → ${newEq || '—'}`);
+  }
+  if ((newRow.type_id || null) !== (previousRow.type_id || null)) {
+    const prevT = previousRow.type_name || (previousRow.type_id ? `#${previousRow.type_id}` : '—');
+    const newT = newRow.type_name || (newRow.type_id ? `#${newRow.type_id}` : '—');
+    changes.push(`Type : ${prevT || '—'} → ${newT || '—'}`);
+  }
+  if ((newRow.priority || '') !== (previousRow.priority || '')) {
+    changes.push(`Priorité : ${prioLabels[previousRow.priority] || previousRow.priority || '—'} → ${prioLabels[newRow.priority] || newRow.priority || '—'}`);
+  }
+  if ((newRow.status || '') !== (previousRow.status || '')) {
+    changes.push(`Statut : ${statusLabels[previousRow.status] || previousRow.status || '—'} → ${statusLabels[newRow.status] || newRow.status || '—'}`);
+  }
+  if (newRow.status_workflow !== undefined && previousRow.status_workflow !== undefined && (newRow.status_workflow || '') !== (previousRow.status_workflow || '')) {
+    changes.push(`Workflow : ${workflowLabels[previousRow.status_workflow] || previousRow.status_workflow || '—'} → ${workflowLabels[newRow.status_workflow] || newRow.status_workflow || '—'}`);
+  }
+  if ((newRow.assigned_to || null) !== (previousRow.assigned_to || null)) {
+    const prevA = previousRow.assigned_name || (previousRow.assigned_to ? `#${previousRow.assigned_to}` : '—');
+    const newA = newRow.assigned_name || (newRow.assigned_to ? `#${newRow.assigned_to}` : '—');
+    changes.push(`Assigné à : ${prevA || '—'} → ${newA || '—'}`);
+  }
+  if ((newRow.planned_start || '') !== (previousRow.planned_start || '')) {
+    changes.push(`Début prévu : ${formatWoDate(previousRow.planned_start)} → ${formatWoDate(newRow.planned_start)}`);
+  }
+  if ((newRow.planned_end || '') !== (previousRow.planned_end || '')) {
+    changes.push(`Fin prévue : ${formatWoDate(previousRow.planned_end)} → ${formatWoDate(newRow.planned_end)}`);
+  }
+  if ((newRow.actual_start || '') !== (previousRow.actual_start || '')) {
+    changes.push(`Début réel : ${formatWoDate(previousRow.actual_start)} → ${formatWoDate(newRow.actual_start)}`);
+  }
+  if ((newRow.actual_end || '') !== (previousRow.actual_end || '')) {
+    changes.push(`Fin réelle : ${formatWoDate(previousRow.actual_end)} → ${formatWoDate(newRow.actual_end)}`);
+  }
+  if ((newRow.completed_at || '') !== (previousRow.completed_at || '')) {
+    changes.push(`Clôturé le : ${formatWoDate(previousRow.completed_at)} → ${formatWoDate(newRow.completed_at)}`);
+  }
+  if ((newRow.signature_name || '') !== (previousRow.signature_name || '')) {
+    changes.push(`Signature : ${((previousRow.signature_name || '—') + '').slice(0, 25)} → ${((newRow.signature_name || '—') + '').slice(0, 25)}`);
+  }
+  if ((newRow.project_id || null) !== (previousRow.project_id || null)) {
+    changes.push(`Projet : #${previousRow.project_id || '—'} → #${newRow.project_id || '—'}`);
+  }
+  if (Array.isArray(reqBody && reqBody.procedureIds)) {
+    changes.push('Procédures mises à jour');
+  }
+  return changes;
+}
+
 function formatWO(row, costs = null) {
   if (!row) return null;
   const out = {
@@ -433,6 +512,10 @@ router.post('/:id/reservations', requirePermission('work_orders', 'update'), aut
     FROM work_order_reservations r JOIN spare_parts sp ON r.spare_part_id = sp.id
     WHERE r.work_order_id = ? AND r.spare_part_id = ?
   `).get(woId, sparePartId);
+  try {
+    const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+    postWorkOrderUpdateNotification(db, parseInt(woId, 10), req.user.id, `Réservation : ${(row.part_code || row.part_name || 'pièce').slice(0, 40)} (qté ${row.quantity})`);
+  } catch (_) {}
   const up = row.unit_price != null ? Number(row.unit_price) : 0;
   const lineCost = Math.round((row.quantity || 0) * up * 100) / 100;
   res.status(existing ? 200 : 201).json({
@@ -456,6 +539,10 @@ router.delete('/:id/reservations/:reservationId', authorize(ROLES.ADMIN, ROLES.R
   const db = req.db;
   const result = db.prepare('DELETE FROM work_order_reservations WHERE id = ? AND work_order_id = ?').run(req.params.reservationId, req.params.id);
   if (result.changes === 0) return res.status(404).json({ error: 'Réservation non trouvée' });
+  try {
+    const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+    postWorkOrderUpdateNotification(db, parseInt(req.params.id, 10), req.user.id, 'Réservation supprimée');
+  } catch (_) {}
   res.status(204).send();
 });
 
@@ -558,6 +645,10 @@ router.post('/:id/consumed-parts', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROL
       JOIN spare_parts sp ON c.spare_part_id = sp.id
       WHERE c.id = ?
     `).get(lineId);
+    try {
+      const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+      postWorkOrderUpdateNotification(db, woId, req.user.id, `Pièce consommée : ${(row.part_code || row.part_name || 'pièce').slice(0, 40)} (qté ${quantity})`);
+    } catch (_) {}
     const uc = row.unit_cost_at_use != null ? Number(row.unit_cost_at_use) : (row.unit_price != null ? Number(row.unit_price) : 0);
     res.status(201).json({
       id: row.id,
@@ -589,6 +680,10 @@ router.delete('/:id/consumed-parts/:lineId', authorize(ROLES.ADMIN, ROLES.RESPON
   try {
     const result = db.prepare('DELETE FROM work_order_consumed_parts WHERE id = ? AND work_order_id = ?').run(req.params.lineId, req.params.id);
     if (result.changes === 0) return res.status(404).json({ error: 'Ligne pièce consommée non trouvée' });
+    try {
+      const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+      postWorkOrderUpdateNotification(db, parseInt(req.params.id, 10), req.user.id, 'Ligne pièce consommée supprimée');
+    } catch (_) {}
     res.status(204).send();
   } catch (e) {
     if (e.message && e.message.includes('no such table')) return res.status(501).json({ error: 'Table work_order_consumed_parts absente.' });
@@ -635,6 +730,10 @@ router.post('/:id/operators', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TE
     if (e.message && e.message.includes('no such table')) return res.status(501).json({ error: 'Table work_order_operators absente. Exécutez les migrations.' });
     throw e;
   }
+  try {
+    const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+    postWorkOrderUpdateNotification(db, parseInt(woId, 10), req.user.id, `Opérateur ajouté : ${(us.first_name || '')} ${(us.last_name || '')}`.trim() || `#${userId}`);
+  } catch (_) {}
   res.status(201).json({ id: us.id, firstName: us.first_name, lastName: us.last_name, name: `${us.first_name || ''} ${us.last_name || ''}`.trim() });
 });
 
@@ -650,6 +749,10 @@ router.delete('/:id/operators/:userId', authorize(ROLES.ADMIN, ROLES.RESPONSABLE
     const first = db.prepare('SELECT user_id FROM work_order_operators WHERE work_order_id = ? LIMIT 1').get(req.params.id);
     db.prepare('UPDATE work_orders SET assigned_to = ? WHERE id = ?').run(first ? first.user_id : null, req.params.id);
   }
+  try {
+    const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+    postWorkOrderUpdateNotification(db, parseInt(req.params.id, 10), req.user.id, 'Opérateur retiré de l\'OT');
+  } catch (_) {}
   res.status(204).send();
 });
 
@@ -752,6 +855,10 @@ router.post('/:id/phase-times', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.
       INSERT OR REPLACE INTO work_order_phase_times (work_order_id, phase_name, hours_spent, notes)
       VALUES (?, ?, ?, ?)
     `).run(req.params.id, phaseName, hoursSpent != null ? Number(hoursSpent) : 0, notes || null);
+    try {
+      const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+      postWorkOrderUpdateNotification(db, parseInt(req.params.id, 10), req.user.id, `Temps de phase : ${(phaseName || '').slice(0, 40)}`);
+    } catch (_) {}
     const row = db.prepare('SELECT * FROM work_order_phase_times WHERE work_order_id = ? AND phase_name = ?').get(req.params.id, phaseName);
     res.status(201).json(row);
   } catch (e) {
@@ -778,6 +885,11 @@ router.put('/:id/phase-times', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.T
       if (!name) continue;
       stmt.run(woId, name, Math.max(0, parseFloat(p.hoursSpent ?? p.hours_spent) || 0), p.notes || null);
     }
+    try {
+      const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+      const phaseNames = phases.map((p) => (p.phaseName || p.phase_name || '').trim()).filter(Boolean);
+      postWorkOrderUpdateNotification(db, parseInt(woId, 10), req.user.id, `Temps de phase mis à jour${phaseNames.length ? ` : ${phaseNames.join(', ')}` : ''}`);
+    } catch (_) {}
     const rows = db.prepare('SELECT id, phase_name, hours_spent, notes FROM work_order_phase_times WHERE work_order_id = ? ORDER BY phase_name').all(woId);
     res.json(rows.map((r) => ({ id: r.id, phaseName: r.phase_name, hoursSpent: Number(r.hours_spent), notes: r.notes })));
   } catch (e) {
@@ -820,6 +932,10 @@ router.post('/:id/attachments', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(req.params.id, req.file.originalname || req.file.filename, req.file.path, req.file.size || 0, req.file.mimetype || null, attachmentType, req.user.id);
     const row = db.prepare('SELECT * FROM work_order_attachments WHERE id = ?').get(r.lastInsertRowid);
+    try {
+      const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+      postWorkOrderUpdateNotification(db, parseInt(req.params.id, 10), req.user.id, `Pièce jointe ajoutée : ${(req.file.originalname || req.file.filename || 'fichier').slice(0, 60)}`);
+    } catch (_) {}
     res.status(201).json(row);
   } catch (e) {
     try { fs.unlinkSync(req.file.path); } catch (_) {}
@@ -835,10 +951,15 @@ router.delete('/:id/attachments/:attId', authorize(ROLES.ADMIN, ROLES.RESPONSABL
   const db = req.db;
   const att = db.prepare('SELECT * FROM work_order_attachments WHERE id = ? AND work_order_id = ?').get(req.params.attId, req.params.id);
   if (!att) return res.status(404).json({ error: 'Pièce jointe non trouvée' });
+  const fileName = (att.file_name || 'fichier').slice(0, 50);
   try {
     if (att.file_path && fs.existsSync(att.file_path)) fs.unlinkSync(att.file_path);
   } catch (_) {}
   db.prepare('DELETE FROM work_order_attachments WHERE id = ?').run(req.params.attId);
+  try {
+    const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+    postWorkOrderUpdateNotification(db, parseInt(req.params.id, 10), req.user.id, `Pièce jointe supprimée : ${fileName}`);
+  } catch (_) {}
   res.status(204).send();
 });
 
@@ -873,6 +994,10 @@ router.post('/:id/extra-fees', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.T
   try {
     const r = db.prepare('INSERT INTO work_order_extra_fees (work_order_id, description, amount) VALUES (?, ?, ?)').run(req.params.id, description, Number(amount));
     const row = db.prepare('SELECT id, work_order_id, description, amount, created_at FROM work_order_extra_fees WHERE id = ?').get(r.lastInsertRowid);
+    try {
+      const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+      postWorkOrderUpdateNotification(db, parseInt(req.params.id, 10), req.user.id, `Frais supplémentaire ajouté : ${(description || '—').slice(0, 30)} (${Number(amount)} €)`);
+    } catch (_) {}
     res.status(201).json({ id: row.id, workOrderId: row.work_order_id, description: row.description || '', amount: Number(row.amount), createdAt: row.created_at });
   } catch (e) {
     if (e.message && e.message.includes('no such table')) return res.status(501).json({ error: 'Table frais supplémentaires non disponible' });
@@ -903,6 +1028,10 @@ router.put('/:id/extra-fees/:feeId', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, R
   }
   params.push(req.params.feeId);
   db.prepare(`UPDATE work_order_extra_fees SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(...params);
+  try {
+    const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+    postWorkOrderUpdateNotification(db, parseInt(req.params.id, 10), req.user.id, 'Frais supplémentaire modifié');
+  } catch (_) {}
   const row = db.prepare('SELECT id, work_order_id, description, amount, created_at FROM work_order_extra_fees WHERE id = ?').get(req.params.feeId);
   res.json({ id: row.id, workOrderId: row.work_order_id, description: row.description || '', amount: Number(row.amount), createdAt: row.created_at });
 });
@@ -914,6 +1043,10 @@ router.delete('/:id/extra-fees/:feeId', authorize(ROLES.ADMIN, ROLES.RESPONSABLE
   const db = req.db;
   const r = db.prepare('DELETE FROM work_order_extra_fees WHERE id = ? AND work_order_id = ?').run(req.params.feeId, req.params.id);
   if (r.changes === 0) return res.status(404).json({ error: 'Frais non trouvé' });
+  try {
+    const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+    postWorkOrderUpdateNotification(db, parseInt(req.params.id, 10), req.user.id, 'Frais supplémentaire supprimé');
+  } catch (_) {}
   res.status(204).send();
 });
 
@@ -1219,6 +1352,13 @@ router.post('/', requirePermission('work_orders', 'create'), authorize(ROLES.ADM
         row.status_workflow = 'draft';
       } catch (_) {}
     }
+    // Canal de chat OT : création automatique avec techniciens assignés
+    try {
+      const { ensureWorkOrderChannel } = require('./chatChannelHelper');
+      const memberIds = [req.user.id, primaryAssignedTo, ...assignedUserIds].filter(Boolean);
+      ensureWorkOrderChannel(db, woId, row.number, req.user.id, memberIds);
+    } catch (_) {}
+
     auditService.log(db, 'work_order', woId, 'created', { userId: req.user?.id, userEmail: req.user?.email, summary: row.number });
     res.status(201).json(formatWO(row));
   } catch (e) {
@@ -1326,7 +1466,16 @@ router.put('/:id', requirePermission('work_orders', 'update'), authorize(ROLES.A
     }
   }
   if (updates.length === 0) return res.status(400).json({ error: 'Aucune donnée à mettre à jour' });
-  const previous = db.prepare('SELECT assigned_to, status FROM work_orders WHERE id = ?').get(id);
+  const previousRow = db.prepare(`
+    SELECT wo.*, e.name as equipment_name, e.code as equipment_code, t.name as type_name,
+           u.first_name || ' ' || u.last_name as assigned_name
+    FROM work_orders wo
+    LEFT JOIN equipment e ON wo.equipment_id = e.id
+    LEFT JOIN work_order_types t ON wo.type_id = t.id
+    LEFT JOIN users u ON wo.assigned_to = u.id
+    WHERE wo.id = ?
+  `).get(id);
+  const previous = previousRow ? { assigned_to: previousRow.assigned_to, status: previousRow.status } : null;
   updates.push('updated_at = CURRENT_TIMESTAMP');
   values.push(id);
   db.prepare(`UPDATE work_orders SET ${updates.join(', ')} WHERE id = ?`).run(...values);
@@ -1402,6 +1551,16 @@ router.put('/:id', requirePermission('work_orders', 'update'), authorize(ROLES.A
     }
   }
 
+  // Synchroniser le canal chat OT (assignés + opérateurs) et notifier tous les changements
+  try {
+    const { ensureWorkOrderChannel, getWorkOrderMemberIds, postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+    const memberIds = getWorkOrderMemberIds(db, id);
+    ensureWorkOrderChannel(db, id, row.number, row.created_by, memberIds);
+    const changeLines = buildWorkOrderChangeSummary(db, previousRow, row, req.body);
+    const summary = changeLines.length > 0 ? changeLines.join(' · ') : 'OT mis à jour';
+    postWorkOrderUpdateNotification(db, id, req.user.id, summary);
+  } catch (_) {}
+
   auditService.log(db, 'work_order', id, 'updated', { userId: req.user?.id, userEmail: req.user?.email, summary: row.number });
   res.json(formatWO(row));
 });
@@ -1446,6 +1605,10 @@ router.put('/:id/approve', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id'
   }
   const responsibles = getUsersByRole(db, req.tenantId, ['responsable_maintenance', 'administrateur']);
   notificationService.notify(db, 'work_order_closed', responsibles, { number: wo.number, title: wo.title }, req.tenantId).catch(() => {});
+  try {
+    const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+    postWorkOrderUpdateNotification(db, id, req.user.id, 'OT approuvé (clôture après validation des coûts)');
+  } catch (_) {}
   auditService.log(db, 'work_order', id, 'approved', { userId: req.user?.id, userEmail: req.user?.email, summary: wo.number });
   const row = db.prepare(`
     SELECT wo.*, e.name as equipment_name, e.code as equipment_code, t.name as type_name,
@@ -1465,10 +1628,14 @@ router.put('/:id/approve', authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id'
  */
 router.delete('/:id', requirePermission('work_orders', 'delete'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), (req, res) => {
   const db = req.db;
-  const id = req.params.id;
+  const id = parseInt(req.params.id, 10);
   const wo = db.prepare('SELECT number FROM work_orders WHERE id = ?').get(id);
   const result = db.prepare("UPDATE work_orders SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
   if (result.changes === 0) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
+  try {
+    const { postWorkOrderUpdateNotification } = require('./chatChannelHelper');
+    postWorkOrderUpdateNotification(db, id, req.user.id, 'OT annulé');
+  } catch (_) {}
   auditService.log(db, 'work_order', id, 'deleted', { userId: req.user?.id, userEmail: req.user?.email, summary: wo?.number });
   res.status(204).send();
 });

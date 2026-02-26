@@ -20,10 +20,7 @@ import {
   Build,
   CalendarMonth,
   Person,
-  Schedule,
-  FilterList,
-  Place,
-  Business
+  Schedule
 } from '@mui/icons-material';
 import api from '../services/api';
 import { useTranslation } from 'react-i18next';
@@ -421,33 +418,6 @@ export default function Planning() {
 
   return (
     <Box>
-      {/* Barre de filtres (style image) */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 1,
-          mb: 2,
-          py: 1,
-          borderBottom: '1px solid',
-          borderColor: 'divider'
-        }}
-      >
-        <Chip size="small" icon={<Person sx={{ fontSize: 18 }} />} label={t2('item.planning_filter_assigned')} variant="outlined" sx={{ borderRadius: 1 }} />
-        <Chip size="small" icon={<Schedule sx={{ fontSize: 18 }} />} label={t2('item.planning_filter_due_date')} variant="outlined" sx={{ borderRadius: 1 }} />
-        <Chip size="small" icon={<Place sx={{ fontSize: 18 }} />} label={t2('item.planning_filter_location')} variant="outlined" sx={{ borderRadius: 1 }} />
-        <Chip size="small" icon={<Build sx={{ fontSize: 18 }} />} label={t2('item.planning_filter_priority')} variant="outlined" sx={{ borderRadius: 1 }} />
-        <Chip size="small" icon={<Business sx={{ fontSize: 18 }} />} label={t2('item.planning_filter_assets')} variant="outlined" sx={{ borderRadius: 1 }} />
-        <Button size="small" startIcon={<Add />} sx={{ textTransform: 'none' }}>
-          {t2('item.planning_add_filter')}
-        </Button>
-        <Box sx={{ flex: 1 }} />
-        <Button size="small" startIcon={<FilterList />} sx={{ textTransform: 'none' }}>
-          {t2('item.planning_my_filters')}
-        </Button>
-      </Box>
-
       <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={3}>
         <Box>
           <Typography variant="h5" fontWeight={700}>
@@ -456,6 +426,23 @@ export default function Planning() {
           <Typography variant="body2" color="text.secondary">
             {viewMode === 'gantt' ? t2('item.planning_drag_hint') : 'Interventions préventives et correctives — vue calendrier.'}
           </Typography>
+          {viewMode !== 'gantt' && (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mt: 1, alignItems: 'center' }}>
+              <Typography component="span" variant="caption" color="text.secondary">Légende :</Typography>
+              <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                <Box sx={{ width: 12, height: 12, borderRadius: 0.5, bgcolor: theme.palette.info.main }} />
+                <Typography variant="caption">Préventif</Typography>
+              </Box>
+              <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                <Box sx={{ width: 12, height: 12, borderRadius: 0.5, bgcolor: theme.palette.primary.main }} />
+                <Typography variant="caption">Correctif</Typography>
+              </Box>
+              <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                <Box sx={{ width: 12, height: 12, borderRadius: 0.5, bgcolor: theme.palette.grey[400] }} />
+                <Typography variant="caption">Terminé / annulé (non déplaçable)</Typography>
+              </Box>
+            </Box>
+          )}
         </Box>
         <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
           {/* Toggle Mois / Semaine / Gantt */}
@@ -561,15 +548,16 @@ export default function Planning() {
                         minHeight: 120,
                         borderRight: '1px solid',
                         borderBottom: '1px solid',
-                        borderColor: 'divider',
-                        bgcolor: isToday(day) ? alpha(theme.palette.primary.main, 0.06) : 'transparent',
+                        borderColor: isToday(day) ? 'primary.main' : 'divider',
+                        borderWidth: isToday(day) ? 2 : 1,
+                        bgcolor: isToday(day) ? alpha(theme.palette.primary.main, 0.08) : 'transparent',
                         opacity: isCurrentMonth ? 1 : 0.6
                       }}
                     >
                       <Typography variant="caption" sx={{ display: 'block', p: 0.5, color: 'text.secondary' }}>
                         {day.getDate()}
                       </Typography>
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, px: 0.5, pb: 0.5 }}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, px: 0.5, pb: 0.5, overflow: 'hidden' }}>
                         {dayEvents.map((item) => {
                           const borderColor = getBorderColorForItem(item, theme);
                           const canDrag =

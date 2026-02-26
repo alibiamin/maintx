@@ -147,6 +147,7 @@
   },
   "menuCategory": {
     "overview": "Overview",
+    "messages": "Messages",
     "assets": "Assets & Sites",
     "maintenance": "Maintenance",
     "logistics": "Stock & Purchasing",
@@ -176,7 +177,8 @@
     "exploitation": "Data management",
     "settings": "Settings",
     "maintxAdmin": "MAINTX Administration",
-    "standards_library": "Standards Library"
+    "standards_library": "Standards Library",
+    "messages": "Messages"
   },
   "section": {
     "catalogue_0": "Reference data",
@@ -190,6 +192,7 @@
     "equipment_creation": "Creation",
     "maintenance_0": "Daily",
     "maintenance_1": "Planning and preventive",
+    "messages_0": "Messaging",
     "maintenance_2": "Planning",
     "stock_0": "Overview",
     "stock_1": "Operations",
@@ -262,6 +265,7 @@
     "planning_add_filter": "Add filter",
     "planning_my_filters": "My filters",
     "planning_drag_hint": "Drag and drop bars to reschedule (auto-save).",
+    "chat_team": "Team chat",
     "stock_list": "Parts list",
     "stock_movements": "Movements",
     "stock_inventories": "Inventories",

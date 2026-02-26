@@ -61,6 +61,7 @@ const stockBySiteRoutes = require('./routes/stockBySite');
 const requiredDocumentTypesRoutes = require('./routes/requiredDocumentTypes');
 const standardsRoutes = require('./routes/standards');
 const permissionsRoutes = require('./routes/permissions');
+const chatRoutes = require('./routes/chat');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -155,6 +156,7 @@ app.use('/api/alerts', alertsRoutes);
 app.use('/api/checklists', checklistsRoutes);
 app.use('/api/tools', toolsRoutes);
 app.use('/api/planning', planningRoutes);
+app.use('/api/chat', chatRoutes);
 app.use('/api/technicians', techniciansRoutes);
 app.use('/api/competencies', competenciesRoutes);
 app.use('/api/notifications', notificationsRoutes);

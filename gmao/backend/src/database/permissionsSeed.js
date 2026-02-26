@@ -17,7 +17,8 @@ const RESOURCES = [
   'presence', 'scheduled_reports', 'stock_by_site', 'required_document_types',
   'standards', 'failure_codes', 'equipment_models',
   'planned_shutdowns', 'purchase_requests', 'price_requests', 'supplier_invoices',
-  'regulatory_checks', 'warehouses', 'reorder_rules'
+  'regulatory_checks', 'warehouses', 'reorder_rules',
+  'chat'
 ];
 
 const ROLE_NAMES = {

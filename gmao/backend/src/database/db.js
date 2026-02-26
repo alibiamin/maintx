@@ -318,6 +318,14 @@ function close() {
   _clientDbCache.clear();
 }
 
+/** Appelle les migrations client sur une base (ex. après "no such table" pour work_order_extra_fees). */
+function ensureClientMigrations(wrapper) {
+  if (wrapper) {
+    runClientMigrations(wrapper);
+    if (typeof wrapper._save === 'function') wrapper._save();
+  }
+}
+
 // Rétrocompatibilité : export d'un objet qui délègue vers la db "courante" si définie (via middleware)
 // Les routes utilisent req.db ; ce module exporte les helpers.
 const db = {
@@ -334,16 +342,9 @@ const db = {
   resolveTenantByEmail,
   ensureDataDirWritable,
   createTenantDatabase,
-  removeClientDbFromCache
+  removeClientDbFromCache,
+  ensureClientMigrations
 };
-
-/** Appelle les migrations client sur une base (ex. après "no such table" pour work_order_extra_fees). */
-function ensureClientMigrations(wrapper) {
-  if (wrapper) {
-    runClientMigrations(wrapper);
-    if (typeof wrapper._save === 'function') wrapper._save();
-  }
-}
 
 module.exports = db;
 module.exports.init = init;

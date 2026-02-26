@@ -66,7 +66,8 @@ import {
   BusinessCenter as SubcontractIcon,
   Lightbulb as LightbulbIcon,
   MenuBook as MenuBookIcon,
-  AdminPanelSettings as AdminPanelSettingsIcon
+  AdminPanelSettings as AdminPanelSettingsIcon,
+  Chat as ChatMenuIcon
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
@@ -96,7 +97,8 @@ const MENU_RESOURCE_MAP = {
   decisionSupport: 'reports',
   standards: 'standards',
   exploitation: 'exploitation',
-  settings: 'settings'
+  settings: 'settings',
+  messages: 'chat'
 };
 
 /** Correspondance menu id → module métier (pour filtrer le menu selon les modules activés par tenant). */
@@ -115,7 +117,9 @@ const MENU_MODULE_MAP = {
   decisionSupport: 'reports',
   standards: 'standards',
   exploitation: 'exploitation',
-  settings: 'settings'
+  settings: 'settings',
+  chat: 'chat'
+  // messages : affiché si permission chat.view (pas de module)
 };
 
 /** Liste plate de tous les menus — réorganisée pour une UX claire : vue principale → détails → création. */
@@ -127,6 +131,12 @@ function getRawMenus() {
         { labelKey: 'item.dashboard_overview', path: APP_BASE },
         { labelKey: 'item.dashboard_kpis', path: `${APP_BASE}/dashboard/kpis` },
         { labelKey: 'item.dashboard_activity', path: `${APP_BASE}/dashboard/activity` }
+      ]}
+    ]},
+    // ——— Messages ———
+    { id: 'messages', labelKey: 'menu.messages', icon: <ChatMenuIcon />, path: `${APP_BASE}/chat`, sections: [
+      { titleKey: 'section.messages_0', items: [
+        { labelKey: 'item.chat_team', path: `${APP_BASE}/chat` }
       ]}
     ]},
     // ——— Actifs & Sites ———
@@ -335,6 +345,7 @@ function getMenuCategories(rawMenus) {
   const byId = (id) => rawMenus.find((m) => m.id === id);
   const categories = [
     { id: 'overview', labelKey: 'menuCategory.overview', menuIds: ['dashboard'] },
+    { id: 'messages', labelKey: 'menuCategory.messages', menuIds: ['messages'] },
     { id: 'assets', labelKey: 'menuCategory.assets', menuIds: ['equipment', 'sites'] },
     { id: 'maintenance', labelKey: 'menuCategory.maintenance', menuIds: ['maintenance', 'tools'] },
     { id: 'logistics', labelKey: 'menuCategory.logistics', menuIds: ['stock', 'suppliers', 'subcontracting'] },
@@ -1198,7 +1209,7 @@ export default function Layout() {
           TransitionProps={{
             onEntered: () => {
               const dialog = document.querySelector('[role="dialog"]');
-              const focusable = dialog?.querySelector('a[href], button:not([disabled])');
+              const focusable = dialog?.querySelector('input:not([disabled]), a[href], button:not([disabled])');
               if (focusable) focusable.focus();
             }
           }}
@@ -1228,6 +1239,7 @@ export default function Layout() {
               <DialogContent sx={{ p: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                   <TextField
+                    autoFocus
                     size="small"
                     placeholder={t('common.searchPlaceholder')}
                     value={menuSearch}

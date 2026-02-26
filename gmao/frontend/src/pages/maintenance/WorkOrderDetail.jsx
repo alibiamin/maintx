@@ -32,7 +32,7 @@ import {
   TableHead,
   TableRow
 } from '@mui/material';
-import { ArrowBack, PlayArrow, Stop, PersonSearch, Star, Schedule, Checklist, Inventory, Description, Download, Delete, Upload, Print, Add, MenuBook, Build } from '@mui/icons-material';
+import { ArrowBack, PlayArrow, Stop, PersonSearch, Star, Schedule, Checklist, Inventory, Description, Download, Delete, Upload, Print, Add, MenuBook, Build, Chat as ChatIcon } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useSnackbar } from '../../context/SnackbarContext';
@@ -413,6 +413,9 @@ export default function WorkOrderDetail() {
         <Button startIcon={<ArrowBack />} onClick={() => navigate('/app/work-orders')}>Retour</Button>
         <Button startIcon={<Print />} onClick={handlePrintPdf} disabled={actionLoading} variant="outlined" size="small">
           Imprimer / PDF
+        </Button>
+        <Button startIcon={<ChatIcon />} onClick={() => navigate(`/app/chat?createWo=${order?.id}`)} variant="outlined" size="small" title="Discuter avec l’équipe sur cet OT">
+          Discuter
         </Button>
       </Box>
       <Card>
