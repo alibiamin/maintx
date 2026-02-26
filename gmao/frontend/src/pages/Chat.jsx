@@ -14,6 +14,7 @@ import {
   InputAdornment,
   CircularProgress,
   Avatar,
+  Badge,
   alpha,
   useTheme,
   Dialog,
@@ -38,8 +39,9 @@ import {
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSnackbar } from '../context/SnackbarContext';
+import { useChat } from '../context/ChatContext';
 
-const POLL_INTERVAL_MS = 4000;
+const POLL_INTERVAL_MS = 3000;
 
 function formatMessageTime(iso) {
   if (!iso) return '';
@@ -71,6 +73,7 @@ export default function Chat() {
   const [createLoading, setCreateLoading] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({ in_progress: true, pending: true, deferred: true, other: true, completed: false, cancelled: false });
   const [channelFilter, setChannelFilter] = useState('');
+  const { markChannelRead, refreshUnread } = useChat();
 
   const createWo = searchParams.get('createWo');
   const createEq = searchParams.get('createEq');
@@ -118,6 +121,8 @@ export default function Chat() {
 
   useEffect(() => {
     if (selectedChannelId) {
+      markChannelRead(selectedChannelId);
+      refreshUnread();
       loadMessages(selectedChannelId);
       api.get(`/chat/channels/${selectedChannelId}`)
         .then((r) => setChannel(r.data))
@@ -133,7 +138,7 @@ export default function Chat() {
       setChannel(null);
       setMessages([]);
     }
-  }, [selectedChannelId, loadMessages, snackbar]);
+  }, [selectedChannelId, loadMessages, snackbar, markChannelRead, refreshUnread]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -362,28 +367,39 @@ export default function Chat() {
                       </Button>
                       {isExpanded && (
                         <List disablePadding sx={{ px: 1 }}>
-                          {groupChannels.map((ch) => (
-                            <ListItemButton
-                              key={ch.id}
-                              selected={selectedChannelId === ch.id}
-                              onClick={() => setSelectedChannelId(ch.id)}
-                              sx={{
-                                borderRadius: 2,
-                                py: 1.25,
-                                mb: 0.5,
-                                opacity: (key === 'completed' || key === 'cancelled') ? 0.85 : 1,
-                                '&.Mui-selected': { bgcolor: alpha(theme.palette.primary.main, 0.12), '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.18) } }
-                              }}
-                            >
-                              <ListItemIcon sx={{ minWidth: 44 }}>{getChannelIcon(ch)}</ListItemIcon>
-                              <ListItemText
-                                primary={ch.displayName || ch.name}
-                                primaryTypographyProps={{ noWrap: true, variant: 'body2', fontWeight: selectedChannelId === ch.id ? 600 : 500 }}
-                                secondary={[ch.teamNames?.length > 0 && `Équipe : ${ch.teamNames.join(', ')}`, ch.lastMessageAt && formatMessageTime(ch.lastMessageAt)].filter(Boolean).join(' · ') || null}
-                                secondaryTypographyProps={{ variant: 'caption', noWrap: true, sx: { display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 } }}
-                              />
-                            </ListItemButton>
-                          ))}
+                          {groupChannels.map((ch) => {
+                            const unread = ch.unreadCount ?? 0;
+                            return (
+                              <ListItemButton
+                                key={ch.id}
+                                selected={selectedChannelId === ch.id}
+                                onClick={() => setSelectedChannelId(ch.id)}
+                                sx={{
+                                  borderRadius: 2,
+                                  py: 1.25,
+                                  mb: 0.5,
+                                  opacity: (key === 'completed' || key === 'cancelled') ? 0.85 : 1,
+                                  '&.Mui-selected': { bgcolor: alpha(theme.palette.primary.main, 0.12), '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.18) } }
+                                }}
+                              >
+                                <ListItemIcon sx={{ minWidth: 44 }}>
+                                  {unread > 0 ? (
+                                    <Badge badgeContent={unread > 99 ? '99+' : unread} color="error">
+                                      {getChannelIcon(ch)}
+                                    </Badge>
+                                  ) : (
+                                    getChannelIcon(ch)
+                                  )}
+                                </ListItemIcon>
+                                <ListItemText
+                                  primary={ch.displayName || ch.name}
+                                  primaryTypographyProps={{ noWrap: true, variant: 'body2', fontWeight: selectedChannelId === ch.id ? 600 : 500 }}
+                                  secondary={[ch.teamNames?.length > 0 && `Équipe : ${ch.teamNames.join(', ')}`, ch.lastMessageAt && formatMessageTime(ch.lastMessageAt)].filter(Boolean).join(' · ') || null}
+                                  secondaryTypographyProps={{ variant: 'caption', noWrap: true, sx: { display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 } }}
+                                />
+                              </ListItemButton>
+                            );
+                          })}
                         </List>
                       )}
                     </Box>

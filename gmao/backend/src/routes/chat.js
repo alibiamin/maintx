@@ -19,6 +19,12 @@ function ensureChatTables(clientDb) {
     clientDb.exec('CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE, user_id INTEGER NOT NULL, content TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, message_type TEXT DEFAULT \'user\')');
     clientDb.exec('CREATE INDEX IF NOT EXISTS idx_chat_messages_channel ON chat_messages(channel_id)');
     clientDb.exec('CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at)');
+    try {
+      clientDb.exec('CREATE TABLE IF NOT EXISTS chat_channel_reads (channel_id INTEGER NOT NULL, user_id INTEGER NOT NULL, last_read_at TEXT NOT NULL DEFAULT \'1970-01-01T00:00:00.000Z\', PRIMARY KEY (channel_id, user_id), FOREIGN KEY (channel_id) REFERENCES chat_channels(id) ON DELETE CASCADE)');
+      clientDb.exec('CREATE INDEX IF NOT EXISTS idx_chat_reads_user ON chat_channel_reads(user_id)');
+    } catch (e) {
+      if (!e.message || !e.message.includes('already exists')) console.warn('[chat] chat_channel_reads', e.message);
+    }
     if (typeof clientDb._save === 'function') clientDb._save();
   } catch (e) {
     console.warn('[chat] ensureChatTables:', e.message);
@@ -50,6 +56,41 @@ const router = express.Router();
 router.use(authenticate);
 router.use(requirePermission('chat', 'view'));
 
+/** Total des messages non lus (pour badge menu). */
+router.get('/unread-total', (req, res) => {
+  const db = req.db;
+  ensureChatTables(db);
+  const userId = req.user.id;
+  const hasReadsTable = (() => { try { db.prepare('SELECT 1 FROM chat_channel_reads LIMIT 1').get(); return true; } catch (_) { return false; } })();
+  try {
+    let total = 0;
+    if (hasReadsTable) {
+      const rows = db.prepare(`
+        SELECT c.id FROM chat_channels c
+        LEFT JOIN chat_channel_members m ON m.channel_id = c.id AND m.user_id = ?
+        WHERE c.type = 'team' OR m.user_id IS NOT NULL
+      `).all(userId);
+      const roleName = (req.user.role_name || '').toLowerCase();
+      const canSeeAll = roleName === 'administrateur' || roleName === 'responsable_maintenance';
+      const channelIds = canSeeAll
+        ? db.prepare('SELECT id FROM chat_channels').all().map((r) => r.id)
+        : rows.map((r) => r.id);
+      for (const cid of channelIds) {
+        const r = db.prepare(`
+          SELECT COUNT(*) AS n FROM chat_messages m
+          WHERE m.channel_id = ?
+            AND m.created_at > COALESCE(REPLACE(REPLACE((SELECT last_read_at FROM chat_channel_reads WHERE channel_id = ? AND user_id = ?), 'T', ' '), 'Z', ''), '1970-01-01 00:00:00')
+        `).get(cid, cid, userId);
+        total += r?.n ?? 0;
+      }
+    }
+    res.json({ total });
+  } catch (err) {
+    if (err.message && err.message.includes('no such table')) return res.json({ total: 0 });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /** Liste des canaux : membres + canaux team ; admins et responsables voient tous les canaux. */
 router.get('/channels', (req, res) => {
   const db = req.db;
@@ -60,6 +101,7 @@ router.get('/channels', (req, res) => {
   const adminDb = dbModule.getAdminDb && dbModule.getAdminDb();
   try {
     let channels;
+    const hasReadsTable = (() => { try { db.prepare('SELECT 1 FROM chat_channel_reads LIMIT 1').get(); return true; } catch (_) { return false; } })();
     if (canSeeAll) {
       channels = db.prepare(`
         SELECT c.id, c.name, c.type, c.linked_type, c.linked_id, c.created_at, c.created_by,
@@ -81,6 +123,17 @@ router.get('/channels', (req, res) => {
     }
 
     const withMeta = channels.map((ch) => {
+      let unreadCount = 0;
+      if (hasReadsTable) {
+        try {
+          const r = db.prepare(`
+            SELECT COUNT(*) AS n FROM chat_messages m
+            WHERE m.channel_id = ?
+              AND m.created_at > COALESCE(REPLACE(REPLACE((SELECT last_read_at FROM chat_channel_reads WHERE channel_id = ? AND user_id = ?), 'T', ' '), 'Z', ''), '1970-01-01 00:00:00')
+          `).get(ch.id, ch.id, userId);
+          unreadCount = r?.n ?? 0;
+        } catch (_) {}
+      }
       let displayName = ch.name;
       let workOrderStatus = null;
       if (ch.linked_type === 'work_order' && ch.linked_id) {
@@ -106,7 +159,8 @@ router.get('/channels', (req, res) => {
         createdAt: ch.created_at,
         createdBy: ch.created_by,
         messageCount: ch.message_count || 0,
-        lastMessageAt: ch.last_message_at
+        lastMessageAt: ch.last_message_at,
+        unreadCount: Math.max(0, unreadCount)
       };
     });
     res.json(withMeta);
@@ -321,6 +375,34 @@ router.post('/channels/:id/join', requirePermission('chat', 'create'), param('id
     if (!ch) return res.status(404).json({ error: 'Canal introuvable' });
     db.prepare('INSERT OR IGNORE INTO chat_channel_members (channel_id, user_id) VALUES (?, ?)').run(channelId, userId);
     res.json({ joined: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Format datetime compatible SQLite (YYYY-MM-DD HH:MM:SS) pour comparaison avec created_at. */
+function sqliteNow() {
+  return new Date().toISOString().slice(0, 19).replace('T', ' ');
+}
+
+/** Marquer un canal comme lu (met à jour last_read_at pour l'utilisateur). */
+router.post('/channels/:id/read', param('id').isInt(), (req, res) => {
+  const db = req.db;
+  ensureChatTables(db);
+  const userId = req.user.id;
+  const channelId = parseInt(req.params.id, 10);
+  const now = sqliteNow();
+  try {
+    const ch = db.prepare('SELECT id FROM chat_channels WHERE id = ?').get(channelId);
+    if (!ch) return res.status(404).json({ error: 'Canal introuvable' });
+    try {
+      db.prepare('INSERT OR REPLACE INTO chat_channel_reads (channel_id, user_id, last_read_at) VALUES (?, ?, ?)').run(channelId, userId, now);
+    } catch (e) {
+      if (e.message && e.message.includes('no such table')) return res.json({ read: true });
+      throw e;
+    }
+    if (typeof db._save === 'function') db._save();
+    res.json({ read: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

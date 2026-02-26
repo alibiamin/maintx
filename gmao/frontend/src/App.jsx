@@ -2,6 +2,7 @@ import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Box, Button, CircularProgress, Typography } from '@mui/material';
 import { useAuth } from './context/AuthContext';
+import { ChatProvider } from './context/ChatContext';
 import LoginPage from './pages/LoginPage';
 import Landing from './pages/Landing';
 import DemandeInterventionForm from './pages/DemandeInterventionForm';
@@ -151,7 +152,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/demande-intervention" element={<PrivateRoute><DemandeInterventionForm /></PrivateRoute>} />
       <Route path="/forbidden" element={<PrivateRoute><ForbiddenPage /></PrivateRoute>} />
-      <Route path="/app" element={<AppInitialLoader><PrivateRoute><Layout /></PrivateRoute></AppInitialLoader>}>
+      <Route path="/app" element={<AppInitialLoader><PrivateRoute><ChatProvider><Layout /></ChatProvider></PrivateRoute></AppInitialLoader>}>
         <Route index element={<RouteGuard path=""><Dashboard /></RouteGuard>} />
         <Route path="dashboard/kpis" element={<RouteGuard path="dashboard/kpis"><DashboardKPIs /></RouteGuard>} />
         <Route path="dashboard/activity" element={<RouteGuard path="dashboard/activity"><DashboardActivity /></RouteGuard>} />

@@ -71,7 +71,9 @@ import {
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
+import { useChat } from '../context/ChatContext';
 import { ActionBar } from '../context/ActionPanelContext';
+import ChatBubbles from './ChatBubbles';
 import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import api from '../services/api';
 import { LANGUAGES } from '../constants/languages';
@@ -559,6 +561,7 @@ export default function Layout() {
   const location = useLocation();
   const theme = useTheme();
   const isDark = false; // Mode clair uniquement
+  const { totalUnread: chatUnreadCount } = useChat();
 
   // Déterminer le menu sélectionné basé sur la route actuelle (pathname + chemins des sous-items).
   // Priorité : correspondance exacte du chemin du menu (évite qu'un lien commun comme /creation ouvre le mauvais menu).
@@ -1173,7 +1176,13 @@ export default function Layout() {
                         }}
                       >
                         <Box sx={{ color: 'inherit', display: 'flex', alignItems: 'center', minWidth: 28 }}>
-                          {menu.icon}
+                          {menu.id === 'messages' && chatUnreadCount > 0 ? (
+                            <Badge badgeContent={chatUnreadCount > 99 ? '99+' : chatUnreadCount} color="error">
+                              {menu.icon}
+                            </Badge>
+                          ) : (
+                            menu.icon
+                          )}
                         </Box>
                         {!menuCollapsed && (
                           <ListItemText
@@ -1430,6 +1439,9 @@ export default function Layout() {
 
         {/* Barre d'actions à droite : toujours affichée, l'utilisateur peut l'épingler ou la masquer */}
         <ActionBar />
+
+        {/* Bulles de chat type Messenger : canaux avec messages non lus */}
+        <ChatBubbles />
       </Box>
     </Box>
   );
