@@ -63,7 +63,7 @@ function getCreationPath(entityType) {
     case 'checklists': return `${APP_BASE}/maintenance/creation/checklist`;
     case 'stock': return `${APP_BASE}/stock/creation/piece`;
     case 'suppliers': return `${APP_BASE}/suppliers/creation/supplier`;
-    case 'contracts': return `${APP_BASE}/suppliers/creation/contract`;
+    case 'contracts': return `${APP_BASE}/subcontracting/contracts`;
     case 'tools': return `${APP_BASE}/tools/creation/tool`;
     case 'sites': return `${APP_BASE}/equipment/creation/site`;
     case 'equipment': return `${APP_BASE}/equipment/creation/machine`;

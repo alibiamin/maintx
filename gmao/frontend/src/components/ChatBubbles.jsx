@@ -42,6 +42,7 @@ export default function ChatBubbles() {
   const bubbleRefs = useRef({});
 
   const openChannel = channelsWithUnread.find((ch) => ch.id === openBubbleId) || (openBubbleId ? { id: openBubbleId, displayName: 'Chat', name: 'Chat' } : null);
+  const isChannelReadOnly = openChannel?.linkedType === 'work_order' && ['completed', 'cancelled'].includes((openChannel?.workOrderStatus || '').toLowerCase());
 
   useEffect(() => {
     if (!openBubbleId) {
@@ -209,20 +210,26 @@ export default function ChatBubbles() {
                 ))
               )}
             </List>
-            <Box sx={{ p: 1, borderTop: '1px solid', borderColor: 'divider', display: 'flex', gap: 0.5 }}>
-              <TextField
-                size="small"
-                fullWidth
-                placeholder="Écrire un message…"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                disabled={sending}
-                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-              />
-              <IconButton color="primary" onClick={handleSend} disabled={!input.trim() || sending} sx={{ bgcolor: 'primary.main', color: 'primary.contrastText', '&:hover': { bgcolor: 'primary.dark' } }}>
-                <SendIcon fontSize="small" />
-              </IconButton>
+            <Box sx={{ p: 1, borderTop: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+              {isChannelReadOnly ? (
+                <Typography variant="caption" color="text.secondary">Canal en lecture seule (OT clôturé ou annulé).</Typography>
+              ) : (
+                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                  <TextField
+                      size="small"
+                      fullWidth
+                      placeholder="Écrire un message…"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                      disabled={sending}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  <IconButton color="primary" onClick={handleSend} disabled={!input.trim() || sending} sx={{ bgcolor: 'primary.main', color: 'primary.contrastText', '&:hover': { bgcolor: 'primary.dark' } }}>
+                    <SendIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              )}
             </Box>
           </Paper>
         </ClickAwayListener>

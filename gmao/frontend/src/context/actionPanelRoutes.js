@@ -42,7 +42,6 @@ export function getDefaultPageContext(pathname) {
   if (first === 'reports' && second === 'mtbf-mttr') return { type: 'page', pageId: 'reports-mtbf' };
   if (first === 'reports' && second === 'exports') return { type: 'page', pageId: 'reports-exports' };
   if (first === 'decision-support') return { type: 'page', pageId: 'decision-support' };
-  if (first === 'standards') return { type: 'page', pageId: 'standards' };
   if (first === 'settings' && !second) return { type: 'page', pageId: 'settings' };
   if (first === 'settings' && second === 'roles') return { type: 'list', entityType: 'roles' };
   if (first === 'settings' && second === 'tenants') return { type: 'page', pageId: 'settings-tenants' };
@@ -62,7 +61,10 @@ export function getDefaultPageContext(pathname) {
   if (first === 'contracts') return { type: 'list', entityType: 'contracts' };
   if (first === 'users') return { type: 'list', entityType: 'users' };
   if (first === 'training') return { type: 'page', pageId: 'training' };
-  if (first === 'subcontracting') return { type: 'page', pageId: 'subcontracting' };
+  if (first === 'subcontracting') {
+    if (second === 'contracts') return { type: 'list', entityType: 'contracts' };
+    return { type: 'page', pageId: 'subcontracting' };
+  }
 
   // Listes avec entityType (premier segment = type d'entité)
   const entityTypes = [
@@ -97,7 +99,6 @@ export function getPageTitle(pageId) {
     'reports-mtbf': 'MTBF / MTTR',
     'reports-exports': 'Exports',
     'decision-support': 'Aide à la décision',
-    standards: 'Bibliothèque des normes',
     settings: 'Paramétrage',
     'settings-tenants': 'Clients (tenants)',
     'settings-email': 'Templates email',

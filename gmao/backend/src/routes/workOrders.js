@@ -1049,6 +1049,353 @@ router.delete('/:id/extra-fees/:feeId', authorize(ROLES.ADMIN, ROLES.RESPONSABLE
 });
 
 /**
+ * POST /api/work-orders/:id/ai-assist
+ * Assistance IA pour aider l'équipe à résoudre le problème de l'OT (contexte OT + historique de conversation).
+ * Si OPENAI_API_KEY est défini : appelle l'API OpenAI. Sinon : suggestions à partir des procédures / OT similaires en base.
+ */
+router.post('/:id/ai-assist', requirePermission('work_orders', 'view'), param('id').isInt(), body('message').notEmpty().trim().isLength({ max: 2000 }), body('history').optional().isArray(), (req, res) => {
+  if (validateIdParam(req, res)) return;
+  const db = req.db;
+  const woId = parseInt(req.params.id, 10);
+  let row = db.prepare(`
+    SELECT wo.id, wo.number, wo.title, wo.description, wo.status, wo.priority, wo.maintenance_plan_id, wo.created_at,
+           wo.planned_start, wo.planned_end, wo.actual_start, wo.actual_end, wo.failure_date, wo.completed_at, wo.signature_name, wo.status_workflow,
+           wo.assigned_to, wo.created_by,
+           e.name as equipment_name, e.code as equipment_code, e.description as equipment_description,
+           e.manufacturer as equipment_manufacturer, e.model as equipment_model, e.serial_number as equipment_serial,
+           e.installation_date as equipment_installation_date, e.location as equipment_location, e.status as equipment_status, e.criticite as equipment_criticite,
+           t.name as type_name,
+           mp.name as maintenance_plan_name, pr.name as project_name
+    FROM work_orders wo
+    LEFT JOIN equipment e ON wo.equipment_id = e.id
+    LEFT JOIN work_order_types t ON wo.type_id = t.id
+    LEFT JOIN maintenance_plans mp ON wo.maintenance_plan_id = mp.id
+    LEFT JOIN maintenance_projects pr ON wo.project_id = pr.id
+    WHERE wo.id = ?
+  `).get(woId);
+  if (!row) return res.status(404).json({ error: 'Ordre de travail non trouvé' });
+  let adminDb = null;
+  try {
+    adminDb = dbModule.getAdminDb();
+    if (row.assigned_to && adminDb) {
+      const u = adminDb.prepare('SELECT first_name, last_name FROM users WHERE id = ?').get(row.assigned_to);
+      row.assigned_name = u ? `${u.first_name || ''} ${u.last_name || ''}`.trim() : null;
+    } else row.assigned_name = null;
+    if (row.created_by && adminDb) {
+      const u = adminDb.prepare('SELECT first_name, last_name FROM users WHERE id = ?').get(row.created_by);
+      row.created_by_name = u ? `${u.first_name || ''} ${u.last_name || ''}`.trim() : null;
+    } else row.created_by_name = null;
+  } catch (_) {
+    row.assigned_name = null;
+    row.created_by_name = null;
+  }
+
+  const message = (req.body.message || '').trim();
+  const history = Array.isArray(req.body.history) ? req.body.history.slice(-20) : [];
+
+  function buildContext() {
+    const parts = [
+      '=== ORDRE DE TRAVAIL ===',
+      `Numéro : ${row.number}`,
+      `Titre : ${row.title || ''}`,
+      row.description ? `Description : ${row.description}` : '',
+      `Type : ${row.type_name || '-'} | Statut : ${row.status || '-'} | Priorité : ${row.priority || '-'} | Workflow : ${row.status_workflow || '-'}`,
+      row.planned_start ? `Planifié : ${row.planned_start} → ${row.planned_end || '-'}` : '',
+      row.actual_start ? `Début réel : ${row.actual_start}` : '',
+      row.actual_end ? `Fin réelle : ${row.actual_end}` : '',
+      row.failure_date ? `Date panne : ${row.failure_date}` : '',
+      row.completed_at ? `Clôturé le : ${row.completed_at}${row.signature_name ? ` (signé par ${row.signature_name})` : ''}` : '',
+      row.assigned_name ? `Responsable principal : ${row.assigned_name}` : '',
+      row.created_by_name ? `Créé par : ${row.created_by_name}` : '',
+      row.maintenance_plan_name ? `Plan de maintenance : ${row.maintenance_plan_name}` : '',
+      row.project_name ? `Projet : ${row.project_name}` : ''
+    ];
+    // Équipe assignée : responsable + opérateurs, taux horaire et compétences/skills
+    try {
+      const teamUserIds = new Set();
+      if (row.assigned_to) teamUserIds.add(row.assigned_to);
+      const opRows = db.prepare('SELECT user_id FROM work_order_operators WHERE work_order_id = ?').all(woId);
+      (opRows || []).forEach((r) => { if (r.user_id) teamUserIds.add(r.user_id); });
+      if (teamUserIds.size) {
+        parts.push('', '=== ÉQUIPE ASSIGNÉE ===');
+        const levelLabels = { 1: '1', 2: '2', 3: '3', 4: '4', 5: '5' };
+        for (const uid of teamUserIds) {
+          let name = null;
+          let hourlyRate = null;
+          if (adminDb) {
+            try {
+              const u = adminDb.prepare('SELECT first_name, last_name, hourly_rate FROM users WHERE id = ?').get(uid);
+              if (u) {
+                name = `${u.first_name || ''} ${u.last_name || ''}`.trim() || null;
+                hourlyRate = (u.hourly_rate != null && u.hourly_rate !== '') ? parseFloat(u.hourly_rate) : null;
+              }
+            } catch (_) {}
+          }
+          const isPrincipal = uid === row.assigned_to;
+          const roleLabel = isPrincipal ? ' (responsable principal)' : ' (opérateur)';
+          parts.push(`- ${name || `Utilisateur #${uid}`}${roleLabel}${hourlyRate != null ? ` — Taux horaire : ${hourlyRate} €/h` : ''}`);
+          try {
+            const comps = db.prepare(`
+              SELECT c.code, c.name, tc.level FROM technician_competencies tc
+              JOIN competencies c ON c.id = tc.competence_id WHERE tc.user_id = ?
+            `).all(uid);
+            if (comps.length) parts.push(`  Compétences : ${comps.map(c => `${c.name}${c.level != null ? ` (niveau ${levelLabels[c.level] || c.level})` : ''}`).join(', ')}`);
+          } catch (_) {}
+          try {
+            const skills = db.prepare(`
+              SELECT s.name, s.category, us.level FROM user_skills us
+              JOIN skills s ON s.id = us.skill_id WHERE us.user_id = ?
+            `).all(uid);
+            if (skills.length) parts.push(`  Skills : ${skills.map(s => `${s.name} (${s.level || '-'})${s.category ? ` [${s.category}]` : ''}`).join(', ')}`);
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+    if (row.equipment_name || row.equipment_code) {
+      parts.push('', '=== ÉQUIPEMENT ===');
+      parts.push(`Code : ${row.equipment_code || '-'} | Désignation : ${row.equipment_name || '-'}`);
+      if (row.equipment_description) parts.push(`Description : ${row.equipment_description}`);
+      if (row.equipment_manufacturer || row.equipment_model) parts.push(`Constructeur / Modèle : ${row.equipment_manufacturer || ''} ${row.equipment_model || ''}`);
+      if (row.equipment_serial) parts.push(`N° série : ${row.equipment_serial}`);
+      if (row.equipment_location) parts.push(`Localisation : ${row.equipment_location}`);
+      if (row.equipment_status) parts.push(`Statut équipement : ${row.equipment_status} | Criticité : ${row.equipment_criticite || '-'}`);
+      if (row.equipment_installation_date) parts.push(`Date installation : ${row.equipment_installation_date}`);
+      try {
+        const eqRow = db.prepare('SELECT category_id, ligne_id, department_id FROM equipment WHERE id = (SELECT equipment_id FROM work_orders WHERE id = ?)').get(woId);
+        if (eqRow) {
+          const cat = eqRow.category_id ? db.prepare('SELECT name FROM equipment_categories WHERE id = ?').get(eqRow.category_id) : null;
+          const lig = eqRow.ligne_id ? db.prepare('SELECT name, site_id FROM lignes WHERE id = ?').get(eqRow.ligne_id) : null;
+          const site = lig?.site_id ? db.prepare('SELECT name FROM sites WHERE id = ?').get(lig.site_id) : null;
+          const dep = eqRow.department_id ? db.prepare('SELECT name FROM departements WHERE id = ?').get(eqRow.department_id) : null;
+          if (cat) parts.push(`Catégorie : ${cat.name}`);
+          if (lig) parts.push(`Ligne : ${lig.name}`);
+          if (site) parts.push(`Site : ${site.name}`);
+          if (dep) parts.push(`Département : ${dep.name}`);
+        }
+      } catch (_) {}
+    }
+    try {
+      const procs = db.prepare(`
+        SELECT p.name, p.description, p.steps, p.safety_notes
+        FROM procedures p
+        INNER JOIN work_order_procedures wop ON wop.procedure_id = p.id AND wop.work_order_id = ?
+      `).all(woId);
+      const planProc = row.maintenance_plan_id ? db.prepare('SELECT procedure_id FROM maintenance_plans WHERE id = ?').get(row.maintenance_plan_id) : null;
+      if (planProc?.procedure_id) {
+        const pp = db.prepare('SELECT name, description, steps, safety_notes FROM procedures WHERE id = ?').get(planProc.procedure_id);
+        if (pp && (!procs.length || !procs.some(p => p.name === pp.name))) procs.push(pp);
+      }
+      if (procs.length) {
+        parts.push('', '=== PROCÉDURES LIÉES ===');
+        procs.forEach((p) => {
+          parts.push(`- ${p.name}: ${(p.description || '').slice(0, 400)}`);
+          if (p.steps) parts.push(`  Étapes : ${(typeof p.steps === 'string' ? p.steps : JSON.stringify(p.steps)).slice(0, 1500)}`);
+          if (p.safety_notes) parts.push(`  Sécurité : ${(p.safety_notes || '').slice(0, 400)}`);
+        });
+      }
+    } catch (_) {}
+    try {
+      const interventions = db.prepare('SELECT description, hours_spent, spare_part_id FROM interventions WHERE work_order_id = ? ORDER BY id').all(woId);
+      if (interventions.length) {
+        parts.push('', '=== INTERVENTIONS ENREGISTRÉES ===');
+        interventions.forEach((i, idx) => {
+          let line = `${idx + 1}. ${(i.description || '').slice(0, 300)} (${i.hours_spent || 0}h)`;
+          if (i.spare_part_id) {
+            const sp = db.prepare('SELECT code, name FROM spare_parts WHERE id = ?').get(i.spare_part_id);
+            if (sp) line += ` — Pièce : ${sp.code || ''} ${sp.name || ''}`;
+          }
+          parts.push(line);
+        });
+      }
+    } catch (_) {}
+    try {
+      const rootCauses = db.prepare(`
+        SELECT root_cause_code, root_cause_description, analysis_method FROM equipment_root_causes WHERE work_order_id = ?
+      `).all(woId);
+      if (rootCauses.length) {
+        parts.push('', '=== CAUSES RACINES ===');
+        rootCauses.forEach(rc => parts.push(`- Code : ${rc.root_cause_code || '-'} | ${(rc.root_cause_description || '').slice(0, 400)}${rc.analysis_method ? ` | Méthode : ${rc.analysis_method}` : ''}`));
+      }
+    } catch (_) {}
+    try {
+      const consumed = db.prepare(`
+        SELECT c.quantity, c.unit_cost_at_use, sp.code as part_code, sp.name as part_name
+        FROM work_order_consumed_parts c
+        JOIN spare_parts sp ON c.spare_part_id = sp.id
+        WHERE c.work_order_id = ?
+        ORDER BY c.id
+      `).all(woId);
+      if (consumed.length) {
+        parts.push('', '=== PIÈCES CONSOMMÉES ===');
+        consumed.forEach(c => parts.push(`- ${c.part_code || ''} ${c.part_name || ''} : qté ${c.quantity}${c.unit_cost_at_use != null ? `, coût unit. ${c.unit_cost_at_use}` : ''}`));
+      }
+    } catch (_) {}
+    try {
+      const reserv = db.prepare(`
+        SELECT r.quantity, r.notes, sp.code as part_code, sp.name as part_name
+        FROM work_order_reservations r
+        JOIN spare_parts sp ON r.spare_part_id = sp.id
+        WHERE r.work_order_id = ?
+        ORDER BY sp.code
+      `).all(woId);
+      if (reserv.length) {
+        parts.push('', '=== RÉSERVATIONS PIÈCES ===');
+        reserv.forEach(r => parts.push(`- ${r.part_code || ''} ${r.part_name || ''} : qté ${r.quantity}${r.notes ? ` (${r.notes})` : ''}`));
+      }
+    } catch (_) {}
+    try {
+      const fees = db.prepare('SELECT description, amount FROM work_order_extra_fees WHERE work_order_id = ? ORDER BY id').all(woId);
+      if (fees.length) {
+        parts.push('', '=== FRAIS SUPPLÉMENTAIRES ===');
+        fees.forEach(f => parts.push(`- ${(f.description || '').slice(0, 100)} : ${f.amount}`));
+      }
+    } catch (_) {}
+    try {
+      const phases = db.prepare('SELECT phase_name, hours_spent, notes FROM work_order_phase_times WHERE work_order_id = ? ORDER BY phase_name').all(woId);
+      if (phases.length) {
+        parts.push('', '=== TEMPS PAR PHASE ===');
+        phases.forEach(p => parts.push(`- ${p.phase_name || '-'} : ${p.hours_spent || 0}h${p.notes ? ` — ${(p.notes || '').slice(0, 200)}` : ''}`));
+      }
+    } catch (_) {}
+    try {
+      const checklists = db.prepare(`
+        SELECT ch.name FROM work_order_checklists woc
+        JOIN maintenance_checklists ch ON ch.id = woc.checklist_id
+        WHERE woc.work_order_id = ?
+      `).all(woId);
+      if (checklists.length) parts.push('', 'Checklists assignées : ' + checklists.map(c => c.name).join(', '));
+    } catch (_) {}
+    try {
+      const docs = db.prepare(`
+        SELECT document_type, original_filename FROM documents WHERE entity_type = 'work_order' AND entity_id = ? LIMIT 20
+      `).all(woId);
+      if (docs.length) parts.push('', 'Documents : ' + docs.map(d => `${d.document_type || 'doc'} (${d.original_filename || ''})`).join(' ; '));
+    } catch (_) {}
+    try {
+      const att = db.prepare('SELECT file_name, attachment_type FROM work_order_attachments WHERE work_order_id = ? LIMIT 15').all(woId);
+      if (att.length) parts.push('', 'Pièces jointes : ' + att.map(a => `${a.attachment_type || 'fichier'} (${a.file_name || ''})`).join(' ; '));
+    } catch (_) {}
+    try {
+      const similar = db.prepare(`
+        SELECT wo.number, wo.title, wo.description, wo.status FROM work_orders wo
+        WHERE wo.equipment_id = (SELECT equipment_id FROM work_orders WHERE id = ?) AND wo.id != ? AND wo.status = 'completed'
+        ORDER BY wo.completed_at DESC, wo.updated_at DESC LIMIT 5
+      `).all(woId, woId);
+      if (similar.length) {
+        parts.push('', '=== OT PASSÉS SUR LE MÊME ÉQUIPEMENT (clôturés) ===');
+        similar.forEach(s => parts.push(`- ${s.number} : ${(s.title || '').slice(0, 60)} | ${(s.description || '').slice(0, 150)}`));
+      }
+    } catch (_) {}
+    return parts.filter(Boolean).join('\n');
+  }
+
+  const context = buildContext();
+  const systemPrompt = `Tu es un assistant IA intégré à un logiciel de GMAO (gestion de maintenance). Tu aides les techniciens et responsables à résoudre les problèmes des ordres de travail (OT). Réponds en français, de façon claire et professionnelle. Utilise uniquement le contexte fourni sur l'OT et les procédures pour proposer des pistes de résolution, des vérifications ou des étapes. Si le contexte ne suffit pas, suggère des vérifications sans inventer de données.\n\nContexte de l'OT actuel :\n${context}`;
+
+  function sendFallbackReply() {
+    const suggestions = [];
+    try {
+      const procs = db.prepare(`
+        SELECT p.name, p.steps FROM procedures p
+        INNER JOIN work_order_procedures wop ON wop.procedure_id = p.id AND wop.work_order_id = ?
+      `).all(woId);
+      let stepsText = '';
+      if (procs.length) {
+        const p = procs[0];
+        stepsText = (p.steps && (typeof p.steps === 'string' ? p.steps : JSON.stringify(p.steps)).slice(0, 600)) || 'Consulter la fiche procédure.';
+        suggestions.push(`Procédure(s) liée(s) : ${procs.map(x => x.name).join(', ')}. Étapes : ${stepsText}`);
+      }
+    } catch (_) {}
+    try {
+      const similar = db.prepare(`
+        SELECT wo.number, wo.title, wo.status FROM work_orders wo
+        WHERE wo.equipment_id = (SELECT equipment_id FROM work_orders WHERE id = ?) AND wo.id != ? AND wo.status = 'completed'
+        ORDER BY wo.created_at DESC LIMIT 3
+      `).all(woId, woId);
+      if (similar.length) suggestions.push(`OT similaires sur le même équipement (clôturés) : ${similar.map(s => `${s.number} - ${(s.title || '').slice(0, 40)}`).join(' ; ')}. Vous pouvez les consulter pour vous inspirer des interventions passées.`);
+    } catch (_) {}
+    const reply = suggestions.length
+      ? `D’après les données de cet OT :\n\n${suggestions.join('\n\n')}\n\nPour des réponses plus personnalisées, configurez OPENAI_API_KEY dans le backend.`
+      : `Aucune procédure ou OT similaire trouvé pour cet OT. Décrivez le problème ou la question dans votre message. Pour activer l’assistant IA complet, configurez OPENAI_API_KEY dans le fichier .env du backend.`;
+    res.json({ reply });
+  }
+
+  const groqKey = process.env.GROQ_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history.map((h) => ({ role: h.role === 'user' ? 'user' : 'assistant', content: (h.content || '').slice(0, 2000) })),
+    { role: 'user', content: message }
+  ].filter((m) => m.content);
+
+  if (!groqKey && !geminiKey && !openaiKey) return sendFallbackReply();
+
+  (async () => {
+    try {
+      let reply = '';
+      if (groqKey) {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${groqKey}` },
+          body: JSON.stringify({
+            model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+            messages,
+            max_tokens: 800,
+            temperature: 0.4
+          })
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const data = await response.json();
+        reply = data?.choices?.[0]?.message?.content?.trim() || '';
+      } else if (geminiKey) {
+        const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+        const contents = [];
+        for (const m of messages) {
+          if (m.role === 'system') continue;
+          contents.push({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: (m.content || '').slice(0, 8000) }]
+          });
+        }
+        const body = {
+          systemInstruction: { parts: [{ text: systemPrompt.slice(0, 8000) }] },
+          contents,
+          generationConfig: { maxOutputTokens: 800, temperature: 0.4 }
+        };
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const data = await response.json();
+        reply = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      } else if (openaiKey) {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
+          body: JSON.stringify({
+            model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+            messages,
+            max_tokens: 800,
+            temperature: 0.4
+          })
+        });
+        if (!response.ok) throw new Error(await response.text());
+        const data = await response.json();
+        reply = data?.choices?.[0]?.message?.content?.trim() || '';
+      }
+      if (!reply) reply = 'Aucune réponse générée.';
+      res.json({ reply });
+    } catch (err) {
+      res.status(502).json({ error: 'Erreur lors de l’appel à l’assistant IA', details: (err.message || '').slice(0, 200) });
+    }
+  })();
+});
+
+/**
  * GET /api/work-orders/:id
  */
 router.get('/:id', requirePermission('work_orders', 'view'), param('id').isInt(), (req, res) => {

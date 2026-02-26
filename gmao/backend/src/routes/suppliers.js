@@ -95,6 +95,76 @@ router.post('/orders/:orderId/lines', authorize(ROLES.ADMIN, ROLES.RESPONSABLE),
   res.status(201).json(line);
 });
 
+/**
+ * POST /api/suppliers/orders/:orderId/receive
+ * Réception de la commande : statut → received, création des entrées stock pour chaque ligne.
+ */
+router.post('/orders/:orderId/receive', requirePermission('suppliers', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('orderId').isInt(), (req, res) => {
+  const db = req.db;
+  const orderId = parseInt(req.params.orderId, 10);
+  const order = db.prepare('SELECT * FROM supplier_orders WHERE id = ?').get(orderId);
+  if (!order) return res.status(404).json({ error: 'Commande non trouvée.' });
+  if (order.status === 'received') return res.status(400).json({ error: 'Commande déjà réceptionnée.' });
+  const lines = db.prepare('SELECT * FROM supplier_order_lines WHERE order_id = ?').all(orderId);
+  const hasStatusCols = (() => { try { db.prepare('SELECT quantity_accepted FROM stock_balance LIMIT 1').get(); return true; } catch (_) { return false; } })();
+  const ref = order.order_number || `CMD-${orderId}`;
+  for (const line of lines) {
+    if (!line.spare_part_id || !(line.quantity > 0)) continue;
+    const qty = line.quantity;
+    try {
+      const cur = db.prepare('SELECT quantity, quantity_accepted FROM stock_balance WHERE spare_part_id = ?').get(line.spare_part_id);
+      if (cur) {
+        if (hasStatusCols) {
+          db.prepare(`
+            UPDATE stock_balance SET quantity = quantity + ?, quantity_accepted = quantity_accepted + ?, updated_at = CURRENT_TIMESTAMP WHERE spare_part_id = ?
+          `).run(qty, qty, line.spare_part_id);
+        } else {
+          db.prepare(`
+            UPDATE stock_balance SET quantity = quantity + ?, updated_at = CURRENT_TIMESTAMP WHERE spare_part_id = ?
+          `).run(qty, line.spare_part_id);
+        }
+      } else {
+        if (hasStatusCols) {
+          db.prepare(`
+            INSERT INTO stock_balance (spare_part_id, quantity, quantity_accepted, quantity_quarantine, quantity_rejected, updated_at)
+            VALUES (?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+          `).run(line.spare_part_id, qty, qty);
+        } else {
+          db.prepare('INSERT INTO stock_balance (spare_part_id, quantity, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)').run(line.spare_part_id, qty);
+        }
+      }
+      try {
+        db.prepare(`
+          INSERT INTO stock_movements (spare_part_id, quantity, movement_type, reference, user_id, notes, status)
+          VALUES (?, ?, 'in', ?, ?, ?, 'A')
+        `).run(line.spare_part_id, qty, ref, req.user?.id || null, `Réception ${ref}`);
+      } catch (_) {
+        db.prepare(`
+          INSERT INTO stock_movements (spare_part_id, quantity, movement_type, reference, user_id, notes)
+          VALUES (?, ?, 'in', ?, ?, ?)
+        `).run(line.spare_part_id, qty, ref, req.user?.id || null, `Réception ${ref}`);
+      }
+      db.prepare('UPDATE supplier_order_lines SET received_quantity = ? WHERE id = ?').run(qty, line.id);
+    } catch (e) {
+      console.warn('[suppliers] receive line', line.id, e.message);
+    }
+  }
+  db.prepare('UPDATE supplier_orders SET status = ?, received_date = date(\'now\'), updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('received', orderId);
+  try {
+    db.prepare('UPDATE reorder_requests SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE supplier_order_id = ?').run('received', orderId);
+  } catch (_) {}
+  const updated = db.prepare(`
+    SELECT so.*, s.name as supplier_name FROM supplier_orders so
+    JOIN suppliers s ON so.supplier_id = s.id WHERE so.id = ?
+  `).get(orderId);
+  const orderLines = db.prepare(`
+    SELECT sol.*, sp.code as part_code, sp.name as part_name
+    FROM supplier_order_lines sol LEFT JOIN spare_parts sp ON sol.spare_part_id = sp.id
+    WHERE sol.order_id = ?
+  `).all(orderId);
+  res.json({ order: { ...updated, lines: orderLines } });
+});
+
 router.get('/:id', requirePermission('suppliers', 'view'), param('id').isInt(), (req, res) => {
   const db = req.db;
   const row = db.prepare('SELECT * FROM suppliers WHERE id = ?').get(req.params.id);

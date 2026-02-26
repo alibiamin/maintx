@@ -32,7 +32,7 @@ import {
   TableHead,
   TableRow
 } from '@mui/material';
-import { ArrowBack, PlayArrow, Stop, PersonSearch, Star, Schedule, Checklist, Inventory, Description, Download, Delete, Upload, Print, Add, MenuBook, Build, Chat as ChatIcon } from '@mui/icons-material';
+import { ArrowBack, PlayArrow, Stop, PersonSearch, Star, Schedule, Checklist, Inventory, Description, Download, Delete, Upload, Print, Add, MenuBook, Build, Chat as ChatIcon, SmartToy } from '@mui/icons-material';
 import api from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useSnackbar } from '../../context/SnackbarContext';
@@ -82,6 +82,9 @@ export default function WorkOrderDetail() {
   const [phaseSaving, setPhaseSaving] = useState(false);
   const [extraFeeForm, setExtraFeeForm] = useState({ description: '', amount: '' });
   const [extraFeeSaving, setExtraFeeSaving] = useState(false);
+  const [aiMessages, setAiMessages] = useState([]);
+  const [aiInput, setAiInput] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
   const { user, can } = useAuth();
   const snackbar = useSnackbar();
   const canEdit = can('work_orders', 'update');
@@ -396,6 +399,26 @@ export default function WorkOrderDetail() {
       .finally(() => setActionLoading(false));
   };
 
+  const handleSendAiMessage = () => {
+    const text = (aiInput || '').trim();
+    if (!text || !order?.id || aiLoading) return;
+    const userMsg = { role: 'user', content: text };
+    setAiMessages((prev) => [...prev, userMsg]);
+    setAiInput('');
+    setAiLoading(true);
+    const history = aiMessages.map((m) => ({ role: m.role, content: m.content }));
+    api.post(`/work-orders/${order.id}/ai-assist`, { message: text, history })
+      .then((r) => {
+        const reply = (r.data?.reply || '').trim() || 'Aucune réponse.';
+        setAiMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+      })
+      .catch((e) => {
+        const err = e.response?.data?.error || e.response?.data?.details || 'Erreur';
+        setAiMessages((prev) => [...prev, { role: 'assistant', content: `Désolé, l'assistant n'a pas pu répondre : ${err}` }]);
+      })
+      .finally(() => setAiLoading(false));
+  };
+
   if (id === 'new') return <Navigate to="/app/work-orders/new" replace />;
   if (loading || !order) return <Box p={4}><CircularProgress /></Box>;
 
@@ -569,6 +592,55 @@ export default function WorkOrderDetail() {
               </>
             )}
           </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Assistance IA — aide à la résolution basée sur les données de l'OT */}
+      <Card sx={{ mt: 2 }}>
+        <CardContent>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <SmartToy /> Assistance IA
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Posez une question ou décrivez le problème : l&apos;assistant s&apos;appuie sur les données de cet OT (procédures, équipement, interventions) pour vous aider.
+          </Typography>
+          <Box sx={{ maxHeight: 320, overflow: 'auto', mb: 2, p: 1.5, bgcolor: 'grey.50', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+            {aiMessages.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                Exemples : « Par quoi commencer ? », « Quelles vérifications faire ? », « Cause probable de la panne ? »
+              </Typography>
+            ) : (
+              aiMessages.map((msg, idx) => (
+                <Box key={idx} sx={{ mb: 1.5, display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                  <Box sx={{ maxWidth: '85%', p: 1.5, borderRadius: 2, bgcolor: msg.role === 'user' ? 'primary.main' : 'background.paper', color: msg.role === 'user' ? 'primary.contrastText' : 'text.primary', boxShadow: 1 }}>
+                    <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', m: 0 }}>{msg.content}</Typography>
+                  </Box>
+                </Box>
+              ))
+            )}
+            {aiLoading && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary' }}>
+                <CircularProgress size={16} />
+                <Typography variant="body2">Réflexion…</Typography>
+              </Box>
+            )}
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Votre question ou description du problème…"
+              value={aiInput}
+              onChange={(e) => setAiInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendAiMessage(); } }}
+              multiline
+              maxRows={3}
+              disabled={aiLoading}
+            />
+            <Button variant="contained" onClick={handleSendAiMessage} disabled={aiLoading || !aiInput.trim()} sx={{ alignSelf: 'flex-end', minWidth: 90 }}>
+              {aiLoading ? '…' : 'Envoyer'}
+            </Button>
+          </Box>
         </CardContent>
       </Card>
 

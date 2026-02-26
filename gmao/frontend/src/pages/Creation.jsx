@@ -54,8 +54,7 @@ const TYPES_BY_CATEGORY = {
   ],
   fournisseurs: [
     { value: 'fournisseur', label: 'Fournisseur' },
-    { value: 'commande_fournisseur', label: 'Commande fournisseur' },
-    { value: 'contrat', label: 'Contrat de maintenance' }
+    { value: 'commande_fournisseur', label: 'Commande fournisseur' }
   ],
   maintenance: [
     { value: 'plan_maintenance', label: 'Plan de maintenance' },
@@ -71,10 +70,10 @@ const TYPES_BY_CATEGORY = {
 const getDefaultForm = (type) => {
   const defaults = {
     site: { code: '', name: '', address: '' },
-    departement: { siteId: '', code: '', name: '', description: '' },
-    ligne: { siteId: '', code: '', name: '' },
-    machine: { siteId: '', code: '', name: '', description: '', categoryId: '', ligneId: '', departmentId: '', serialNumber: '', criticite: 'B', status: 'operational' },
-    section: { siteId: '', departmentId: '', ligneId: '', parentId: '', code: '', name: '', categoryId: '', criticite: 'B', status: 'operational' },
+    departement: { siteId: '', code: '', name: '', description: '', latitude: '', longitude: '', location_address: '' },
+    ligne: { siteId: '', code: '', name: '', latitude: '', longitude: '', location_address: '' },
+    machine: { siteId: '', code: '', name: '', description: '', categoryId: '', ligneId: '', departmentId: '', serialNumber: '', criticite: 'B', status: 'operational', latitude: '', longitude: '', location_address: '' },
+    section: { siteId: '', departmentId: '', ligneId: '', parentId: '', code: '', name: '', categoryId: '', criticite: 'B', status: 'operational', latitude: '', longitude: '', location_address: '' },
     composant: { siteId: '', departmentId: '', ligneId: '', hierarchyMachineId: '', parentId: '', code: '', name: '', categoryId: '', criticite: 'B', status: 'operational' },
     sous_composant: { siteId: '', departmentId: '', ligneId: '', hierarchyMachineId: '', hierarchySectionId: '', parentId: '', code: '', name: '', categoryId: '', criticite: 'B', status: 'operational' },
     piece: { code: '', name: '', description: '', unitId: '', stockCategory: '', family: '', subFamily1: '', subFamily2: '', subFamily3: '', subFamily4: '', subFamily5: '', partFamilyId: '', locationId: '', unitPrice: '0', minStock: '0', supplierId: '', location: '', manufacturerReference: '', imageData: null },
@@ -85,7 +84,6 @@ const getDefaultForm = (type) => {
     assignation_outil: { toolId: '', assignedTo: '', workOrderId: '', notes: '' },
     fournisseur: { code: '', name: '', contactPerson: '', email: '', phone: '', address: '' },
     commande_fournisseur: { supplierId: '' },
-    contrat: { contract_number: '', name: '', supplier_id: '', equipment_id: '', contract_type: 'preventive', start_date: '', end_date: '', annual_cost: '' },
     plan_maintenance: { equipmentId: '', name: '', description: '', frequencyDays: '30', procedureId: '' },
     checklist: { name: '', description: '', maintenance_plan_id: '', is_template: false, items: [{ item_text: '', item_type: 'check' }] },
     ordre_travail: { title: '', description: '', equipmentId: '', typeId: '', priority: 'medium', maintenancePlanId: '', procedureIds: [], assignedUserIds: [], checklistIds: [], reservations: [{ sparePartId: '', quantity: 1, notes: '' }], toolIds: [] },
@@ -99,7 +97,7 @@ const CATEGORY_IDS = ['hierarchie', 'stock', 'outils', 'fournisseurs', 'maintena
 
 const MODULE_CREATION = {
   '/app/stock/creation': { categoryId: 'stock', backPath: '/app/stock', typeMap: { piece: 'piece', entry: 'entree_stock', exit: 'sortie_stock', transfer: 'transfert_stock' } },
-  '/app/suppliers/creation': { categoryId: 'fournisseurs', backPath: '/app/suppliers', typeMap: { supplier: 'fournisseur', order: 'commande_fournisseur', contract: 'contrat' } },
+  '/app/suppliers/creation': { categoryId: 'fournisseurs', backPath: '/app/suppliers', typeMap: { supplier: 'fournisseur', order: 'commande_fournisseur' } },
   '/app/maintenance/creation': { categoryId: 'maintenance', backPath: '/app/work-orders', typeMap: { plan: 'plan_maintenance', checklist: 'checklist', 'work-order': 'ordre_travail' } },
   '/app/tools/creation': { categoryId: 'outils', backPath: '/app/tools', typeMap: { tool: 'outil', assignment: 'assignation_outil' } },
   '/app/equipment/creation': { categoryId: 'hierarchie', backPath: '/app/equipment', typeMap: { site: 'site', departement: 'departement', ligne: 'ligne', machine: 'machine', section: 'section', composant: 'composant', sous_composant: 'sous_composant' } },
@@ -116,6 +114,17 @@ function getModuleCreationContext(pathname, urlType) {
   return null;
 }
 
+/** Premier type valide pour un préfixe de création (pour redirection si type URL invalide). */
+function getFirstValidTypeForPrefix(pathname) {
+  for (const [prefix, ctx] of Object.entries(MODULE_CREATION)) {
+    if (pathname.startsWith(prefix)) {
+      const firstKey = Object.keys(ctx.typeMap)[0];
+      return firstKey ? { prefix, firstType: firstKey } : null;
+    }
+  }
+  return null;
+}
+
 export default function Creation() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -126,7 +135,18 @@ export default function Creation() {
   const moduleContext = getModuleCreationContext(location.pathname, params.type);
   const [categoryId, setCategoryId] = useState(moduleContext?.categoryId || 'hierarchie');
   const [creationType, setCreationType] = useState(moduleContext?.creationType || 'site');
-  const [form, setForm] = useState(getDefaultForm('site'));
+  const [form, setForm] = useState(getDefaultForm(moduleContext?.creationType || 'site'));
+
+  // Redirection si URL de création valide mais type inconnu (ex. /app/equipment/creation/typo → site)
+  useEffect(() => {
+    const pathname = location.pathname;
+    const urlType = params.type;
+    if (!urlType) return;
+    const fallback = getFirstValidTypeForPrefix(pathname);
+    if (fallback && !getModuleCreationContext(pathname, urlType)) {
+      navigate(pathname.replace(/\/[^/]+$/, `/${fallback.firstType}`), { replace: true });
+    }
+  }, [location.pathname, params.type, navigate]);
   const [sites, setSites] = useState([]);
   const [departements, setDepartements] = useState([]);
   const [lignes, setLignes] = useState([]);
@@ -351,11 +371,23 @@ export default function Creation() {
           .then(r => { setSuccess(r.data?.code ? `Site créé avec le code ${r.data.code}.` : 'Site créé.'); setForm(getDefaultForm('site')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (creationType === 'departement') {
-        return api.post('/departements', { siteId: parseInt(form.siteId), name: form.name, description: form.description || undefined })
+        return api.post('/departements', {
+          siteId: parseInt(form.siteId), name: form.name, description: form.description || undefined,
+          code: form.code?.trim() || undefined,
+          latitude: form.latitude ? parseFloat(form.latitude) : undefined,
+          longitude: form.longitude ? parseFloat(form.longitude) : undefined,
+          location_address: form.location_address?.trim() || undefined
+        })
           .then(r => { setSuccess(r.data?.code ? `Département créé avec le code ${r.data.code}.` : 'Département créé.'); setForm(getDefaultForm('departement')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (creationType === 'ligne') {
-        return api.post('/lignes', { siteId: parseInt(form.siteId), name: form.name })
+        return api.post('/lignes', {
+          siteId: parseInt(form.siteId), name: form.name,
+          code: form.code?.trim() || undefined,
+          latitude: form.latitude ? parseFloat(form.latitude) : undefined,
+          longitude: form.longitude ? parseFloat(form.longitude) : undefined,
+          location_address: form.location_address?.trim() || undefined
+        })
           .then(r => { setSuccess(r.data?.code ? `Ligne créée avec le code ${r.data.code}.` : 'Ligne créée.'); setForm(getDefaultForm('ligne')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (['machine', 'section', 'composant', 'sous_composant'].includes(creationType)) {
@@ -369,7 +401,10 @@ export default function Creation() {
           parentId: form.parentId ? parseInt(form.parentId) : undefined,
           serialNumber: form.serialNumber || undefined,
           criticite: form.criticite || 'B', status: form.status || 'operational',
-          equipmentType: equipmentTypeMap[creationType]
+          equipmentType: equipmentTypeMap[creationType],
+          latitude: form.latitude ? parseFloat(form.latitude) : undefined,
+          longitude: form.longitude ? parseFloat(form.longitude) : undefined,
+          location_address: form.location_address?.trim() || undefined
         };
         return api.post('/equipment', payload)
           .then(r => { setSuccess(r.data?.code ? `Élément créé avec le code ${r.data.code}.` : 'Élément créé.'); setForm(getDefaultForm(creationType)); if (r.data?.id) navigate(`/app/equipment/${r.data.id}`); });
@@ -438,14 +473,6 @@ export default function Creation() {
       if (creationType === 'commande_fournisseur') {
         return api.post('/suppliers/orders', { supplierId: parseInt(form.supplierId) })
           .then(r => { setSuccess('Commande créée.'); setForm(getDefaultForm('commande_fournisseur')); if (r.data?.id) navigate(`/app/suppliers/orders`); });
-      }
-      if (creationType === 'contrat') {
-        return api.post('/contracts', {
-          contract_number: form.contract_number, name: form.name, supplier_id: parseInt(form.supplier_id),
-          equipment_id: form.equipment_id ? parseInt(form.equipment_id) : undefined,
-          contract_type: form.contract_type || 'preventive', start_date: form.start_date, end_date: form.end_date,
-          annual_cost: parseFloat(form.annual_cost) || 0
-        }).then(() => { setSuccess('Contrat créé.'); setForm(getDefaultForm('contrat')); if (moduleContext) navigate(moduleContext.backPath); });
       }
       if (creationType === 'plan_maintenance') {
         return api.post('/maintenance-plans', {
@@ -524,7 +551,6 @@ export default function Creation() {
     if (creationType === 'assignation_outil') return form.toolId;
     if (creationType === 'fournisseur') return form.name?.trim() && (nextCode || form.code?.trim());
     if (creationType === 'commande_fournisseur') return form.supplierId;
-    if (creationType === 'contrat') return form.contract_number?.trim() && form.name?.trim() && form.supplier_id && form.start_date && form.end_date;
     if (creationType === 'plan_maintenance') return form.equipmentId && form.name?.trim();
     if (creationType === 'checklist') return form.name?.trim();
     if (creationType === 'ordre_travail') return form.title?.trim();
@@ -593,6 +619,10 @@ export default function Creation() {
                 {nextCode && <Grid item xs={12}><Typography variant="body2" color="text.secondary">Code : attribué automatiquement (ex. {nextCode})</Typography></Grid>}
                 <Grid item xs={12}><TextField fullWidth required label="Désignation (nom)" value={form.name ?? ''} onChange={(e) => handleChange('name', e.target.value)} /></Grid>
                 <Grid item xs={12}><TextField fullWidth multiline rows={2} label="Description" value={form.description ?? ''} onChange={(e) => handleChange('description', e.target.value)} /></Grid>
+                <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary">Localisation SIG (optionnel)</Typography></Grid>
+                <Grid item xs={12} sm={4}><TextField fullWidth type="number" inputProps={{ step: 'any' }} label="Latitude" value={form.latitude ?? ''} onChange={(e) => handleChange('latitude', e.target.value)} placeholder="ex. 48.8566" /></Grid>
+                <Grid item xs={12} sm={4}><TextField fullWidth type="number" inputProps={{ step: 'any' }} label="Longitude" value={form.longitude ?? ''} onChange={(e) => handleChange('longitude', e.target.value)} placeholder="ex. 2.3522" /></Grid>
+                <Grid item xs={12}><TextField fullWidth multiline label="Litérairie (adresse ou description précise du lieu)" value={form.location_address ?? ''} onChange={(e) => handleChange('location_address', e.target.value)} placeholder="Bâtiment A, étage 2, zone nord" /></Grid>
               </Grid>
             )}
             {creationType === 'ligne' && (
@@ -600,6 +630,10 @@ export default function Creation() {
                 <Grid item xs={12}><FormControl fullWidth required><InputLabel>Site</InputLabel><Select value={form.siteId ?? ''} label="Site" onChange={(e) => handleChange('siteId', e.target.value)}>{sites.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
                 {nextCode && <Grid item xs={12}><Typography variant="body2" color="text.secondary">Code : attribué automatiquement (ex. {nextCode})</Typography></Grid>}
                 <Grid item xs={12}><TextField fullWidth required label="Désignation (nom)" value={form.name ?? ''} onChange={(e) => handleChange('name', e.target.value)} /></Grid>
+                <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary">Localisation SIG (optionnel)</Typography></Grid>
+                <Grid item xs={12} sm={4}><TextField fullWidth type="number" inputProps={{ step: 'any' }} label="Latitude" value={form.latitude ?? ''} onChange={(e) => handleChange('latitude', e.target.value)} placeholder="ex. 48.8566" /></Grid>
+                <Grid item xs={12} sm={4}><TextField fullWidth type="number" inputProps={{ step: 'any' }} label="Longitude" value={form.longitude ?? ''} onChange={(e) => handleChange('longitude', e.target.value)} placeholder="ex. 2.3522" /></Grid>
+                <Grid item xs={12}><TextField fullWidth multiline label="Litérairie (adresse ou description précise du lieu)" value={form.location_address ?? ''} onChange={(e) => handleChange('location_address', e.target.value)} placeholder="Hall 3, ligne de production nord" /></Grid>
               </Grid>
             )}
             {creationType === 'machine' && (
@@ -621,6 +655,10 @@ export default function Creation() {
                 <Grid item xs={12} sm={6}><TextField fullWidth label="N° série" value={form.serialNumber ?? ''} onChange={(e) => handleChange('serialNumber', e.target.value)} /></Grid>
                 <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Criticité</InputLabel><Select value={form.criticite ?? 'B'} label="Criticité" onChange={(e) => handleChange('criticite', e.target.value)}><MenuItem value="A">A</MenuItem><MenuItem value="B">B</MenuItem><MenuItem value="C">C</MenuItem></Select></FormControl></Grid>
                 <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Statut</InputLabel><Select value={form.status ?? 'operational'} label="Statut" onChange={(e) => handleChange('status', e.target.value)}><MenuItem value="operational">Opérationnel</MenuItem><MenuItem value="maintenance">En maintenance</MenuItem><MenuItem value="out_of_service">Hors service</MenuItem></Select></FormControl></Grid>
+                <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary">Localisation SIG (optionnel)</Typography></Grid>
+                <Grid item xs={12} sm={4}><TextField fullWidth type="number" inputProps={{ step: 'any' }} label="Latitude" value={form.latitude ?? ''} onChange={(e) => handleChange('latitude', e.target.value)} placeholder="ex. 48.8566" /></Grid>
+                <Grid item xs={12} sm={4}><TextField fullWidth type="number" inputProps={{ step: 'any' }} label="Longitude" value={form.longitude ?? ''} onChange={(e) => handleChange('longitude', e.target.value)} placeholder="ex. 2.3522" /></Grid>
+                <Grid item xs={12}><TextField fullWidth multiline label="Litérairie (adresse ou description précise du lieu)" value={form.location_address ?? ''} onChange={(e) => handleChange('location_address', e.target.value)} placeholder="Atelier 2, machine 5" /></Grid>
               </Grid>
             )}
             {creationType === 'section' && (
@@ -635,6 +673,10 @@ export default function Creation() {
                 <Grid item xs={12} sm={6}><TextField fullWidth required label={nextCode ? 'Désignation (nom)' : 'Nom'} value={form.name ?? ''} onChange={(e) => handleChange('name', e.target.value)} /></Grid>
                 <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Catégorie</InputLabel><Select value={safeSelectValue(categories, form.categoryId)} label="Catégorie" onChange={(e) => handleChange('categoryId', e.target.value)}><MenuItem value="">—</MenuItem>{categories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}</Select></FormControl></Grid>
                 <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Criticité</InputLabel><Select value={form.criticite ?? 'B'} label="Criticité" onChange={(e) => handleChange('criticite', e.target.value)}><MenuItem value="A">A</MenuItem><MenuItem value="B">B</MenuItem><MenuItem value="C">C</MenuItem></Select></FormControl></Grid>
+                <Grid item xs={12}><Typography variant="subtitle2" color="text.secondary">Localisation SIG (optionnel)</Typography></Grid>
+                <Grid item xs={12} sm={4}><TextField fullWidth type="number" inputProps={{ step: 'any' }} label="Latitude" value={form.latitude ?? ''} onChange={(e) => handleChange('latitude', e.target.value)} placeholder="ex. 48.8566" /></Grid>
+                <Grid item xs={12} sm={4}><TextField fullWidth type="number" inputProps={{ step: 'any' }} label="Longitude" value={form.longitude ?? ''} onChange={(e) => handleChange('longitude', e.target.value)} placeholder="ex. 2.3522" /></Grid>
+                <Grid item xs={12}><TextField fullWidth multiline label="Litérairie (adresse ou description précise du lieu)" value={form.location_address ?? ''} onChange={(e) => handleChange('location_address', e.target.value)} placeholder="Zone de la section" /></Grid>
               </Grid>
             )}
             {creationType === 'composant' && (
@@ -779,19 +821,6 @@ export default function Creation() {
                 <Grid item xs={12}><FormControl fullWidth required><InputLabel>Fournisseur</InputLabel><Select value={form.supplierId ?? ''} label="Fournisseur" onChange={(e) => handleChange('supplierId', e.target.value)}>{suppliers.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
               </Grid>
             )}
-            {creationType === 'contrat' && (
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}><TextField fullWidth required label="N° contrat" value={form.contract_number ?? ''} onChange={(e) => handleChange('contract_number', e.target.value)} /></Grid>
-                <Grid item xs={12} sm={6}><TextField fullWidth required label="Nom" value={form.name ?? ''} onChange={(e) => handleChange('name', e.target.value)} /></Grid>
-                <Grid item xs={12}><FormControl fullWidth required><InputLabel>Fournisseur</InputLabel><Select value={form.supplier_id ?? ''} label="Fournisseur" onChange={(e) => handleChange('supplier_id', e.target.value)}>{suppliers.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}</Select></FormControl></Grid>
-                <Grid item xs={12}><FormControl fullWidth><InputLabel>Équipement</InputLabel><Select value={form.equipment_id ?? ''} label="Équipement" onChange={(e) => handleChange('equipment_id', e.target.value)}><MenuItem value="">—</MenuItem>{equipment.map(eq => <MenuItem key={eq.id} value={eq.id}>{eq.code} — {eq.name}</MenuItem>)}</Select></FormControl></Grid>
-                <Grid item xs={12} sm={6}><FormControl fullWidth><InputLabel>Type</InputLabel><Select value={form.contract_type ?? 'preventive'} label="Type" onChange={(e) => handleChange('contract_type', e.target.value)}><MenuItem value="preventive">Préventif</MenuItem><MenuItem value="corrective">Correctif</MenuItem><MenuItem value="full">Complet</MenuItem><MenuItem value="spare_parts">Pièces</MenuItem></Select></FormControl></Grid>
-                <Grid item xs={12} sm={6}><TextField fullWidth type="number" label={`Coût annuel (${currency})`} value={form.annual_cost ?? ''} onChange={(e) => handleChange('annual_cost', e.target.value)} inputProps={{ min: 0 }} /></Grid>
-                <Grid item xs={12} sm={6}><TextField fullWidth required type="date" label="Début" value={form.start_date ?? ''} onChange={(e) => handleChange('start_date', e.target.value)} InputLabelProps={{ shrink: true }} /></Grid>
-                <Grid item xs={12} sm={6}><TextField fullWidth required type="date" label="Fin" value={form.end_date ?? ''} onChange={(e) => handleChange('end_date', e.target.value)} InputLabelProps={{ shrink: true }} /></Grid>
-              </Grid>
-            )}
-
             {/* ——— Maintenance ——— */}
             {creationType === 'plan_maintenance' && (
               <Grid container spacing={2}>

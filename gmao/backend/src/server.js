@@ -59,7 +59,6 @@ const presenceRoutes = require('./routes/presence');
 const scheduledReportsRoutes = require('./routes/scheduledReports');
 const stockBySiteRoutes = require('./routes/stockBySite');
 const requiredDocumentTypesRoutes = require('./routes/requiredDocumentTypes');
-const standardsRoutes = require('./routes/standards');
 const permissionsRoutes = require('./routes/permissions');
 const chatRoutes = require('./routes/chat');
 
@@ -188,20 +187,15 @@ app.use('/api/presence', presenceRoutes);
 app.use('/api/scheduled-reports', scheduledReportsRoutes);
 app.use('/api/stock-by-site', stockBySiteRoutes);
 app.use('/api/required-document-types', requiredDocumentTypesRoutes);
-app.use('/api/standards', standardsRoutes);
 app.use('/api/permissions', permissionsRoutes);
 // Fonctionnalités type Coswin 8i
 const plannedShutdownsRoutes = require('./routes/plannedShutdowns');
 const purchaseRequestsRoutes = require('./routes/purchaseRequests');
-const priceRequestsRoutes = require('./routes/priceRequests');
-const supplierInvoicesRoutes = require('./routes/supplierInvoices');
 const regulatoryChecksRoutes = require('./routes/regulatoryChecks');
 const warehousesRoutes = require('./routes/warehouses');
 const reorderRulesRoutes = require('./routes/reorderRules');
 app.use('/api/planned-shutdowns', plannedShutdownsRoutes);
 app.use('/api/purchase-requests', purchaseRequestsRoutes);
-app.use('/api/price-requests', priceRequestsRoutes);
-app.use('/api/supplier-invoices', supplierInvoicesRoutes);
 app.use('/api/regulatory-checks', regulatoryChecksRoutes);
 app.use('/api/warehouses', warehousesRoutes);
 app.use('/api/reorder-rules', reorderRulesRoutes);
@@ -372,17 +366,20 @@ async function start() {
   try {
     const defaultDb = db.getClientDb(process.env.GMAO_DEFAULT_CLIENT_DB || 'default.db');
     db.ensureClientMigrations(defaultDb);
+    const seedModule = require('./database/seed');
     let sitesCount = 0;
     try {
       sitesCount = defaultDb.prepare('SELECT COUNT(*) as c FROM sites').get().c;
     } catch (_) {}
-    if (sitesCount === 0) {
-      const seedModule = require('./database/seed');
-      if (seedModule.runSeed) {
-        await seedModule.runSeed(defaultDb);
-        defaultDb._save();
-        console.log('✅ Données de test GMAO chargées dans la base client (default.db)');
-      }
+    if (sitesCount === 0 && seedModule.runSeed) {
+      await seedModule.runSeed(defaultDb);
+      defaultDb._save();
+      console.log('✅ Données de test GMAO chargées dans la base client (default.db)');
+    }
+    // Appliquer les coordonnées SIG de test sur les enregistrements existants (DEP-PROD, L1, EQ-001, etc.)
+    if (seedModule.applySeedGeoTestData) {
+      seedModule.applySeedGeoTestData(defaultDb);
+      if (defaultDb._save) defaultDb._save();
     }
   } catch (errClient) {
     console.warn('⚠️  Base client démo:', errClient.message);
@@ -408,11 +405,12 @@ async function start() {
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
         const nextPort = port + 1;
-        if (nextPort <= 5010) {
+        const maxPort = parseInt(process.env.GMAO_MAX_PORT, 10) || 5020;
+        if (nextPort <= maxPort) {
           console.warn(`\n⚠️  Port ${port} déjà utilisé, tentative sur le port ${nextPort}...`);
           listen(nextPort);
         } else {
-          console.error(`\n❌ Aucun port disponible entre ${PORT} et 5010. Fermez l'application qui utilise le port ${port}.`);
+          console.error(`\n❌ Aucun port disponible entre ${PORT} et ${maxPort}. Fermez l'application qui utilise le port 5000 (ex. autre terminal, autre projet) ou définissez PORT=5001 dans .env.`);
           process.exit(1);
         }
       } else {

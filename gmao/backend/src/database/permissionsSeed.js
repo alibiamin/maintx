@@ -15,8 +15,8 @@ const RESOURCES = [
   'training_plans', 'satisfaction', 'root_causes', 'work_order_templates',
   'stock_locations', 'stock_reservations', 'time_entries', 'attendance_overrides',
   'presence', 'scheduled_reports', 'stock_by_site', 'required_document_types',
-  'standards', 'failure_codes', 'equipment_models',
-  'planned_shutdowns', 'purchase_requests', 'price_requests', 'supplier_invoices',
+  'failure_codes', 'equipment_models',
+  'planned_shutdowns', 'purchase_requests',
   'regulatory_checks', 'warehouses', 'reorder_rules',
   'chat'
 ];

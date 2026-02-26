@@ -34,7 +34,8 @@ import {
   Info as InfoIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
-  Search as SearchIcon
+  Search as SearchIcon,
+  SmartToy as SmartToyIcon
 } from '@mui/icons-material';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -60,6 +61,7 @@ export default function Chat() {
   const { user } = useAuth();
   const snackbar = useSnackbar();
   const messagesEndRef = useRef(null);
+  const prevMessagesLengthRef = useRef(0);
   const [channels, setChannels] = useState([]);
   const [selectedChannelId, setSelectedChannelId] = useState(null);
   const [channel, setChannel] = useState(null);
@@ -73,6 +75,7 @@ export default function Chat() {
   const [createLoading, setCreateLoading] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState({ in_progress: true, pending: true, deferred: true, other: true, completed: false, cancelled: false });
   const [channelFilter, setChannelFilter] = useState('');
+  const [aiAssistLoading, setAiAssistLoading] = useState(false);
   const { markChannelRead, refreshUnread } = useChat();
 
   const createWo = searchParams.get('createWo');
@@ -121,6 +124,7 @@ export default function Chat() {
 
   useEffect(() => {
     if (selectedChannelId) {
+      prevMessagesLengthRef.current = 0;
       markChannelRead(selectedChannelId);
       refreshUnread();
       loadMessages(selectedChannelId);
@@ -140,8 +144,14 @@ export default function Chat() {
     }
   }, [selectedChannelId, loadMessages, snackbar, markChannelRead, refreshUnread]);
 
+  // Ne défiler vers le bas que quand un nouveau message arrive (pas à chaque polling)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const len = messages.length;
+    const prevLen = prevMessagesLengthRef.current;
+    prevMessagesLengthRef.current = len;
+    if (len > prevLen) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   useEffect(() => {
@@ -168,8 +178,11 @@ export default function Chat() {
             setSelectedChannelId(r.data.channel.id);
             navigate({ pathname: '/app/chat', search: '' }, { replace: true });
             setSearchParams({});
+            if (r.data.workOrderClosed) {
+              snackbar.showInfo('Consultation en lecture seule (OT clôturé ou annulé).');
+            }
           } else if (r.data?.workOrderClosed) {
-            snackbar.showError('Le chat n\'est pas disponible pour un OT clôturé ou annulé.');
+            snackbar.showInfo('Aucun historique de chat pour cet OT clôturé ou annulé.');
             navigate({ pathname: '/app/chat', search: '' }, { replace: true });
             setSearchParams({});
           } else {
@@ -193,6 +206,20 @@ export default function Chat() {
       })
       .catch((err) => snackbar.showError(err.response?.data?.error || 'Envoi impossible'))
       .finally(() => setSending(false));
+  };
+
+  const handleAskAi = () => {
+    const text = (input || '').trim();
+    if (!text || !selectedChannelId || aiAssistLoading) return;
+    setAiAssistLoading(true);
+    api.post(`/chat/channels/${selectedChannelId}/ai-assist`, { message: text })
+      .then((r) => {
+        setMessages((prev) => [...prev, r.data.userMessage, r.data.assistantMessage]);
+        setInput('');
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      })
+      .catch((err) => snackbar.showError(err.response?.data?.error || 'Assistant IA indisponible'))
+      .finally(() => setAiAssistLoading(false));
   };
 
   const handleCreateChannel = () => {
@@ -432,7 +459,7 @@ export default function Chat() {
                   p: 2,
                   borderBottom: '1px solid',
                   borderColor: 'divider',
-                  bgcolor: 'background.paper',
+                  bgcolor: isDark ? 'background.paper' : alpha(theme.palette.primary.main, 0.03),
                   display: 'flex',
                   flexDirection: 'column',
                   gap: 1
@@ -456,89 +483,199 @@ export default function Chat() {
               </Box>
 
               {/* Fil de messages */}
-              <Box sx={{ flex: 1, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Box
+                sx={{
+                  flex: 1,
+                  overflow: 'auto',
+                  p: 2.5,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  background: isDark
+                    ? undefined
+                    : 'linear-gradient(180deg, rgba(255,255,255,0.6) 0%, rgba(248,250,252,0.4) 100%)'
+                }}
+              >
                 {loadingMessages ? (
                   <Box display="flex" justifyContent="center" py={6}><CircularProgress /></Box>
                 ) : messages.length === 0 ? (
-                  <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', py: 4 }}>
-                    <Typography variant="body2" color="text.secondary">Aucun message pour l&apos;instant. Les mises à jour de l&apos;OT apparaîtront ici.</Typography>
+                  <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', py: 6 }}>
+                    <Box sx={{ textAlign: 'center', maxWidth: 320 }}>
+                      <Box sx={{ width: 56, height: 56, borderRadius: 2, bgcolor: alpha(theme.palette.primary.main, 0.08), display: 'flex', alignItems: 'center', justifyContent: 'center', mx: 'auto', mb: 1.5 }}>
+                        <ChatIcon sx={{ fontSize: 28, color: 'primary.main', opacity: 0.8 }} />
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">Aucun message pour l&apos;instant.</Typography>
+                      <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5 }}>Les échanges et mises à jour de l&apos;OT apparaîtront ici.</Typography>
+                    </Box>
                   </Box>
                 ) : (
-                  messages.map((msg) =>
-                    msg.messageType === 'system' ? (
-                      <Box key={msg.id} sx={{ display: 'flex', justifyContent: 'center', my: 0.5 }}>
+                  messages.map((msg, idx) => {
+                    const msgKey = `msg-${msg.id ?? 'n'}-${idx}`;
+                    return msg.messageType === 'system' ? (
+                      <Box key={msgKey} sx={{ display: 'flex', justifyContent: 'center', my: 0.5 }}>
                         <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, px: 2, py: 1, borderRadius: 2, bgcolor: alpha(theme.palette.info.main, 0.08), border: '1px solid', borderColor: alpha(theme.palette.info.main, 0.2) }}>
                           <InfoIcon sx={{ fontSize: 16, color: 'info.main' }} />
                           <Typography variant="caption" color="text.secondary">{msg.content}</Typography>
                           <Typography variant="caption" color="text.disabled">· {formatMessageTime(msg.createdAt)}</Typography>
                         </Box>
                       </Box>
+                    ) : msg.messageType === 'assistant' ? (
+                      <Box key={msgKey} sx={{ display: 'flex', flexDirection: 'row', gap: 1.5, alignItems: 'flex-end', maxWidth: '82%', alignSelf: 'flex-start' }}>
+                        <Avatar sx={{ width: 38, height: 38, bgcolor: alpha(theme.palette.secondary.main, 0.9), flexShrink: 0 }}>
+                          <SmartToyIcon sx={{ fontSize: 22 }} />
+                        </Avatar>
+                        <Box sx={{ px: 2, py: 1.5, borderRadius: 2.5, borderTopRightRadius: 4, bgcolor: alpha(theme.palette.secondary.main, 0.08), border: '1px solid', borderColor: alpha(theme.palette.secondary.main, 0.22), boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                          <Typography variant="caption" sx={{ opacity: 0.85, display: 'block', mb: 0.5, fontWeight: 600 }}>{msg.authorName} · {formatMessageTime(msg.createdAt)}</Typography>
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }}>{msg.content}</Typography>
+                        </Box>
+                      </Box>
                     ) : (
                       <Box
-                        key={msg.id}
+                        key={msgKey}
                         sx={{
                           display: 'flex',
                           flexDirection: msg.isOwn ? 'row-reverse' : 'row',
-                          gap: 1.25,
+                          gap: 1.5,
                           alignItems: 'flex-end',
-                          maxWidth: '78%',
+                          maxWidth: '82%',
                           alignSelf: msg.isOwn ? 'flex-end' : 'flex-start'
                         }}
                       >
-                        <Avatar sx={{ width: 36, height: 36, bgcolor: msg.isOwn ? 'primary.main' : 'grey.400', fontSize: '0.875rem' }}>
+                        <Avatar sx={{ width: 38, height: 38, bgcolor: msg.isOwn ? 'primary.main' : 'grey.400', fontSize: '0.9rem', flexShrink: 0 }}>
                           {(msg.authorName || 'U').charAt(0).toUpperCase()}
                         </Avatar>
                         <Box
                           sx={{
                             px: 2,
-                            py: 1.25,
-                            borderRadius: 2,
-                            borderTopRightRadius: msg.isOwn ? 0 : 2,
-                            borderTopLeftRadius: msg.isOwn ? 2 : 0,
+                            py: 1.5,
+                            borderRadius: 2.5,
+                            borderTopRightRadius: msg.isOwn ? 4 : 2.5,
+                            borderTopLeftRadius: msg.isOwn ? 2.5 : 4,
                             bgcolor: msg.isOwn ? 'primary.main' : 'background.paper',
                             color: msg.isOwn ? 'primary.contrastText' : 'text.primary',
-                            boxShadow: theme.shadows[1]
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                            border: msg.isOwn ? 'none' : '1px solid',
+                            borderColor: 'divider'
                           }}
                         >
-                          <Typography variant="caption" sx={{ opacity: 0.9, display: 'block', mb: 0.25 }}>{msg.authorName} · {formatMessageTime(msg.createdAt)}</Typography>
-                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</Typography>
+                          <Typography variant="caption" sx={{ opacity: 0.9, display: 'block', mb: 0.5 }}>{msg.authorName} · {formatMessageTime(msg.createdAt)}</Typography>
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5 }}>{msg.content}</Typography>
                         </Box>
                       </Box>
-                    )
-                  ))
+                    );
+                  })
+                )
                 }
                 <div ref={messagesEndRef} />
               </Box>
 
-              {/* Saisie */}
+              {/* Saisie (lecture seule si OT clôturé ou annulé) */}
               <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  placeholder="Écrire un message…"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  multiline
-                  maxRows={4}
-                  disabled={sending}
-                  sx={{
-                    '& .MuiOutlinedInput-root': { borderRadius: 2, bgcolor: isDark ? undefined : 'grey.50' }
-                  }}
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end" sx={{ alignSelf: 'flex-end', mb: 0.5 }}>
-                        <Tooltip title="Envoyer">
-                          <span style={{ display: 'inline-flex' }}>
-                            <IconButton color="primary" onClick={handleSend} disabled={!input.trim() || sending} size="small" sx={{ bgcolor: 'primary.main', color: 'primary.contrastText', '&:hover': { bgcolor: 'primary.dark' }, '&:disabled': { bgcolor: 'action.disabledBackground' } }}>
-                              {sending ? <CircularProgress size={22} color="inherit" /> : <SendIcon fontSize="small" />}
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-                      </InputAdornment>
-                    )
-                  }}
-                />
+                {(() => {
+                  const isChannelReadOnly = channel?.linkedType === 'work_order' && ['completed', 'cancelled'].includes((channel?.workOrderStatus || '').toLowerCase());
+                  if (isChannelReadOnly) {
+                    return (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', py: 1, px: 0.5 }}>
+                        Ce canal est en lecture seule (OT clôturé ou annulé). Vous pouvez consulter les messages mais pas en envoyer.
+                      </Typography>
+                    );
+                  }
+                  const hasAi = channel?.linkedType === 'work_order';
+                  return (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        placeholder={hasAi ? 'Écrire un message ou demander à l\'assistant IA…' : 'Écrire un message…'}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                        multiline
+                        maxRows={4}
+                        disabled={sending || aiAssistLoading}
+                        variant="outlined"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            borderRadius: 3,
+                            bgcolor: isDark ? alpha(theme.palette.background.paper, 0.8) : '#fff',
+                            border: '2px solid',
+                            borderColor: alpha(theme.palette.primary.main, 0.35),
+                            transition: 'border-color 0.2s, box-shadow 0.2s',
+                            '&:hover': {
+                              borderColor: alpha(theme.palette.primary.main, 0.6),
+                              bgcolor: isDark ? undefined : '#fff'
+                            },
+                            '&.Mui-focused': {
+                              borderColor: 'primary.main',
+                              boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.15)}`,
+                              bgcolor: '#fff'
+                            },
+                            '&.Mui-disabled': { borderColor: 'divider', bgcolor: 'action.hover' }
+                          },
+                          '& .MuiOutlinedInput-notchedOutline': { border: 'none' }
+                        }}
+                        InputProps={{
+                          endAdornment: (
+                            <InputAdornment position="end" sx={{ alignSelf: 'flex-end', mb: 0.75, mr: 0.25, gap: 0.75 }}>
+                              {hasAi && (
+                                <Tooltip title="Question à l'assistant IA (réponse basée sur l'OT)">
+                                  <span style={{ display: 'inline-flex' }}>
+                                    <IconButton
+                                      onClick={handleAskAi}
+                                      disabled={!input.trim() || aiAssistLoading || sending}
+                                      size="small"
+                                      sx={{
+                                        width: 40,
+                                        height: 40,
+                                        bgcolor: alpha(theme.palette.secondary.main, 0.14),
+                                        color: 'secondary.main',
+                                        '&:hover': { bgcolor: alpha(theme.palette.secondary.main, 0.24), color: 'secondary.dark' },
+                                        '&:disabled': { bgcolor: 'action.disabledBackground', color: 'action.disabled' }
+                                      }}
+                                    >
+                                      {aiAssistLoading ? <CircularProgress size={22} color="inherit" /> : <SmartToyIcon sx={{ fontSize: 22 }} />}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              )}
+                              <Tooltip title="Envoyer à l'équipe">
+                                <span style={{ display: 'inline-flex' }}>
+                                  <IconButton
+                                    onClick={handleSend}
+                                    disabled={!input.trim() || sending || aiAssistLoading}
+                                    size="small"
+                                    sx={{
+                                      width: 40,
+                                      height: 40,
+                                      bgcolor: 'primary.main',
+                                      color: 'primary.contrastText',
+                                      '&:hover': { bgcolor: 'primary.dark' },
+                                      '&:disabled': { bgcolor: 'action.disabledBackground', color: 'action.disabled' }
+                                    }}
+                                  >
+                                    {sending ? <CircularProgress size={22} color="inherit" /> : <SendIcon sx={{ fontSize: 22 }} />}
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            </InputAdornment>
+                          )
+                        }}
+                      />
+                      {hasAi && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap', px: 0.5 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <SendIcon sx={{ fontSize: 14, color: 'primary.main', opacity: 0.9 }} />
+                            <Typography variant="caption" color="text.secondary">Message à l&apos;équipe</Typography>
+                          </Box>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <SmartToyIcon sx={{ fontSize: 14, color: 'secondary.main', opacity: 0.9 }} />
+                            <Typography variant="caption" color="text.secondary">Question à l&apos;assistant IA (contexte OT)</Typography>
+                          </Box>
+                        </Box>
+                      )}
+                    </Box>
+                  );
+                })()}
               </Box>
             </>
           )}

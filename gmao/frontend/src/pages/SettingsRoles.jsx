@@ -91,7 +91,6 @@ const RESOURCE_LABELS = {
   failure_codes: 'Codes défaut',
   equipment_models: 'Modèles d’équipements',
   notifications: 'Notifications',
-  standards: 'Normes',
   stock_by_site: 'Stock par site',
   required_document_types: 'Types de documents requis'
 };

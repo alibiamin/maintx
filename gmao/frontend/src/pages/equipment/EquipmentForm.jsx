@@ -19,6 +19,8 @@ import api from '../../services/api';
 export default function EquipmentForm() {
   const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
+  const [sites, setSites] = useState([]);
+  const [departements, setDepartements] = useState([]);
   const [lignes, setLignes] = useState([]);
   const [equipment, setEquipment] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -28,6 +30,8 @@ export default function EquipmentForm() {
     name: '',
     description: '',
     categoryId: '',
+    siteId: '',
+    departmentId: '',
     ligneId: '',
     parentId: '',
     serialNumber: '',
@@ -42,16 +46,30 @@ export default function EquipmentForm() {
   useEffect(() => {
     Promise.all([
       api.get('/equipment/categories'),
+      api.get('/sites').catch(() => ({ data: [] })),
+      api.get('/departements').catch(() => ({ data: [] })),
       api.get('/lignes'),
       api.get('/equipment')
-    ]).then(([cat, lig, eq]) => {
-      setCategories(cat.data);
-      setLignes(lig.data);
-      setEquipment(eq.data);
+    ]).then(([cat, s, d, lig, eq]) => {
+      setCategories(cat.data || []);
+      setSites(s.data || []);
+      setDepartements(d.data || []);
+      setLignes(lig.data || []);
+      setEquipment(eq.data || []);
     }).catch(console.error);
   }, []);
 
-  const handleChange = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
+  const lignesFiltered = form.siteId ? lignes.filter((l) => String(l.site_id || l.siteId) === String(form.siteId)) : lignes;
+  const departementsFiltered = form.siteId ? departements.filter((d) => String(d.site_id || d.siteId) === String(form.siteId)) : departements;
+
+  const handleChange = (field, value) => {
+    setForm(prev => {
+      const next = { ...prev, [field]: value };
+      if (field === 'siteId') { next.departmentId = ''; next.ligneId = ''; next.parentId = ''; }
+      else if (field === 'departmentId' || field === 'ligneId') { next.parentId = ''; }
+      return next;
+    });
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -62,8 +80,11 @@ export default function EquipmentForm() {
       name: form.name,
       description: form.description || undefined,
       categoryId: form.categoryId ? parseInt(form.categoryId) : undefined,
+      siteId: form.siteId ? parseInt(form.siteId, 10) : undefined,
+      departmentId: form.departmentId ? parseInt(form.departmentId, 10) : undefined,
       ligneId: form.ligneId ? parseInt(form.ligneId) : undefined,
       parentId: form.parentId ? parseInt(form.parentId) : undefined,
+      equipmentType: 'machine',
       serialNumber: form.serialNumber || undefined,
       manufacturer: form.manufacturer || undefined,
       model: form.model || undefined,
@@ -87,8 +108,36 @@ export default function EquipmentForm() {
         <CardContent>
           <Box component="form" onSubmit={handleSubmit}>
             <h3 style={{ margin: '0 0 16px' }}>Nouvel équipement</h3>
+            <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.875rem' }}>Hiérarchie : Site → Département → Ligne → Équipement</p>
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
             <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <FormControl fullWidth required size="small">
+                  <InputLabel>Site</InputLabel>
+                  <Select value={form.siteId} label="Site" onChange={(e) => handleChange('siteId', e.target.value)}>
+                    <MenuItem value="">—</MenuItem>
+                    {sites.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth size="small" disabled={!form.siteId}>
+                  <InputLabel>Département</InputLabel>
+                  <Select value={form.departmentId} label="Département" onChange={(e) => handleChange('departmentId', e.target.value)}>
+                    <MenuItem value="">—</MenuItem>
+                    {departementsFiltered.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth size="small" disabled={!form.siteId}>
+                  <InputLabel>Ligne</InputLabel>
+                  <Select value={form.ligneId} label="Ligne" onChange={(e) => handleChange('ligneId', e.target.value)}>
+                    <MenuItem value="">—</MenuItem>
+                    {lignesFiltered.map(l => <MenuItem key={l.id} value={l.id}>{l.name} {l.site_name ? `(${l.site_name})` : ''}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -118,17 +167,6 @@ export default function EquipmentForm() {
                     <MenuItem value="">—</MenuItem>
                     {categories.map(c => (
                       <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Ligne</InputLabel>
-                  <Select value={form.ligneId} label="Ligne" onChange={(e) => handleChange('ligneId', e.target.value)}>
-                    <MenuItem value="">—</MenuItem>
-                    {lignes.map(l => (
-                      <MenuItem key={l.id} value={l.id}>{l.name} ({l.site_name})</MenuItem>
                     ))}
                   </Select>
                 </FormControl>

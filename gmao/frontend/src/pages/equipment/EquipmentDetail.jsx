@@ -29,7 +29,7 @@ import {
   FormControlLabel,
   Checkbox
 } from '@mui/material';
-import { ArrowBack, Delete, Add, ContentCopy, AttachMoney, Edit, Chat as ChatIcon } from '@mui/icons-material';
+import { ArrowBack, Delete, Add, ContentCopy, AttachMoney, Edit } from '@mui/icons-material';
 import api from '../../services/api';
 import { useSnackbar } from '../../context/SnackbarContext';
 import { useAuth } from '../../context/AuthContext';
@@ -77,8 +77,10 @@ export default function EquipmentDetail() {
   const [assetForm, setAssetForm] = useState({ acquisitionValue: '', depreciationYears: '', residualValue: '', depreciationStartDate: '' });
   const [assetSubmitting, setAssetSubmitting] = useState(false);
   const [editMainOpen, setEditMainOpen] = useState(false);
-  const [editMainForm, setEditMainForm] = useState({ code: '', name: '', description: '', categoryId: '', ligneId: '', parentId: '', serialNumber: '', manufacturer: '', model: '', location: '', criticite: 'B', status: 'operational', installationDate: '' });
+  const [editMainForm, setEditMainForm] = useState({ code: '', name: '', description: '', categoryId: '', siteId: '', departmentId: '', ligneId: '', parentId: '', serialNumber: '', manufacturer: '', model: '', location: '', criticite: 'B', status: 'operational', installationDate: '', latitude: '', longitude: '', location_address: '' });
   const [categories, setCategories] = useState([]);
+  const [sites, setSites] = useState([]);
+  const [departements, setDepartements] = useState([]);
   const [lignes, setLignes] = useState([]);
   const [parentEquipmentList, setParentEquipmentList] = useState([]);
   const [editMainSubmitting, setEditMainSubmitting] = useState(false);
@@ -277,12 +279,17 @@ export default function EquipmentDetail() {
       name: equipment?.name ?? '',
       description: equipment?.description ?? '',
       categoryId: equipment?.categoryId != null ? String(equipment.categoryId) : '',
+      siteId: equipment?.siteId != null ? String(equipment.siteId) : '',
+      departmentId: equipment?.departmentId != null ? String(equipment.departmentId) : '',
       ligneId: equipment?.ligneId != null ? String(equipment.ligneId) : '',
       parentId: equipment?.parentId != null ? String(equipment.parentId) : '',
       serialNumber: equipment?.serialNumber ?? '',
       manufacturer: equipment?.manufacturer ?? '',
       model: equipment?.model ?? '',
       location: equipment?.location ?? '',
+      latitude: equipment?.latitude != null ? String(equipment.latitude) : '',
+      longitude: equipment?.longitude != null ? String(equipment.longitude) : '',
+      location_address: equipment?.location_address ?? equipment?.locationAddress ?? '',
       criticite: equipment?.criticite ?? 'B',
       status: equipment?.status ?? 'operational',
       installationDate: equipment?.installationDate ? equipment.installationDate.slice(0, 10) : ''
@@ -290,6 +297,8 @@ export default function EquipmentDetail() {
     setEditMainOpen(true);
     Promise.all([
       api.get('/equipment/categories').then((r) => setCategories(r.data || [])).catch(() => setCategories([])),
+      api.get('/sites').then((r) => setSites(r.data || [])).catch(() => setSites([])),
+      api.get('/departements').then((r) => setDepartements(r.data || [])).catch(() => setDepartements([])),
       api.get('/lignes').then((r) => setLignes(r.data || [])).catch(() => setLignes([])),
       api.get('/equipment', { params: { limit: 500 } }).then((r) => {
         const list = r.data?.data ?? r.data ?? [];
@@ -306,12 +315,16 @@ export default function EquipmentDetail() {
       name: editMainForm.name.trim(),
       description: editMainForm.description.trim() || undefined,
       categoryId: editMainForm.categoryId ? parseInt(editMainForm.categoryId, 10) : undefined,
+      departmentId: editMainForm.departmentId ? parseInt(editMainForm.departmentId, 10) : undefined,
       ligneId: editMainForm.ligneId ? parseInt(editMainForm.ligneId, 10) : undefined,
       parentId: editMainForm.parentId === '' ? undefined : (editMainForm.parentId ? parseInt(editMainForm.parentId, 10) : null),
       serialNumber: editMainForm.serialNumber.trim() || undefined,
       manufacturer: editMainForm.manufacturer.trim() || undefined,
       model: editMainForm.model.trim() || undefined,
       location: editMainForm.location.trim() || undefined,
+      latitude: editMainForm.latitude ? parseFloat(editMainForm.latitude) : undefined,
+      longitude: editMainForm.longitude ? parseFloat(editMainForm.longitude) : undefined,
+      location_address: editMainForm.location_address?.trim() || undefined,
       criticite: editMainForm.criticite,
       status: editMainForm.status,
       installationDate: editMainForm.installationDate || undefined
@@ -343,9 +356,6 @@ export default function EquipmentDetail() {
     <Box>
       <Box display="flex" alignItems="center" gap={1} sx={{ mb: 2 }}>
         <Button startIcon={<ArrowBack />} onClick={() => navigate('/app/equipment')}>Retour</Button>
-        <Button startIcon={<ChatIcon />} variant="outlined" onClick={() => navigate(`/app/chat?createEq=${equipment?.id}`)} title="Discuter avec l’équipe sur cet équipement">
-          Discuter
-        </Button>
         {canEditEquipment && (
           <>
             <Button startIcon={<Edit />} variant="outlined" onClick={openEditMainDialog}>Modifier</Button>
@@ -353,6 +363,11 @@ export default function EquipmentDetail() {
           </>
         )}
       </Box>
+      {(equipment.siteName || equipment.departmentName || equipment.ligneName) && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Hiérarchie : {[equipment.siteName, equipment.departmentName, equipment.ligneName].filter(Boolean).join(' → ')} → {({ machine: 'Équipement', section: 'Section', composant: 'Composant', sous_composant: 'Sous-composant' }[equipment.equipmentType] || 'Équipement')} — {equipment.name}
+        </Typography>
+      )}
       <Card sx={{ mb: 2 }}>
         <CardContent>
           <Box display="flex" justifyContent="space-between" alignItems="flex-start" flexWrap="wrap" gap={2}>
@@ -364,6 +379,20 @@ export default function EquipmentDetail() {
           </Box>
           <Divider sx={{ my: 2 }} />
           <Grid container spacing={3}>
+            {equipment.siteName && (
+              <Grid item xs={12} md={6}>
+                <Typography variant="subtitle2" color="text.secondary">Site</Typography>
+                <Typography>{equipment.siteName}</Typography>
+              </Grid>
+            )}
+            <Grid item xs={12} md={6}>
+              <Typography variant="subtitle2" color="text.secondary">Département</Typography>
+              <Typography>{equipment.departmentName || '-'}</Typography>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Typography variant="subtitle2" color="text.secondary">Ligne</Typography>
+              <Typography>{equipment.ligneName || '-'}</Typography>
+            </Grid>
             <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" color="text.secondary">Catégorie</Typography>
               <Typography>{equipment.categoryName || '-'}</Typography>
@@ -380,6 +409,12 @@ export default function EquipmentDetail() {
               <Typography variant="subtitle2" color="text.secondary">Localisation</Typography>
               <Typography>{equipment.location || '-'}</Typography>
             </Grid>
+            {(equipment.location_address || (equipment.latitude != null && equipment.longitude != null)) && (
+              <Grid item xs={12} md={6}>
+                <Typography variant="subtitle2" color="text.secondary">Litérairie / Coordonnées SIG</Typography>
+                <Typography>{equipment.location_address || (equipment.latitude != null && equipment.longitude != null ? `${Number(equipment.latitude).toFixed(5)}, ${Number(equipment.longitude).toFixed(5)}` : '-')}</Typography>
+              </Grid>
+            )}
             <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" color="text.secondary">Date d'installation</Typography>
               <Typography>{equipment.installationDate || '-'}</Typography>
@@ -693,6 +728,26 @@ export default function EquipmentDetail() {
       <Dialog open={editMainOpen} onClose={() => setEditMainOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Modifier l&apos;équipement</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+          <Typography variant="subtitle2" color="text.secondary">Hiérarchie : Site → Département → Ligne</Typography>
+          <TextField label="Site" value={sites.find((s) => String(s.id) === String(editMainForm.siteId))?.name || equipment?.siteName || '—'} fullWidth disabled size="small" />
+          <FormControl fullWidth size="small">
+            <InputLabel>Département</InputLabel>
+            <Select value={editMainForm.departmentId} label="Département" onChange={(e) => setEditMainForm((f) => ({ ...f, departmentId: e.target.value }))}>
+              <MenuItem value="">—</MenuItem>
+              {(editMainForm.siteId ? departements.filter((d) => String(d.site_id || d.siteId) === String(editMainForm.siteId)) : departements).map((d) => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl fullWidth size="small">
+            <InputLabel>Ligne</InputLabel>
+            <Select value={editMainForm.ligneId} label="Ligne" onChange={(e) => {
+              const val = e.target.value;
+              const ligne = lignes.find((l) => String(l.id) === String(val));
+              setEditMainForm((f) => ({ ...f, ligneId: val, siteId: ligne ? String(ligne.site_id || ligne.siteId || '') : f.siteId }));
+            }}>
+              <MenuItem value="">—</MenuItem>
+              {(editMainForm.siteId ? lignes.filter((l) => String(l.site_id || l.siteId) === String(editMainForm.siteId)) : lignes).map((l) => <MenuItem key={l.id} value={l.id}>{l.name} {l.code ? `(${l.code})` : ''}</MenuItem>)}
+            </Select>
+          </FormControl>
           <TextField label="Code" value={editMainForm.code} onChange={(e) => setEditMainForm((f) => ({ ...f, code: e.target.value }))} fullWidth required />
           <TextField label="Nom" value={editMainForm.name} onChange={(e) => setEditMainForm((f) => ({ ...f, name: e.target.value }))} fullWidth required />
           <TextField label="Description" value={editMainForm.description} onChange={(e) => setEditMainForm((f) => ({ ...f, description: e.target.value }))} fullWidth multiline minRows={2} />
@@ -701,13 +756,6 @@ export default function EquipmentDetail() {
             <Select value={editMainForm.categoryId} label="Catégorie" onChange={(e) => setEditMainForm((f) => ({ ...f, categoryId: e.target.value }))}>
               <MenuItem value="">—</MenuItem>
               {categories.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl fullWidth size="small">
-            <InputLabel>Ligne</InputLabel>
-            <Select value={editMainForm.ligneId} label="Ligne" onChange={(e) => setEditMainForm((f) => ({ ...f, ligneId: e.target.value }))}>
-              <MenuItem value="">—</MenuItem>
-              {lignes.map((l) => <MenuItem key={l.id} value={l.id}>{l.name} {l.code ? `(${l.code})` : ''}</MenuItem>)}
             </Select>
           </FormControl>
           <FormControl fullWidth size="small">
@@ -721,6 +769,10 @@ export default function EquipmentDetail() {
           <TextField label="Constructeur" value={editMainForm.manufacturer} onChange={(e) => setEditMainForm((f) => ({ ...f, manufacturer: e.target.value }))} fullWidth />
           <TextField label="Modèle" value={editMainForm.model} onChange={(e) => setEditMainForm((f) => ({ ...f, model: e.target.value }))} fullWidth />
           <TextField label="Localisation" value={editMainForm.location} onChange={(e) => setEditMainForm((f) => ({ ...f, location: e.target.value }))} fullWidth />
+          <Typography variant="subtitle2" color="text.secondary">Localisation SIG (optionnel)</Typography>
+          <TextField label="Latitude" type="number" value={editMainForm.latitude} onChange={(e) => setEditMainForm((f) => ({ ...f, latitude: e.target.value }))} fullWidth size="small" inputProps={{ step: 'any' }} placeholder="ex. 48.8566" />
+          <TextField label="Longitude" type="number" value={editMainForm.longitude} onChange={(e) => setEditMainForm((f) => ({ ...f, longitude: e.target.value }))} fullWidth size="small" inputProps={{ step: 'any' }} placeholder="ex. 2.3522" />
+          <TextField label="Litérairie (adresse ou description précise du lieu)" value={editMainForm.location_address} onChange={(e) => setEditMainForm((f) => ({ ...f, location_address: e.target.value }))} fullWidth multiline size="small" placeholder="Atelier 2, machine 5" />
           <FormControl fullWidth size="small">
             <InputLabel>Criticité</InputLabel>
             <Select value={editMainForm.criticite} label="Criticité" onChange={(e) => setEditMainForm((f) => ({ ...f, criticite: e.target.value }))}>

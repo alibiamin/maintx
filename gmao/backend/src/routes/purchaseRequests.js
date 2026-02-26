@@ -191,4 +191,67 @@ router.delete('/:id', requirePermission('purchase_requests', 'delete'), authoriz
   }
 });
 
+/**
+ * POST /api/purchase-requests/:id/convert-to-order
+ * Convertit la demande d'achat en commande fournisseur (sélection du fournisseur).
+ * Body: { supplierId }
+ */
+router.post('/:id/convert-to-order', requirePermission('purchase_requests', 'update'), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), param('id').isInt(), [
+  body('supplierId').isInt()
+], (req, res) => {
+  const db = req.db;
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  try {
+    const prId = parseInt(req.params.id, 10);
+    const pr = db.prepare('SELECT * FROM purchase_requests WHERE id = ?').get(prId);
+    if (!pr) return res.status(404).json({ error: 'Demande d\'achat non trouvée.' });
+    if (pr.status === 'ordered') return res.status(400).json({ error: 'Demande déjà convertie en commande.' });
+    if (pr.status === 'rejected' || pr.status === 'cancelled') return res.status(400).json({ error: 'Demande non convertible.' });
+    const lines = db.prepare('SELECT * FROM purchase_request_lines WHERE purchase_request_id = ?').all(prId);
+    if (!lines.length) return res.status(400).json({ error: 'Aucune ligne à commander.' });
+    const supplierId = parseInt(req.body.supplierId, 10);
+    const year = new Date().getFullYear();
+    const last = db.prepare('SELECT order_number FROM supplier_orders WHERE order_number LIKE ? ORDER BY id DESC LIMIT 1').get(`CMD-${year}-%`);
+    const num = last ? parseInt(last.order_number.split('-')[2]) + 1 : 1;
+    const orderNumber = `CMD-${year}-${String(num).padStart(4, '0')}`;
+    db.prepare(`
+      INSERT INTO supplier_orders (order_number, supplier_id, status, order_date, total_amount, created_by)
+      VALUES (?, ?, 'sent', date('now'), 0, ?)
+    `).run(orderNumber, supplierId, req.user.id);
+    const orderId = db.prepare('SELECT last_insert_rowid() as id').get().id;
+    let total = 0;
+    for (const line of lines) {
+      const unitPrice = line.unit_price_estimate || 0;
+      const lineTotal = (line.quantity || 1) * unitPrice;
+      total += lineTotal;
+      db.prepare(`
+        INSERT INTO supplier_order_lines (order_id, spare_part_id, description, quantity, unit_price)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(orderId, line.spare_part_id || null, line.description || null, line.quantity || 1, unitPrice);
+    }
+    db.prepare('UPDATE supplier_orders SET total_amount = ? WHERE id = ?').run(Math.round(total * 100) / 100, orderId);
+    db.prepare('UPDATE purchase_requests SET status = ?, supplier_order_id = ?, approved_by = ?, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run('ordered', orderId, req.user.id, prId);
+    try {
+      db.prepare('UPDATE reorder_requests SET status = ?, supplier_order_id = ?, updated_at = CURRENT_TIMESTAMP WHERE purchase_request_id = ?')
+        .run('ordered', orderId, prId);
+    } catch (_) {}
+    const order = db.prepare(`
+      SELECT so.*, s.name as supplier_name FROM supplier_orders so
+      JOIN suppliers s ON so.supplier_id = s.id WHERE so.id = ?
+    `).get(orderId);
+    const orderLines = db.prepare(`
+      SELECT sol.*, sp.code as part_code, sp.name as part_name
+      FROM supplier_order_lines sol
+      LEFT JOIN spare_parts sp ON sol.spare_part_id = sp.id
+      WHERE sol.order_id = ?
+    `).all(orderId);
+    res.status(201).json({ order: { ...order, lines: orderLines }, purchaseRequestId: prId });
+  } catch (e) {
+    console.error('[purchaseRequests] convert-to-order', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

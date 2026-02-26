@@ -30,7 +30,7 @@ export default function SitesLines() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [editLigne, setEditLigne] = useState(null);
-  const [ligneForm, setLigneForm] = useState({ siteId: '', code: '', name: '' });
+  const [ligneForm, setLigneForm] = useState({ siteId: '', code: '', name: '', latitude: '', longitude: '', location_address: '' });
   const [submitting, setSubmitting] = useState(false);
   const { user, can } = useAuth();
   const snackbar = useSnackbar();
@@ -62,7 +62,10 @@ export default function SitesLines() {
     setLigneForm({
       siteId: l.site_id != null ? String(l.site_id) : '',
       code: l.code || '',
-      name: l.name || ''
+      name: l.name || '',
+      latitude: l.latitude != null ? String(l.latitude) : '',
+      longitude: l.longitude != null ? String(l.longitude) : '',
+      location_address: l.location_address || ''
     });
   };
 
@@ -72,7 +75,10 @@ export default function SitesLines() {
     api.put(`/lignes/${editLigne.id}`, {
       siteId: ligneForm.siteId ? parseInt(ligneForm.siteId, 10) : undefined,
       code: ligneForm.code.trim(),
-      name: ligneForm.name.trim()
+      name: ligneForm.name.trim(),
+      latitude: ligneForm.latitude ? parseFloat(ligneForm.latitude) : undefined,
+      longitude: ligneForm.longitude ? parseFloat(ligneForm.longitude) : undefined,
+      location_address: ligneForm.location_address.trim() || undefined
     })
       .then((r) => {
         setLines((prev) => prev.map((x) => (x.id === r.data.id ? { ...r.data, siteName: r.data.site_name } : x)));
@@ -134,6 +140,7 @@ export default function SitesLines() {
                   <TableCell>Nom</TableCell>
                   <TableCell>Site</TableCell>
                   <TableCell>Code</TableCell>
+                  <TableCell>Litérairie / Coordonnées</TableCell>
                   <TableCell>Équipements</TableCell>
                   <TableCell>Statut</TableCell>
                   {canEdit && <TableCell align="right">Action</TableCell>}
@@ -150,6 +157,9 @@ export default function SitesLines() {
                     </TableCell>
                     <TableCell>{line.siteName || line.site_name}</TableCell>
                     <TableCell>{line.code || '-'}</TableCell>
+                    <TableCell sx={{ maxWidth: 200 }} title={[line.location_address, line.latitude != null && line.longitude != null ? `${line.latitude}, ${line.longitude}` : null].filter(Boolean).join(' · ')}>
+                      {line.location_address ? line.location_address : (line.latitude != null && line.longitude != null ? `${Number(line.latitude).toFixed(5)}, ${Number(line.longitude).toFixed(5)}` : '-')}
+                    </TableCell>
                     <TableCell>
                       <Chip label={line.equipmentCount ?? 0} size="small" />
                     </TableCell>
@@ -178,6 +188,9 @@ export default function SitesLines() {
           </TextField>
           <TextField label="Code" value={ligneForm.code} onChange={(e) => setLigneForm((f) => ({ ...f, code: e.target.value }))} fullWidth required />
           <TextField label="Nom" value={ligneForm.name} onChange={(e) => setLigneForm((f) => ({ ...f, name: e.target.value }))} fullWidth required />
+          <TextField label="Latitude" type="number" value={ligneForm.latitude} onChange={(e) => setLigneForm((f) => ({ ...f, latitude: e.target.value }))} fullWidth inputProps={{ step: 'any' }} placeholder="ex. 48.8566" />
+          <TextField label="Longitude" type="number" value={ligneForm.longitude} onChange={(e) => setLigneForm((f) => ({ ...f, longitude: e.target.value }))} fullWidth inputProps={{ step: 'any' }} placeholder="ex. 2.3522" />
+          <TextField label="Litérairie (adresse ou description précise du lieu)" value={ligneForm.location_address} onChange={(e) => setLigneForm((f) => ({ ...f, location_address: e.target.value }))} fullWidth multiline placeholder="Hall 3, ligne de production nord" />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditLigne(null)}>Annuler</Button>

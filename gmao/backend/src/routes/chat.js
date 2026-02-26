@@ -269,13 +269,14 @@ router.get('/channels/by-link', query('workOrderId').optional().isInt(), query('
     if (workOrderId) {
       const wo = db.prepare('SELECT id, number, created_by, status FROM work_orders WHERE id = ?').get(workOrderId);
       if (!wo) return res.json({ channel: null, created: false });
-      if (CLOSED_WO_STATUSES.includes((wo.status || '').toLowerCase())) {
-        return res.json({ channel: null, created: false, workOrderClosed: true });
-      }
+      const isClosed = CLOSED_WO_STATUSES.includes((wo.status || '').toLowerCase());
       let ch = db.prepare(`
         SELECT c.id, c.name, c.type, c.linked_type, c.linked_id
         FROM chat_channels c WHERE c.linked_type = 'work_order' AND c.linked_id = ?
       `).get(workOrderId);
+      if (isClosed) {
+        return res.json({ channel: ch || null, created: false, workOrderClosed: true });
+      }
       let created = false;
       if (!ch) {
         const { ensureWorkOrderChannel, getWorkOrderMemberIds } = require('./chatChannelHelper');
@@ -308,7 +309,7 @@ router.get('/channels/by-link', query('workOrderId').optional().isInt(), query('
   }
 });
 
-/** Détail d'un canal. Admins et responsables ont accès à tous les canaux. */
+/** Détail d'un canal. Admins et responsables ont accès à tous les canaux. Lecture seule autorisée pour OT clôturé/annulé. */
 router.get('/channels/:id', param('id').isInt(), (req, res) => {
   const db = req.db;
   ensureChatTables(db);
@@ -323,11 +324,10 @@ router.get('/channels/:id', param('id').isInt(), (req, res) => {
       FROM chat_channels c WHERE c.id = ?
     `).get(userId, channelId);
     if (!ch) return res.status(404).json({ error: 'Canal introuvable' });
+    let workOrderStatus = null;
     if (ch.linked_type === 'work_order' && ch.linked_id) {
       const wo = db.prepare('SELECT status FROM work_orders WHERE id = ?').get(ch.linked_id);
-      if (wo && ['completed', 'cancelled'].includes((wo.status || '').toLowerCase())) {
-        return res.status(403).json({ error: 'Ce canal n\'est plus disponible (OT clôturé ou annulé).' });
-      }
+      workOrderStatus = wo ? (wo.status || '').toLowerCase() : null;
     }
     if (!canAccessAll && !ch.is_member && ch.type !== 'team') return res.status(403).json({ error: 'Accès refusé' });
     if (ch.type === 'team' && !ch.is_member && !canAccessAll) {
@@ -353,6 +353,7 @@ router.get('/channels/:id', param('id').isInt(), (req, res) => {
       type: ch.type,
       linkedType: ch.linked_type,
       linkedId: ch.linked_id,
+      workOrderStatus: workOrderStatus || undefined,
       createdAt: ch.created_at,
       createdBy: ch.created_by
     });
@@ -408,7 +409,122 @@ router.post('/channels/:id/read', param('id').isInt(), (req, res) => {
   }
 });
 
-/** Messages d'un canal (paginated). */
+/** Demander une réponse à l'assistant IA dans le canal (canal lié à un OT uniquement). Enregistre le message utilisateur + la réponse IA dans le fil. */
+router.post('/channels/:id/ai-assist', requirePermission('chat', 'create'), param('id').isInt(), body('message').trim().notEmpty().withMessage('Message vide').isLength({ max: 2000 }), (req, res) => {
+  const db = req.db;
+  ensureChatTables(db);
+  const userId = req.user.id;
+  const channelId = parseInt(req.params.id, 10);
+  const errors = require('express-validator').validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const content = (req.body.message || '').trim().slice(0, 2000);
+  try {
+    const ch = db.prepare(`
+      SELECT c.id, c.linked_type, c.linked_id, (SELECT 1 FROM chat_channel_members m WHERE m.channel_id = c.id AND m.user_id = ?) AS is_member
+      FROM chat_channels c WHERE c.id = ?
+    `).get(userId, channelId);
+    if (!ch) return res.status(404).json({ error: 'Canal introuvable' });
+    if (ch.linked_type !== 'work_order' || !ch.linked_id) return res.status(400).json({ error: 'L\'assistant IA est disponible uniquement pour les canaux liés à un OT.' });
+    const wo = db.prepare('SELECT status FROM work_orders WHERE id = ?').get(ch.linked_id);
+    if (!wo) return res.status(404).json({ error: 'OT introuvable' });
+    if (['completed', 'cancelled'].includes((wo.status || '').toLowerCase())) return res.status(403).json({ error: 'OT clôturé ou annulé. L\'assistant IA n\'est plus disponible.' });
+    if (!ch.is_member) db.prepare('INSERT OR IGNORE INTO chat_channel_members (channel_id, user_id) VALUES (?, ?)').run(channelId, userId);
+
+    const runUser = db.prepare('INSERT INTO chat_messages (channel_id, user_id, content, message_type) VALUES (?, ?, ?, ?)').run(channelId, userId, content, 'user');
+    const userMsgId = runUser.lastInsertRowid;
+    const userRow = db.prepare('SELECT id, channel_id, user_id, content, created_at, updated_at, message_type FROM chat_messages WHERE id = ?').get(userMsgId);
+    const adminDb = dbModule.getAdminDb && dbModule.getAdminDb();
+
+    const historyRows = db.prepare(`
+      SELECT content, message_type FROM chat_messages WHERE channel_id = ? AND message_type IN ('user', 'assistant') ORDER BY created_at DESC LIMIT 20
+    `).all(channelId);
+    const history = historyRows.reverse().map((r) => ({ role: r.message_type === 'assistant' ? 'assistant' : 'user', content: (r.content || '').slice(0, 2000) })).slice(0, -1);
+
+    const base = process.env.API_BASE_URL || `http://127.0.0.1:${process.env.PORT || 5000}`;
+    const auth = req.headers.authorization || (req.cookies && req.cookies.token ? `Bearer ${req.cookies.token}` : '');
+    const headers = { 'Content-Type': 'application/json' };
+    if (auth) headers.Authorization = auth;
+    if (req.headers.cookie) headers.Cookie = req.headers.cookie;
+    (async () => {
+      try {
+        const resWo = await fetch(`${base}/api/work-orders/${ch.linked_id}/ai-assist`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ message: content, history })
+        });
+        const data = await resWo.json();
+        if (!resWo.ok) throw new Error(data.error || data.details || `Erreur ${resWo.status}`);
+        const reply = (data.reply || '').trim().slice(0, 8000) || 'Aucune réponse.';
+        const runAi = db.prepare('INSERT INTO chat_messages (channel_id, user_id, content, message_type) VALUES (?, ?, ?, ?)').run(channelId, userId, reply, 'assistant');
+        const aiMsgId = runAi.lastInsertRowid;
+        const aiRow = db.prepare('SELECT id, channel_id, user_id, content, created_at, updated_at, message_type FROM chat_messages WHERE id = ?').get(aiMsgId);
+        if (typeof db._save === 'function') db._save();
+
+        const userMessage = {
+          id: userRow.id,
+          channelId: userRow.channel_id,
+          userId: userRow.user_id,
+          authorName: getUserName(adminDb, userRow.user_id),
+          content: userRow.content,
+          createdAt: userRow.created_at,
+          updatedAt: userRow.updated_at,
+          isOwn: true,
+          messageType: userRow.message_type || 'user'
+        };
+        const assistantMessage = {
+          id: aiRow.id,
+          channelId: aiRow.channel_id,
+          userId: aiRow.user_id,
+          authorName: 'Assistant IA',
+          content: aiRow.content,
+          createdAt: aiRow.created_at,
+          updatedAt: aiRow.updated_at,
+          isOwn: false,
+          messageType: 'assistant'
+        };
+        res.status(201).json({ userMessage, assistantMessage });
+      } catch (err) {
+        const errMsg = (err.message || '').slice(0, 300);
+        const runAi = db.prepare('INSERT INTO chat_messages (channel_id, user_id, content, message_type) VALUES (?, ?, ?, ?)').run(channelId, userId, `Désolé, l'assistant n'a pas pu répondre : ${errMsg}`, 'assistant');
+        const aiMsgId = runAi.lastInsertRowid;
+        const aiRow = db.prepare('SELECT id, channel_id, user_id, content, created_at, updated_at, message_type FROM chat_messages WHERE id = ?').get(aiMsgId);
+        if (typeof db._save === 'function') db._save();
+        const userMessage = {
+          id: userRow.id,
+          channelId: userRow.channel_id,
+          userId: userRow.user_id,
+          authorName: getUserName(adminDb, userRow.user_id),
+          content: userRow.content,
+          createdAt: userRow.created_at,
+          updatedAt: userRow.updated_at,
+          isOwn: true,
+          messageType: 'user'
+        };
+        const assistantMessage = {
+          id: aiRow.id,
+          channelId: aiRow.channel_id,
+          userId: aiRow.user_id,
+          authorName: 'Assistant IA',
+          content: aiRow.content,
+          createdAt: aiRow.created_at,
+          updatedAt: aiRow.updated_at,
+          isOwn: false,
+          messageType: 'assistant'
+        };
+        res.status(201).json({ userMessage, assistantMessage });
+      }
+    })();
+  } catch (err) {
+    if (err.message && err.message.includes('no such table')) {
+      ensureChatTables(db);
+      return res.status(500).json({ error: 'Chat non disponible' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Messages d'un canal (paginated). Lecture autorisée pour OT clôturé/annulé. */
 router.get('/channels/:id/messages', param('id').isInt(), query('before').optional().isISO8601(), query('limit').optional().isInt({ min: 1, max: 100 }), (req, res) => {
   const db = req.db;
   ensureChatTables(db);
@@ -424,12 +540,6 @@ router.get('/channels/:id/messages', param('id').isInt(), query('before').option
       FROM chat_channels c WHERE c.id = ?
     `).get(userId, channelId);
     if (!ch) return res.status(404).json({ error: 'Canal introuvable' });
-    if (ch.linked_type === 'work_order' && ch.linked_id) {
-      const wo = db.prepare('SELECT status FROM work_orders WHERE id = ?').get(ch.linked_id);
-      if (wo && ['completed', 'cancelled'].includes((wo.status || '').toLowerCase())) {
-        return res.status(403).json({ error: 'Ce canal n\'est plus disponible (OT clôturé ou annulé).' });
-      }
-    }
     if (!canAccessAll && !ch.is_member && ch.type !== 'team') return res.status(403).json({ error: 'Accès refusé' });
     if (!ch.is_member) {
       db.prepare('INSERT OR IGNORE INTO chat_channel_members (channel_id, user_id) VALUES (?, ?)').run(channelId, userId);
@@ -465,17 +575,18 @@ router.get('/channels/:id/messages', param('id').isInt(), query('before').option
     }
     const list = hasMore ? rows.slice(0, limit) : rows;
     const messages = list.reverse().map((r) => {
+      const messageType = (r.message_type != null && String(r.message_type).trim() !== '') ? String(r.message_type) : 'user';
       try {
         return {
           id: r.id,
           channelId: r.channel_id,
           userId: r.user_id,
-          authorName: getUserName(adminDb, r.user_id),
+          authorName: messageType === 'assistant' ? 'Assistant IA' : getUserName(adminDb, r.user_id),
           content: r.content != null ? String(r.content) : '',
           createdAt: r.created_at,
           updatedAt: r.updated_at,
-          isOwn: Number(r.user_id) === Number(userId),
-          messageType: (r.message_type != null && String(r.message_type).trim() !== '') ? String(r.message_type) : 'user'
+          isOwn: messageType === 'assistant' ? false : Number(r.user_id) === Number(userId),
+          messageType
         };
       } catch (e) {
         console.warn('[chat] message row', r && r.id, e.message);

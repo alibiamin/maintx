@@ -105,7 +105,7 @@ export default function StockAlerts() {
               Alertes de stock
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Pièces sous le seuil minimum — à réapprovisionner
+              Pièces sous le seuil minimum. Une demande d&apos;approvisionnement est créée automatiquement pour chaque alerte.
             </Typography>
           </Box>
         </Box>
@@ -180,7 +180,7 @@ export default function StockAlerts() {
             onClick={() => navigate('/app/stock/reorders')}
             sx={{ alignSelf: 'center', textTransform: 'none', fontWeight: 600, borderRadius: 2 }}
           >
-            Réapprovisionnements
+            Voir les demandes d&apos;approvisionnement
           </Button>
         </Box>
       )}
@@ -319,7 +319,7 @@ export default function StockAlerts() {
                           onClick={() => navigate('/app/stock/reorders')}
                           sx={{ textTransform: 'none', fontWeight: 600 }}
                         >
-                          Commander
+                          Valider / Voir demande
                         </Button>
                       </TableCell>
                     </TableRow>

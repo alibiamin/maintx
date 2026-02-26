@@ -34,11 +34,15 @@ export default function EquipmentList() {
   const [equipment, setEquipment] = useState([]);
   const [total, setTotal] = useState(0);
   const [categories, setCategories] = useState([]);
+  const [sites, setSites] = useState([]);
+  const [departements, setDepartements] = useState([]);
   const [lignes, setLignes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
+  const [filterSite, setFilterSite] = useState('');
+  const [filterDepartment, setFilterDepartment] = useState('');
   const [filterLigne, setFilterLigne] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(20);
@@ -75,14 +79,21 @@ export default function EquipmentList() {
   useEffect(() => {
     Promise.all([
       api.get('/equipment/categories'),
+      api.get('/sites').catch(() => ({ data: [] })),
+      api.get('/departements').catch(() => ({ data: [] })),
       api.get('/lignes')
-    ]).then(([c, l]) => {
-      setCategories(c.data);
-      setLignes(l.data);
+    ]).then(([c, s, d, l]) => {
+      setCategories(c.data || []);
+      setSites(s.data || []);
+      setDepartements(d.data || []);
+      setLignes(l.data || []);
     }).catch((err) => {
       snackbar.showError(err.response?.data?.error || 'Erreur chargement des filtres');
     });
   }, [snackbar]);
+
+  const lignesFiltered = filterSite ? lignes.filter((l) => String(l.site_id || l.siteId) === String(filterSite)) : lignes;
+  const departementsFiltered = filterSite ? departements.filter((d) => String(d.site_id || d.siteId) === String(filterSite)) : departements;
 
   useEffect(() => {
     setLoading(true);
@@ -90,6 +101,8 @@ export default function EquipmentList() {
     if (search) params.search = search;
     if (filterStatus) params.status = filterStatus;
     if (filterCategory) params.categoryId = filterCategory;
+    if (filterSite) params.siteId = filterSite;
+    if (filterDepartment) params.departmentId = filterDepartment;
     if (filterLigne) params.ligneId = filterLigne;
     setLoadError(null);
     api.get('/equipment', { params })
@@ -103,7 +116,7 @@ export default function EquipmentList() {
         snackbar.showError(err.response?.data?.error || 'Erreur chargement des équipements');
       })
       .finally(() => setLoading(false));
-  }, [search, filterStatus, filterCategory, filterLigne, page, rowsPerPage, sortBy, sortOrder, snackbar]);
+  }, [search, filterStatus, filterCategory, filterSite, filterDepartment, filterLigne, page, rowsPerPage, sortBy, sortOrder, snackbar]);
 
   const handleChangePage = (_, newPage) => setPage(newPage);
   const handleChangeRowsPerPage = (e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); };
@@ -160,18 +173,32 @@ export default function EquipmentList() {
               <MenuItem value="retired">Retiré</MenuItem>
             </Select>
           </FormControl>
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel>Site</InputLabel>
+            <Select value={filterSite} label="Site" onChange={(e) => { setFilterSite(e.target.value); setFilterDepartment(''); setFilterLigne(''); setPage(0); }}>
+              <MenuItem value="">Tous</MenuItem>
+              {sites.map(s => <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel>Département</InputLabel>
+            <Select value={filterDepartment} label="Département" onChange={(e) => { setFilterDepartment(e.target.value); setFilterLigne(''); setPage(0); }} disabled={!filterSite}>
+              <MenuItem value="">Tous</MenuItem>
+              {departementsFiltered.map(d => <MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <InputLabel>Ligne</InputLabel>
+            <Select value={filterLigne} label="Ligne" onChange={(e) => { setFilterLigne(e.target.value); setPage(0); }} disabled={!filterSite}>
+              <MenuItem value="">Toutes</MenuItem>
+              {lignesFiltered.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}
+            </Select>
+          </FormControl>
           <FormControl size="small" sx={{ minWidth: 180 }}>
             <InputLabel>Catégorie</InputLabel>
             <Select value={filterCategory} label="Catégorie" onChange={(e) => setFilterCategory(e.target.value)}>
               <MenuItem value="">Toutes</MenuItem>
               {categories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 150 }}>
-            <InputLabel>Ligne</InputLabel>
-            <Select value={filterLigne} label="Ligne" onChange={(e) => setFilterLigne(e.target.value)}>
-              <MenuItem value="">Toutes</MenuItem>
-              {lignes.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}
             </Select>
           </FormControl>
           <FormControl size="small" sx={{ minWidth: 160 }}>
@@ -198,10 +225,12 @@ export default function EquipmentList() {
           <Table>
             <TableHead>
               <TableRow>
+                <TableCell>Site</TableCell>
+                <TableCell>Département</TableCell>
+                <TableCell>Ligne</TableCell>
                 <TableCell>Code</TableCell>
                 <TableCell>Nom</TableCell>
                 <TableCell>Catégorie</TableCell>
-                <TableCell>Ligne</TableCell>
                 <TableCell>Criticité</TableCell>
                 <TableCell>Statut</TableCell>
                 <TableCell>Localisation</TableCell>
@@ -221,10 +250,12 @@ export default function EquipmentList() {
                   }}
                   sx={{ cursor: 'pointer' }}
                 >
+                  <TableCell>{eq.siteName || '-'}</TableCell>
+                  <TableCell>{eq.departmentName || '-'}</TableCell>
+                  <TableCell>{eq.ligneName || '-'}</TableCell>
                   <TableCell>{eq.code}</TableCell>
                   <TableCell>{eq.name}</TableCell>
                   <TableCell>{eq.categoryName || '-'}</TableCell>
-                  <TableCell>{eq.ligneName || '-'}</TableCell>
                   <TableCell><Chip label={eq.criticite || 'B'} size="small" color={eq.criticite === 'A' ? 'error' : eq.criticite === 'B' ? 'warning' : 'default'} /></TableCell>
                   <TableCell><Chip label={eq.status} size="small" color={statusColors[eq.status] || 'default'} /></TableCell>
                   <TableCell>{eq.location || '-'}</TableCell>

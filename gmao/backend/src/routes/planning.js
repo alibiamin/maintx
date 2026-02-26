@@ -121,35 +121,116 @@ router.get('/gantt', (req, res) => {
 
 /**
  * GET /api/planning/assignments
- * Affectations des techniciens (OT assignés par utilisateur)
+ * Affectations des techniciens : assigné principal (assigned_to) + opérateurs (work_order_operators).
+ * Query: status (optionnel) — valeurs possibles: pending, in_progress, completed, cancelled. Par défaut: pending, in_progress.
  */
 router.get('/assignments', (req, res) => {
   const db = req.db;
+  const statusParam = (req.query.status || '').trim().toLowerCase();
+  let statusList = statusParam
+    ? statusParam.split(',').map(s => s.trim()).filter(Boolean)
+    : ['pending', 'in_progress'];
+  if (statusList.length === 0) statusList = ['pending', 'in_progress'];
+  const placeholders = statusList.map(() => '?').join(',');
   try {
     const rows = db.prepare(`
       SELECT wo.id as work_order_id, wo.number as work_order_number, wo.title as work_order_title,
-             wo.status, wo.priority, wo.planned_start, wo.planned_end,
+             wo.status, wo.priority, wo.planned_start, wo.planned_end, wo.created_at,
+             wo.assigned_to,
              u.id as user_id, u.first_name || ' ' || u.last_name as technician_name,
              e.name as equipment_name, e.code as equipment_code
       FROM work_orders wo
       LEFT JOIN users u ON wo.assigned_to = u.id
       LEFT JOIN equipment e ON wo.equipment_id = e.id
-      WHERE wo.status IN ('pending', 'in_progress') AND wo.assigned_to IS NOT NULL
-      ORDER BY u.last_name, u.first_name, wo.planned_start
-    `).all();
-    res.json(rows.map(r => ({
-      id: r.work_order_id,
-      work_order_id: r.work_order_id,
-      workOrderId: r.work_order_id,
-      workOrderNumber: r.work_order_number,
-      workOrderTitle: r.work_order_title,
-      technicianName: r.technician_name,
-      equipmentName: r.equipment_name,
-      equipmentCode: r.equipment_code,
-      scheduled_date: r.planned_start || r.planned_end,
-      estimated_duration: null,
-      status: r.status
-    })));
+      WHERE wo.status IN (${placeholders}) AND wo.assigned_to IS NOT NULL
+      ORDER BY wo.planned_start ASC, wo.created_at ASC, wo.id ASC
+    `).all(...statusList);
+
+    const out = [];
+    for (const r of rows) {
+      const scheduledDate = r.planned_start || r.planned_end || r.created_at;
+      let estimatedDuration = null;
+      if (r.planned_start && r.planned_end) {
+        const start = new Date(r.planned_start);
+        const end = new Date(r.planned_end);
+        estimatedDuration = Math.round((end - start) / (1000 * 60 * 60) * 100) / 100;
+      }
+      out.push({
+        id: `wo-${r.work_order_id}-${r.user_id}`,
+        work_order_id: r.work_order_id,
+        workOrderId: r.work_order_id,
+        workOrderNumber: r.work_order_number,
+        workOrderTitle: r.work_order_title,
+        technicianId: r.user_id,
+        technicianName: r.technician_name,
+        equipmentName: r.equipment_name,
+        equipmentCode: r.equipment_code,
+        scheduled_date: scheduledDate,
+        planned_start: r.planned_start,
+        planned_end: r.planned_end,
+        estimated_duration: estimatedDuration,
+        priority: r.priority || 'medium',
+        status: r.status,
+        isPrincipal: true
+      });
+    }
+
+    let operators = [];
+    try {
+      operators = db.prepare(`
+        SELECT woo.work_order_id, woo.user_id,
+               u.first_name || ' ' || u.last_name as technician_name,
+               wo.number as work_order_number, wo.title as work_order_title,
+               wo.status, wo.priority, wo.planned_start, wo.planned_end, wo.created_at,
+               wo.assigned_to,
+               e.name as equipment_name, e.code as equipment_code
+        FROM work_order_operators woo
+        JOIN work_orders wo ON wo.id = woo.work_order_id
+        LEFT JOIN users u ON u.id = woo.user_id
+        LEFT JOIN equipment e ON wo.equipment_id = e.id
+        WHERE wo.status IN (${placeholders})
+          AND woo.user_id IS NOT NULL
+          AND (wo.assigned_to IS NULL OR wo.assigned_to != woo.user_id)
+      `).all(...statusList);
+    } catch (e) {
+      if (!e.message || !e.message.includes('no such table')) { /* ignore */ }
+    }
+
+    for (const r of operators) {
+      const scheduledDate = r.planned_start || r.planned_end || r.created_at;
+      let estimatedDuration = null;
+      if (r.planned_start && r.planned_end) {
+        const start = new Date(r.planned_start);
+        const end = new Date(r.planned_end);
+        estimatedDuration = Math.round((end - start) / (1000 * 60 * 60) * 100) / 100;
+      }
+      out.push({
+        id: `op-${r.work_order_id}-${r.user_id}`,
+        work_order_id: r.work_order_id,
+        workOrderId: r.work_order_id,
+        workOrderNumber: r.work_order_number,
+        workOrderTitle: r.work_order_title,
+        technicianId: r.user_id,
+        technicianName: r.technician_name,
+        equipmentName: r.equipment_name,
+        equipmentCode: r.equipment_code,
+        scheduled_date: scheduledDate,
+        planned_start: r.planned_start,
+        planned_end: r.planned_end,
+        estimated_duration: estimatedDuration,
+        priority: r.priority || 'medium',
+        status: r.status,
+        isPrincipal: false
+      });
+    }
+
+    out.sort((a, b) => {
+      const da = a.scheduled_date ? new Date(a.scheduled_date) : new Date(0);
+      const db = b.scheduled_date ? new Date(b.scheduled_date) : new Date(0);
+      if (da.getTime() !== db.getTime()) return da - db;
+      return (a.technicianName || '').localeCompare(b.technicianName || '');
+    });
+    res.json(out);
   } catch (err) {
     if (err.message && err.message.includes('no such table')) return res.json([]);
     res.status(500).json({ error: err.message });
@@ -208,7 +289,7 @@ router.get('/workload', (req, res) => {
 
 /**
  * GET /api/planning/resources
- * Ressources disponibles (techniciens, équipements) pour le planning
+ * Ressources disponibles (techniciens, équipements, ordres de travail) pour le planning
  */
 router.get('/resources', (req, res) => {
   const db = req.db;
@@ -223,30 +304,67 @@ router.get('/resources', (req, res) => {
     `).all();
     const equipmentCount = db.prepare('SELECT COUNT(*) as total FROM equipment WHERE status != "retired"').get();
     const equipmentOperational = db.prepare('SELECT COUNT(*) as total FROM equipment WHERE status = "operational"').get();
+    const equipmentList = db.prepare(`
+      SELECT id, code, name, status
+      FROM equipment
+      WHERE status != 'retired'
+      ORDER BY name
+      LIMIT 50
+    `).all();
     const woActive = db.prepare('SELECT COUNT(*) as total FROM work_orders WHERE status IN (\'pending\', \'in_progress\')').get();
     const woPending = db.prepare('SELECT COUNT(*) as total FROM work_orders WHERE status = \'pending\'').get();
-    const assignedCount = technicians.reduce((s, t) => s + (t.assigned_count || 0), 0);
+    const woPendingList = db.prepare(`
+      SELECT id, number, title, status, priority
+      FROM work_orders
+      WHERE status IN ('pending', 'in_progress')
+      ORDER BY CASE WHEN status = 'in_progress' THEN 0 ELSE 1 END, created_at DESC
+      LIMIT 20
+    `).all();
+    const availableCount = technicians.filter(t => (t.assigned_count || 0) === 0).length;
     res.json({
       technicians: {
         total: technicians.length,
-        available: Math.max(0, technicians.length * 10 - assignedCount),
+        available: availableCount,
         list: technicians.map(t => ({
-          ...t,
-          name: `${t.first_name} ${t.last_name}`,
+          id: t.id,
+          first_name: t.first_name,
+          last_name: t.last_name,
+          email: t.email,
+          assigned_count: t.assigned_count || 0,
+          name: `${(t.first_name || '').trim()} ${(t.last_name || '').trim()}`.trim() || t.email,
           status: (t.assigned_count || 0) > 0 ? 'assigned' : 'available'
         }))
       },
       equipment: {
         total: equipmentCount?.total || 0,
-        operational: equipmentOperational?.total || 0
+        operational: equipmentOperational?.total || 0,
+        list: equipmentList.map(e => ({
+          id: e.id,
+          code: e.code,
+          name: e.name,
+          status: e.status || 'operational'
+        }))
       },
       workOrders: {
         total: woActive?.total || 0,
-        pending: woPending?.total || 0
+        pending: woPending?.total || 0,
+        list: woPendingList.map(wo => ({
+          id: wo.id,
+          number: wo.number,
+          title: wo.title,
+          status: wo.status,
+          priority: wo.priority
+        }))
       }
     });
   } catch (err) {
-    if (err.message && err.message.includes('no such table')) return res.json({ technicians: { total: 0, available: 0, list: [] }, equipment: { total: 0, operational: 0 }, workOrders: { total: 0, pending: 0 } });
+    if (err.message && err.message.includes('no such table')) {
+      return res.json({
+        technicians: { total: 0, available: 0, list: [] },
+        equipment: { total: 0, operational: 0, list: [] },
+        workOrders: { total: 0, pending: 0, list: [] }
+      });
+    }
     res.status(500).json({ error: err.message });
   }
 });

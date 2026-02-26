@@ -53,6 +53,7 @@ const Reports = lazy(() => import('./pages/Reports'));
 const ReportsExports = lazy(() => import('./pages/ReportsExports'));
 const Users = lazy(() => import('./pages/Users'));
 const Sites = lazy(() => import('./pages/Sites'));
+const SitesDepartments = lazy(() => import('./pages/SitesDepartments'));
 const SitesLines = lazy(() => import('./pages/SitesLines'));
 const SitesMap = lazy(() => import('./pages/SitesMap'));
 const Settings = lazy(() => import('./pages/Settings'));
@@ -89,15 +90,11 @@ const SatisfactionList = lazy(() => import('./pages/maintenance/SatisfactionList
 const PlannedShutdownsList = lazy(() => import('./pages/maintenance/PlannedShutdownsList'));
 const RegulatoryChecksList = lazy(() => import('./pages/maintenance/RegulatoryChecksList'));
 const PurchaseRequestsList = lazy(() => import('./pages/suppliers/PurchaseRequestsList'));
-const PriceRequestsList = lazy(() => import('./pages/suppliers/PriceRequestsList'));
-const SupplierInvoicesList = lazy(() => import('./pages/suppliers/SupplierInvoicesList'));
 const WarehousesList = lazy(() => import('./pages/stock/WarehousesList'));
 const ReorderRulesList = lazy(() => import('./pages/stock/ReorderRulesList'));
 const ReportsMtbfMttr = lazy(() => import('./pages/ReportsMtbfMttr'));
 const SettingsEmailTemplates = lazy(() => import('./pages/SettingsEmailTemplates'));
 const DecisionSupport = lazy(() => import('./pages/DecisionSupport'));
-const BibliothequeNormes = lazy(() => import('./pages/BibliothequeNormes'));
-
 function LoadingFallback() {
   return (
     <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
@@ -198,6 +195,7 @@ export default function App() {
         <Route path="suppliers/creation/:type" element={<RouteGuard path="suppliers/creation/:type"><Creation /></RouteGuard>} />
         <Route path="suppliers/orders" element={<RouteGuard path="suppliers/orders"><SuppliersOrders /></RouteGuard>} />
         <Route path="sites" element={<RouteGuard path="sites"><Sites /></RouteGuard>} />
+        <Route path="sites/departments" element={<RouteGuard path="sites/departments"><SitesDepartments /></RouteGuard>} />
         <Route path="sites/lines" element={<RouteGuard path="sites/lines"><SitesLines /></RouteGuard>} />
         <Route path="sites/map" element={<RouteGuard path="sites/map"><SitesMap /></RouteGuard>} />
         <Route path="catalogue/part-families" element={<RouteGuard path="catalogue/part-families"><PartFamiliesList /></RouteGuard>} />
@@ -206,6 +204,7 @@ export default function App() {
         <Route path="budgets" element={<RouteGuard path="budgets"><BudgetsList /></RouteGuard>} />
         <Route path="subcontracting/contractors" element={<RouteGuard path="subcontracting/contractors"><ExternalContractorsList /></RouteGuard>} />
         <Route path="subcontracting/orders" element={<RouteGuard path="subcontracting/orders"><SubcontractOrdersList /></RouteGuard>} />
+        <Route path="subcontracting/contracts" element={<RouteGuard path="subcontracting/contracts"><Contracts /></RouteGuard>} />
         <Route path="training/catalog" element={<RouteGuard path="training/catalog"><TrainingCatalogList /></RouteGuard>} />
         <Route path="training/plans" element={<RouteGuard path="training/plans"><TrainingPlansList /></RouteGuard>} />
         <Route path="stock/locations" element={<RouteGuard path="stock/locations"><StockLocationsList /></RouteGuard>} />
@@ -215,17 +214,14 @@ export default function App() {
         <Route path="maintenance/shutdowns" element={<RouteGuard path="maintenance/shutdowns"><PlannedShutdownsList /></RouteGuard>} />
         <Route path="maintenance/regulatory-checks" element={<RouteGuard path="maintenance/regulatory-checks"><RegulatoryChecksList /></RouteGuard>} />
         <Route path="suppliers/purchase-requests" element={<RouteGuard path="suppliers/purchase-requests"><PurchaseRequestsList /></RouteGuard>} />
-        <Route path="suppliers/price-requests" element={<RouteGuard path="suppliers/price-requests"><PriceRequestsList /></RouteGuard>} />
-        <Route path="suppliers/invoices" element={<RouteGuard path="suppliers/invoices"><SupplierInvoicesList /></RouteGuard>} />
         <Route path="stock/warehouses" element={<RouteGuard path="stock/warehouses"><WarehousesList /></RouteGuard>} />
         <Route path="stock/reorder-rules" element={<RouteGuard path="stock/reorder-rules"><ReorderRulesList /></RouteGuard>} />
         <Route path="reports" element={<RouteGuard path="reports"><Reports /></RouteGuard>} />
         <Route path="reports/mtbf-mttr" element={<RouteGuard path="reports/mtbf-mttr"><ReportsMtbfMttr /></RouteGuard>} />
         <Route path="reports/exports" element={<RouteGuard path="reports/exports"><ReportsExports /></RouteGuard>} />
         <Route path="decision-support" element={<RouteGuard path="decision-support"><DecisionSupport /></RouteGuard>} />
-        <Route path="standards" element={<RouteGuard path="standards"><BibliothequeNormes /></RouteGuard>} />
         <Route path="settings/email-templates" element={<RouteGuard path="settings/email-templates"><SettingsEmailTemplates /></RouteGuard>} />
-        <Route path="contracts" element={<RouteGuard path="contracts"><Contracts /></RouteGuard>} />
+        <Route path="contracts" element={<Navigate to="/app/subcontracting/contracts" replace />} />
         <Route path="tools" element={<RouteGuard path="tools"><Tools /></RouteGuard>} />
         <Route path="tools/creation/:type" element={<RouteGuard path="tools/creation/:type"><Creation /></RouteGuard>} />
         <Route path="tools/assignments" element={<RouteGuard path="tools/assignments"><ToolsAssignments /></RouteGuard>} />

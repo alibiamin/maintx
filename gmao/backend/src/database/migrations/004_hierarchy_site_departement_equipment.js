@@ -1,5 +1,5 @@
 /**
- * Hiérarchie : Site → Département → Équipement/Machine → Section → Composants → Sous-composants
+ * Hiérarchie : Site → Département → Ligne → Équipement (machine) → Section → Composant → Sous-composant
  */
 
 function up(db) {

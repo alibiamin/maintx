@@ -27,8 +27,6 @@ const PATH_TO_MODULE = {
   '/api/reorder-rules': 'reorder_rules',
   '/api/suppliers': 'suppliers',
   '/api/purchase-requests': 'purchase_requests',
-  '/api/price-requests': 'price_requests',
-  '/api/supplier-invoices': 'supplier_invoices',
   '/api/external-contractors': 'external_contractors',
   '/api/subcontract-orders': 'subcontract_orders',
   '/api/maintenance-plans': 'maintenance_plans',
@@ -55,7 +53,6 @@ const PATH_TO_MODULE = {
   '/api/reports': 'reports',
   '/api/scheduled-reports': 'scheduled_reports',
   '/api/audit': 'audit',
-  '/api/standards': 'standards',
   '/api/required-document-types': 'required_document_types',
   '/api/planned-shutdowns': 'planned_shutdowns',
   '/api/regulatory-checks': 'regulatory_checks',
@@ -121,7 +118,7 @@ const MODULE_PACKS_RAW = [
   {
     id: 'complet',
     label: 'Complet',
-    description: 'Tous les modules (sous-traitance, formation, audit, normes, exploitation).',
+    description: 'Tous les modules (sous-traitance, formation, audit, exploitation).',
     moduleCodes: null
   }
 ];
@@ -157,8 +154,6 @@ const MODULE_LABELS = {
   reorder_rules: 'Règles de réappro',
   suppliers: 'Fournisseurs',
   purchase_requests: 'Demandes d\'achat',
-  price_requests: 'Demandes de prix',
-  supplier_invoices: 'Factures fournisseurs',
   external_contractors: 'Prestataires',
   subcontract_orders: 'Ordres de sous-traitance',
   maintenance_plans: 'Plans de maintenance',
@@ -185,7 +180,6 @@ const MODULE_LABELS = {
   reports: 'Rapports',
   scheduled_reports: 'Rapports planifiés',
   audit: 'Audit',
-  standards: 'Normes',
   required_document_types: 'Types de documents requis',
   planned_shutdowns: 'Arrêts planifiés',
   regulatory_checks: 'Contrôles réglementaires',

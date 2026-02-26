@@ -606,13 +606,121 @@ router.post('/reorders', authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNIC
 router.put('/reorders/:id', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RESPONSABLE), (req, res) => {
   const db = req.db;
   if (!getReordersTable(db)) return res.status(400).json({ error: 'Non disponible' });
-  const { status, supplier_order_id, quantity_ordered } = req.body;
+  const { status, supplier_order_id, quantity_ordered, quantity_requested } = req.body;
   const id = parseInt(req.params.id, 10);
+  const reorder = db.prepare('SELECT id, status FROM reorder_requests WHERE id = ?').get(id);
+  if (!reorder) return res.status(404).json({ error: 'Demande non trouvée.' });
   const updates = []; const vals = [];
   if (status !== undefined) { updates.push('status = ?'); vals.push(status); }
   if (supplier_order_id !== undefined) { updates.push('supplier_order_id = ?'); vals.push(supplier_order_id); }
   if (quantity_ordered !== undefined) { updates.push('quantity_ordered = ?'); vals.push(quantity_ordered); }
+  if (quantity_requested !== undefined && reorder.status === 'pending') {
+    const qty = parseInt(quantity_requested, 10);
+    if (qty >= 1) { updates.push('quantity_requested = ?'); vals.push(qty); }
+  }
   if (updates.length) { vals.push(id); db.prepare('UPDATE reorder_requests SET ' + updates.join(', ') + ', updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(...vals); }
+  const row = db.prepare('SELECT * FROM reorder_requests WHERE id = ?').get(id);
+  res.json(row);
+});
+
+/** Vérifier si la table purchase_requests existe (migration 063) */
+function getPurchaseRequestsTable(db) {
+  try {
+    db.prepare('SELECT 1 FROM purchase_requests LIMIT 1').get();
+    return true;
+  } catch (_) { return false; }
+}
+
+/**
+ * POST /api/stock/reorders/:id/validate
+ * Valide la demande d'approvisionnement : crée une Demande d'achat (PR) et lie la reorder.
+ */
+router.post('/reorders/:id/validate', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), (req, res) => {
+  const db = req.db;
+  if (!getReordersTable(db)) return res.status(400).json({ error: 'Demandes de réappro non disponibles.' });
+  if (!getPurchaseRequestsTable(db)) return res.status(501).json({ error: 'Demandes d\'achat non disponibles.' });
+  const id = parseInt(req.params.id, 10);
+  const reorder = db.prepare(`
+    SELECT rr.*, sp.code as part_code, sp.name as part_name
+    FROM reorder_requests rr
+    JOIN spare_parts sp ON rr.spare_part_id = sp.id
+    WHERE rr.id = ?
+  `).get(id);
+  if (!reorder) return res.status(404).json({ error: 'Demande de réapprovisionnement non trouvée.' });
+  if (reorder.status !== 'pending') {
+    return res.status(400).json({ error: 'Seules les demandes en attente peuvent être validées.' });
+  }
+  const year = new Date().getFullYear();
+  const lastPr = db.prepare('SELECT pr_number FROM purchase_requests WHERE pr_number LIKE ? ORDER BY id DESC LIMIT 1').get(`DA-${year}-%`);
+  const num = lastPr ? parseInt(String(lastPr.pr_number).split('-')[2]) + 1 : 1;
+  const prNumber = `DA-${year}-${String(num).padStart(4, '0')}`;
+  db.prepare(`
+    INSERT INTO purchase_requests (pr_number, title, description, requested_by, request_date, status)
+    VALUES (?, ?, ?, ?, date('now'), 'draft')
+  `).run(prNumber, `Réappro ${reorder.part_code || reorder.part_name || ''}`, `Depuis alerte stock (demande #${id})`, req.user?.id || null);
+  const prId = db.prepare('SELECT last_insert_rowid() as id').get().id;
+  db.prepare(`
+    INSERT INTO purchase_request_lines (purchase_request_id, spare_part_id, description, quantity, unit_price_estimate)
+    VALUES (?, ?, ?, ?, 0)
+  `).run(prId, reorder.spare_part_id, reorder.notes || null, reorder.quantity_requested);
+  try {
+    db.prepare('UPDATE reorder_requests SET status = ?, purchase_request_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('approved', prId, id);
+  } catch (e) {
+    const isCheck = e && e.message && String(e.message).includes('CHECK constraint');
+    if (isCheck) {
+      db.prepare('UPDATE reorder_requests SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('cancelled', id);
+      try {
+        db.prepare('UPDATE reorder_requests SET purchase_request_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(prId, id);
+      } catch (_) {}
+    } else if (e.message && e.message.includes('no such column')) {
+      try { db.prepare('ALTER TABLE reorder_requests ADD COLUMN purchase_request_id INTEGER').run(); } catch (_) {}
+      try {
+        db.prepare('UPDATE reorder_requests SET status = ?, purchase_request_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('approved', prId, id);
+      } catch (e2) {
+        if (e2 && e2.message && String(e2.message).includes('CHECK constraint')) {
+          db.prepare('UPDATE reorder_requests SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('cancelled', id);
+          db.prepare('UPDATE reorder_requests SET purchase_request_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(prId, id);
+        } else throw e2;
+      }
+    } else {
+      throw e;
+    }
+  }
+  const pr = db.prepare('SELECT * FROM purchase_requests WHERE id = ?').get(prId);
+  const lines = db.prepare(`
+    SELECT prl.*, sp.code as part_code, sp.name as part_name
+    FROM purchase_request_lines prl
+    LEFT JOIN spare_parts sp ON prl.spare_part_id = sp.id
+    WHERE prl.purchase_request_id = ?
+  `).all(prId);
+  res.status(201).json({
+    purchaseRequestId: prId,
+    purchaseRequest: { ...pr, lines }
+  });
+});
+
+/**
+ * POST /api/stock/reorders/:id/ignore
+ * Ignore la demande d'approvisionnement (ne pas transformer en demande d'achat).
+ * Utilise 'ignored' si la migration 073 est appliquée, sinon 'cancelled'.
+ */
+router.post('/reorders/:id/ignore', param('id').isInt(), authorize(ROLES.ADMIN, ROLES.RESPONSABLE, ROLES.TECHNICIEN), (req, res) => {
+  const db = req.db;
+  if (!getReordersTable(db)) return res.status(400).json({ error: 'Non disponible.' });
+  const id = parseInt(req.params.id, 10);
+  const reorder = db.prepare('SELECT id, status FROM reorder_requests WHERE id = ?').get(id);
+  if (!reorder) return res.status(404).json({ error: 'Demande non trouvée.' });
+  if (reorder.status !== 'pending') {
+    return res.status(400).json({ error: 'Seules les demandes en attente peuvent être ignorées.' });
+  }
+  const statusToSet = 'ignored';
+  try {
+    db.prepare('UPDATE reorder_requests SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(statusToSet, id);
+  } catch (e) {
+    if (e.message && e.message.includes('CHECK constraint')) {
+      db.prepare('UPDATE reorder_requests SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('cancelled', id);
+    } else throw e;
+  }
   const row = db.prepare('SELECT * FROM reorder_requests WHERE id = ?').get(id);
   res.json(row);
 });
@@ -798,16 +906,42 @@ router.get('/parts/:id/movements', param('id').isInt(), (req, res) => {
 
 /**
  * GET /api/stock/alerts
+ * Pièces sous le seuil min. Génère automatiquement une demande d'approvisionnement (pending)
+ * par pièce si aucune demande en attente n'existe déjà.
  */
 router.get('/alerts', (req, res) => {
   const db = req.db;
   const rows = db.prepare(`
-    SELECT sp.*, COALESCE(sb.quantity, 0) as stock_quantity, sp.min_stock
+    SELECT sp.id, sp.code, sp.name, sp.unit, sp.min_stock, sp.supplier_id,
+           COALESCE(sb.quantity, 0) as stock_quantity
     FROM spare_parts sp
     LEFT JOIN stock_balance sb ON sp.id = sb.spare_part_id
-    WHERE COALESCE(sb.quantity, 0) <= sp.min_stock
+    WHERE (sp.min_stock IS NOT NULL AND sp.min_stock > 0)
+      AND COALESCE(sb.quantity, 0) <= sp.min_stock
     ORDER BY COALESCE(sb.quantity, 0) ASC
   `).all();
+
+  if (getReordersTable(db)) {
+    const insertStmt = db.prepare(`
+      INSERT INTO reorder_requests (reference, spare_part_id, quantity_requested, requested_by, notes)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    for (const row of rows) {
+      const existing = db.prepare(
+        'SELECT id FROM reorder_requests WHERE spare_part_id = ? AND status = ?'
+      ).get(row.id, 'pending');
+      if (!existing) {
+        const qty = Math.max(1, (row.min_stock || 0) - (row.stock_quantity || 0) + 1);
+        const ref = `REQ-ALERT-${Date.now()}-${row.id}`;
+        try {
+          insertStmt.run(ref, row.id, qty, null, 'Générée depuis alerte stock');
+        } catch (e) {
+          if (!e.message || !e.message.includes('UNIQUE')) console.warn('[stock/alerts] reorder insert', e.message);
+        }
+      }
+    }
+  }
+
   res.json(rows);
 });
 

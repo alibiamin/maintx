@@ -56,43 +56,43 @@ function ensurePartFamiliesAndBrands(db) {
 async function runSeed(db) {
   ensurePartFamiliesAndBrands(db);
 
-  const roles = [
-    { name: 'administrateur', description: 'Accès complet au système' },
-    { name: 'responsable_maintenance', description: 'Gestion des équipes et ordres de travail' },
-    { name: 'technicien', description: 'Exécution des interventions' },
-    { name: 'utilisateur', description: 'Consultation et déclaration de pannes' }
-  ];
+  // Rôles et utilisateurs : uniquement si la base a la table roles (base admin / ancienne mono-DB).
+  // Les bases client (default.db) n'ont pas roles/users — ils sont dans gmao.db.
+  let roleIds = {};
+  const hasRolesTable = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='roles'").get();
+  if (hasRolesTable) {
+    const roles = [
+      { name: 'administrateur', description: 'Accès complet au système' },
+      { name: 'responsable_maintenance', description: 'Gestion des équipes et ordres de travail' },
+      { name: 'technicien', description: 'Exécution des interventions' },
+      { name: 'utilisateur', description: 'Consultation et déclaration de pannes' }
+    ];
+    for (const r of roles) {
+      db.prepare('INSERT OR IGNORE INTO roles (name, description) VALUES (?, ?)').run(r.name, r.description);
+    }
+    db.prepare('SELECT id, name FROM roles').all().forEach(r => { roleIds[r.name] = r.id; });
 
-  for (const r of roles) {
-    db.prepare('INSERT OR IGNORE INTO roles (name, description) VALUES (?, ?)').run(r.name, r.description);
-  }
-
-  const roleIds = {};
-  db.prepare('SELECT id, name FROM roles').all().forEach(r => { roleIds[r.name] = r.id; });
-
-  const passwordHash = await bcrypt.hash('Password123!', 10);
-  const users = [
-    { email: 'admin@xmaint.org', firstName: 'Admin', lastName: 'Système', role: 'administrateur' },
-    { email: 'responsable@xmaint.org', firstName: 'Jean', lastName: 'Responsable', role: 'responsable_maintenance' },
-    { email: 'technicien@xmaint.org', firstName: 'Pierre', lastName: 'Technicien', role: 'technicien' },
-    { email: 'user@xmaint.org', firstName: 'Marie', lastName: 'Utilisatrice', role: 'utilisateur' },
-    { email: 'technicien2@xmaint.org', firstName: 'Sophie', lastName: 'Martin', role: 'technicien' },
-    { email: 'technicien3@xmaint.org', firstName: 'Lucas', lastName: 'Bernard', role: 'technicien' }
-  ];
-
-  for (const u of users) {
-    db.prepare('INSERT OR IGNORE INTO users (email, password_hash, first_name, last_name, role_id) VALUES (?, ?, ?, ?, ?)')
-      .run(u.email, passwordHash, u.firstName, u.lastName, roleIds[u.role]);
-  }
-
-  // Taux horaires pour coûts main d'œuvre (techniciens et responsable)
-  try {
-    const techRoleId = roleIds['technicien'];
-    const respRoleId = roleIds['responsable_maintenance'];
-    if (techRoleId) db.prepare('UPDATE users SET hourly_rate = 42 WHERE role_id = ?').run(techRoleId);
-    if (respRoleId) db.prepare('UPDATE users SET hourly_rate = 52 WHERE role_id = ?').run(respRoleId);
-  } catch (e) {
-    if (!e.message?.includes('no such column')) console.warn('hourly_rate:', e.message);
+    const passwordHash = await bcrypt.hash('Password123!', 10);
+    const users = [
+      { email: 'admin@xmaint.org', firstName: 'Admin', lastName: 'Système', role: 'administrateur' },
+      { email: 'responsable@xmaint.org', firstName: 'Jean', lastName: 'Responsable', role: 'responsable_maintenance' },
+      { email: 'technicien@xmaint.org', firstName: 'Pierre', lastName: 'Technicien', role: 'technicien' },
+      { email: 'user@xmaint.org', firstName: 'Marie', lastName: 'Utilisatrice', role: 'utilisateur' },
+      { email: 'technicien2@xmaint.org', firstName: 'Sophie', lastName: 'Martin', role: 'technicien' },
+      { email: 'technicien3@xmaint.org', firstName: 'Lucas', lastName: 'Bernard', role: 'technicien' }
+    ];
+    for (const u of users) {
+      db.prepare('INSERT OR IGNORE INTO users (email, password_hash, first_name, last_name, role_id) VALUES (?, ?, ?, ?, ?)')
+        .run(u.email, passwordHash, u.firstName, u.lastName, roleIds[u.role]);
+    }
+    try {
+      const techRoleId = roleIds['technicien'];
+      const respRoleId = roleIds['responsable_maintenance'];
+      if (techRoleId) db.prepare('UPDATE users SET hourly_rate = 42 WHERE role_id = ?').run(techRoleId);
+      if (respRoleId) db.prepare('UPDATE users SET hourly_rate = 52 WHERE role_id = ?').run(respRoleId);
+    } catch (e) {
+      if (!e.message?.includes('no such column')) console.warn('hourly_rate:', e.message);
+    }
   }
 
   const woTypes = [
@@ -202,6 +202,31 @@ async function runSeed(db) {
       if (e.dep && depIds[e.dep]) updDept.run(depIds[e.dep], e.type || 'machine', e.code);
     });
     db._save();
+  } catch (_) {}
+
+  // Coordonnées et litérairie SIG de test (départements, lignes, machines/sections) — si colonnes présentes (migration 076)
+  try {
+    db.prepare('SELECT latitude FROM departements LIMIT 1').get();
+    const updDep = db.prepare('UPDATE departements SET latitude = ?, longitude = ?, location_address = ? WHERE code = ?');
+    updDep.run(48.859, 2.351, 'Bâtiment A, ateliers de production', 'DEP-PROD');
+    updDep.run(48.858, 2.349, 'Sous-station électrique, transformateurs et pompes', 'DEP-ENERGIE');
+    updDep.run(48.862, 2.348, 'Entrepôt, quai de chargement, convoyeurs', 'DEP-LOG');
+  } catch (_) {}
+  try {
+    db.prepare('SELECT latitude FROM lignes LIMIT 1').get();
+    const updLigne = db.prepare('UPDATE lignes SET latitude = ?, longitude = ?, location_address = ? WHERE code = ?');
+    updLigne.run(48.860, 2.350, 'Hall 1, ligne d\'assemblage principale', 'L1');
+    updLigne.run(48.861, 2.352, 'Hall 2, zone conditionnement', 'L2');
+  } catch (_) {}
+  try {
+    db.prepare('SELECT latitude FROM equipment LIMIT 1').get();
+    const updEq = db.prepare('UPDATE equipment SET latitude = ?, longitude = ?, location_address = ? WHERE code = ?');
+    updEq.run(48.8602, 2.3505, 'Atelier 1, presse hydraulique n°1', 'EQ-001');
+    updEq.run(48.8605, 2.3510, 'Atelier 1, convoyeur principal entrée/sortie', 'EQ-002');
+    updEq.run(48.8585, 2.3495, 'Sous-station, transformateur 1000 kVA', 'EQ-003');
+    updEq.run(48.8610, 2.3525, 'Hall 2, pompe centrifuge circuit fluide', 'EQ-004');
+    updEq.run(48.8603, 2.3506, 'Bloc hydraulique presse EQ-001', 'EQ-001-S1');
+    updEq.run(48.8604, 2.3507, 'Table de travail presse EQ-001', 'EQ-001-S2');
   } catch (_) {}
 
   // Helper : insérer un équipement enfant (section, composant, sous_composant)
@@ -1352,7 +1377,36 @@ async function runSeed(db) {
   console.log('  Effectif : pointage, présence, formations, compétences. Coût période : OT clôturés avec actual_end + budget_period.');
 }
 
-module.exports = { runSeed };
+/** Applique les coordonnées et litérairie SIG de test sur les enregistrements existants (départements, lignes, équipements). À appeler au démarrage pour que la carte ait des points même si le seed complet n'a pas été exécuté. */
+function applySeedGeoTestData(db) {
+  if (!db || typeof db.prepare !== 'function') return;
+  try {
+    db.prepare('SELECT latitude FROM departements LIMIT 1').get();
+    const updDep = db.prepare('UPDATE departements SET latitude = ?, longitude = ?, location_address = ? WHERE code = ?');
+    updDep.run(48.859, 2.351, 'Bâtiment A, ateliers de production', 'DEP-PROD');
+    updDep.run(48.858, 2.349, 'Sous-station électrique, transformateurs et pompes', 'DEP-ENERGIE');
+    updDep.run(48.862, 2.348, 'Entrepôt, quai de chargement, convoyeurs', 'DEP-LOG');
+  } catch (_) {}
+  try {
+    db.prepare('SELECT latitude FROM lignes LIMIT 1').get();
+    const updLigne = db.prepare('UPDATE lignes SET latitude = ?, longitude = ?, location_address = ? WHERE code = ?');
+    updLigne.run(48.860, 2.350, 'Hall 1, ligne d\'assemblage principale', 'L1');
+    updLigne.run(48.861, 2.352, 'Hall 2, zone conditionnement', 'L2');
+  } catch (_) {}
+  try {
+    db.prepare('SELECT latitude FROM equipment LIMIT 1').get();
+    const updEq = db.prepare('UPDATE equipment SET latitude = ?, longitude = ?, location_address = ? WHERE code = ?');
+    updEq.run(48.8602, 2.3505, 'Atelier 1, presse hydraulique n°1', 'EQ-001');
+    updEq.run(48.8605, 2.3510, 'Atelier 1, convoyeur principal entrée/sortie', 'EQ-002');
+    updEq.run(48.8585, 2.3495, 'Sous-station, transformateur 1000 kVA', 'EQ-003');
+    updEq.run(48.8610, 2.3525, 'Hall 2, pompe centrifuge circuit fluide', 'EQ-004');
+    updEq.run(48.8603, 2.3506, 'Bloc hydraulique presse EQ-001', 'EQ-001-S1');
+    updEq.run(48.8604, 2.3507, 'Table de travail presse EQ-001', 'EQ-001-S2');
+    if (typeof db._save === 'function') db._save();
+  } catch (_) {}
+}
+
+module.exports = { runSeed, applySeedGeoTestData };
 
 // N'exécuter seed() que si le fichier est lancé en CLI (npm run seed), pas à l'import par le serveur
 if (require.main === module) {

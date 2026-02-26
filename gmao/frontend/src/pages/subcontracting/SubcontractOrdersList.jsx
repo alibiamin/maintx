@@ -8,6 +8,34 @@ import { useSnackbar } from '../../context/SnackbarContext';
 
 const STATUS_LABELS = { draft: 'Brouillon', sent: 'Envoyé', in_progress: 'En cours', completed: 'Terminé', cancelled: 'Annulé', invoiced: 'Facturé' };
 
+const LINK_TYPE = { none: '', ot: 'ot', plan: 'plan', project: 'project' };
+
+function LinkedEntity({ row }) {
+  const navigate = useNavigate();
+  if (row.work_order_id) {
+    return (
+      <Link to={`/app/work-orders/${row.work_order_id}`} style={{ color: 'inherit' }}>
+        {row.wo_number ? `${row.wo_number} — ${row.wo_title || ''}` : `OT #${row.work_order_id}`}
+      </Link>
+    );
+  }
+  if (row.maintenance_plan_id && row.plan_name) {
+    return (
+      <Link to="/app/maintenance-plans" style={{ color: 'inherit' }} component="button" onClick={() => navigate('/app/maintenance-plans')}>
+        Plan : {row.plan_name}
+      </Link>
+    );
+  }
+  if (row.maintenance_project_id && row.project_name) {
+    return (
+      <Link to={`/app/maintenance-projects/${row.maintenance_project_id}`} style={{ color: 'inherit' }}>
+        Projet : {row.project_name}
+      </Link>
+    );
+  }
+  return '—';
+}
+
 export default function SubcontractOrdersList() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -16,10 +44,23 @@ export default function SubcontractOrdersList() {
   const [list, setList] = useState([]);
   const [contractors, setContractors] = useState([]);
   const [workOrders, setWorkOrders] = useState([]);
+  const [plans, setPlans] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ contractorId: contractorId || '', workOrderId: '', description: '', orderDate: new Date().toISOString().slice(0, 10), expectedDate: '', amount: '', notes: '' });
+  const [form, setForm] = useState({
+    contractorId: contractorId || '',
+    linkType: LINK_TYPE.none,
+    workOrderId: '',
+    maintenancePlanId: '',
+    maintenanceProjectId: '',
+    description: '',
+    orderDate: new Date().toISOString().slice(0, 10),
+    expectedDate: '',
+    amount: '',
+    notes: ''
+  });
   const snackbar = useSnackbar();
 
   const loadList = () => {
@@ -36,11 +77,31 @@ export default function SubcontractOrdersList() {
       const data = r.data?.data ?? r.data;
       setWorkOrders(Array.isArray(data) ? data : []);
     }).catch(() => setWorkOrders([]));
+    api.get('/maintenance-plans').then((r) => setPlans(Array.isArray(r.data) ? r.data : [])).catch(() => setPlans([]));
+    api.get('/maintenance-projects').then((r) => setProjects(Array.isArray(r.data) ? r.data : [])).catch(() => setProjects([]));
   }, []);
 
   const handleOpenDialog = () => {
-    setForm({ contractorId: contractorId || '', workOrderId: '', description: '', orderDate: new Date().toISOString().slice(0, 10), expectedDate: '', amount: '', notes: '' });
+    setForm({
+      contractorId: contractorId || '',
+      linkType: LINK_TYPE.none,
+      workOrderId: '',
+      maintenancePlanId: '',
+      maintenanceProjectId: '',
+      description: '',
+      orderDate: new Date().toISOString().slice(0, 10),
+      expectedDate: '',
+      amount: '',
+      notes: ''
+    });
     setDialogOpen(true);
+  };
+
+  const payloadLink = () => {
+    if (form.linkType === LINK_TYPE.ot && form.workOrderId) return { workOrderId: parseInt(form.workOrderId, 10) };
+    if (form.linkType === LINK_TYPE.plan && form.maintenancePlanId) return { maintenancePlanId: parseInt(form.maintenancePlanId, 10) };
+    if (form.linkType === LINK_TYPE.project && form.maintenanceProjectId) return { maintenanceProjectId: parseInt(form.maintenanceProjectId, 10) };
+    return {};
   };
 
   const handleCreate = () => {
@@ -49,7 +110,7 @@ export default function SubcontractOrdersList() {
     setSaving(true);
     api.post('/subcontract-orders', {
       contractorId: contractorIdNum,
-      workOrderId: form.workOrderId ? parseInt(form.workOrderId, 10) : undefined,
+      ...payloadLink(),
       description: form.description || undefined,
       orderDate: form.orderDate || undefined,
       expectedDate: form.expectedDate || undefined,
@@ -69,7 +130,7 @@ export default function SubcontractOrdersList() {
       <Card>
         {loading ? <Box p={4} display="flex" justifyContent="center"><CircularProgress /></Box> : (
           <Table>
-            <TableHead><TableRow><TableCell>N°</TableCell><TableCell>Sous-traitant</TableCell><TableCell>OT</TableCell><TableCell>Statut</TableCell><TableCell>Montant</TableCell><TableCell>Date</TableCell></TableRow></TableHead>
+            <TableHead><TableRow><TableCell>N°</TableCell><TableCell>Sous-traitant</TableCell><TableCell>Lié à (OT / Plan / Projet)</TableCell><TableCell>Statut</TableCell><TableCell>Montant</TableCell><TableCell>Date</TableCell></TableRow></TableHead>
             <TableBody>
               {list.length === 0 ? (
                 <TableRow><TableCell colSpan={6} align="center"><Typography color="text.secondary">Aucun ordre de sous-traitance. Cliquez sur &quot;Nouvel ordre&quot; pour en créer un.</Typography></TableCell></TableRow>
@@ -78,11 +139,7 @@ export default function SubcontractOrdersList() {
                   <TableRow key={row.id} hover>
                     <TableCell>{row.number}</TableCell>
                     <TableCell>{row.contractor_name}</TableCell>
-                    <TableCell>
-                      {row.work_order_id ? (
-                        <Link to={`/app/work-orders/${row.work_order_id}`} style={{ color: 'inherit' }}>{row.wo_number ? `${row.wo_number} - ${row.wo_title || ''}` : `OT #${row.work_order_id}`}</Link>
-                      ) : (row.wo_number ? `${row.wo_number} - ${row.wo_title || ''}` : '—')}
-                    </TableCell>
+                    <TableCell><LinkedEntity row={row} /></TableCell>
                     <TableCell>{STATUS_LABELS[row.status] || row.status}</TableCell>
                     <TableCell>{row.amount != null ? `${Number(row.amount).toLocaleString('fr-FR')} €` : '—'}</TableCell>
                     <TableCell>{row.order_date || '—'}</TableCell>
@@ -103,13 +160,42 @@ export default function SubcontractOrdersList() {
               {contractors.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}{c.code ? ` (${c.code})` : ''}</MenuItem>)}
             </Select>
           </FormControl>
-          <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-            <InputLabel>OT lié (optionnel)</InputLabel>
-            <Select value={form.workOrderId} label="OT lié (optionnel)" onChange={(e) => setForm(f => ({ ...f, workOrderId: e.target.value }))}>
-              <MenuItem value="">— Aucun —</MenuItem>
-              {workOrders.map((wo) => <MenuItem key={wo.id} value={wo.id}>{wo.number} - {wo.title || 'Sans titre'}</MenuItem>)}
+          <FormControl fullWidth size="small" sx={{ mb: 1 }}>
+            <InputLabel>Lier à (optionnel)</InputLabel>
+            <Select value={form.linkType} label="Lier à (optionnel)" onChange={(e) => setForm(f => ({ ...f, linkType: e.target.value, workOrderId: '', maintenancePlanId: '', maintenanceProjectId: '' }))}>
+              <MenuItem value={LINK_TYPE.none}>— Aucun —</MenuItem>
+              <MenuItem value={LINK_TYPE.ot}>OT (ordre de travail)</MenuItem>
+              <MenuItem value={LINK_TYPE.plan}>Plan de maintenance</MenuItem>
+              <MenuItem value={LINK_TYPE.project}>Projet de maintenance</MenuItem>
             </Select>
           </FormControl>
+          {form.linkType === LINK_TYPE.ot && (
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel>OT</InputLabel>
+              <Select value={form.workOrderId} label="OT" onChange={(e) => setForm(f => ({ ...f, workOrderId: e.target.value }))}>
+                <MenuItem value="">— Choisir —</MenuItem>
+                {workOrders.map((wo) => <MenuItem key={wo.id} value={wo.id}>{wo.number} — {wo.title || 'Sans titre'}</MenuItem>)}
+              </Select>
+            </FormControl>
+          )}
+          {form.linkType === LINK_TYPE.plan && (
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel>Plan de maintenance</InputLabel>
+              <Select value={form.maintenancePlanId} label="Plan de maintenance" onChange={(e) => setForm(f => ({ ...f, maintenancePlanId: e.target.value }))}>
+                <MenuItem value="">— Choisir —</MenuItem>
+                {plans.map((p) => <MenuItem key={p.id} value={p.id}>{p.name}{p.equipment_code ? ` (${p.equipment_code})` : ''}</MenuItem>)}
+              </Select>
+            </FormControl>
+          )}
+          {form.linkType === LINK_TYPE.project && (
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel>Projet de maintenance</InputLabel>
+              <Select value={form.maintenanceProjectId} label="Projet de maintenance" onChange={(e) => setForm(f => ({ ...f, maintenanceProjectId: e.target.value }))}>
+                <MenuItem value="">— Choisir —</MenuItem>
+                {projects.map((p) => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}
+              </Select>
+            </FormControl>
+          )}
           <TextField fullWidth size="small" label="Description" value={form.description} onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))} multiline rows={2} sx={{ mb: 2 }} />
           <Box display="flex" gap={2} sx={{ mb: 2 }}>
             <TextField type="date" size="small" label="Date commande" value={form.orderDate} onChange={(e) => setForm(f => ({ ...f, orderDate: e.target.value }))} InputLabelProps={{ shrink: true }} />

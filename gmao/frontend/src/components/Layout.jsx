@@ -65,7 +65,6 @@ import {
   AccountBalance as BudgetIcon,
   BusinessCenter as SubcontractIcon,
   Lightbulb as LightbulbIcon,
-  MenuBook as MenuBookIcon,
   AdminPanelSettings as AdminPanelSettingsIcon,
   Chat as ChatMenuIcon
 } from '@mui/icons-material';
@@ -97,7 +96,6 @@ const MENU_RESOURCE_MAP = {
   effectif: 'technicians',
   reports: 'reports',
   decisionSupport: 'reports',
-  standards: 'standards',
   exploitation: 'exploitation',
   settings: 'settings',
   messages: 'chat'
@@ -117,7 +115,6 @@ const MENU_MODULE_MAP = {
   effectif: 'technicians',
   reports: 'reports',
   decisionSupport: 'reports',
-  standards: 'standards',
   exploitation: 'exploitation',
   settings: 'settings',
   chat: 'chat'
@@ -168,8 +165,9 @@ function getRawMenus() {
     { id: 'sites', labelKey: 'menu.sites', icon: <BusinessIcon />, path: `${APP_BASE}/sites`, sections: [
       { titleKey: 'section.sites_0', items: [
         { labelKey: 'item.sites_list', path: `${APP_BASE}/sites` },
+        { labelKey: 'item.sites_departments', path: `${APP_BASE}/sites/departments` },
         { labelKey: 'item.sites_lines', path: `${APP_BASE}/sites/lines` },
-        { labelKey: 'item.sites_map', path: `${APP_BASE}/sites/map` }
+        { labelKey: 'item.sites_map_sig', path: `${APP_BASE}/sites/map` }
       ]}
     ]},
     // ——— Maintenance ———
@@ -243,21 +241,21 @@ function getRawMenus() {
       { titleKey: 'section.suppliers_0', items: [
         { labelKey: 'item.suppliers_list', path: `${APP_BASE}/suppliers` },
         { labelKey: 'item.suppliers_orders', path: `${APP_BASE}/suppliers/orders` },
-        { labelKey: 'item.suppliers_purchase_requests', path: `${APP_BASE}/suppliers/purchase-requests` },
-        { labelKey: 'item.suppliers_price_requests', path: `${APP_BASE}/suppliers/price-requests` },
-        { labelKey: 'item.suppliers_invoices', path: `${APP_BASE}/suppliers/invoices` },
-        { labelKey: 'item.contracts', path: `${APP_BASE}/contracts` }
+        { labelKey: 'item.suppliers_purchase_requests', path: `${APP_BASE}/suppliers/purchase-requests` }
       ]},
       { titleKey: 'section.suppliers_creation', items: [
         { labelKey: 'item.creation_fournisseur', path: `${APP_BASE}/suppliers/creation/supplier`, action: 'create' },
-        { labelKey: 'item.creation_commande_fournisseur', path: `${APP_BASE}/suppliers/creation/order`, action: 'create' },
-        { labelKey: 'item.creation_contrat', path: `${APP_BASE}/suppliers/creation/contract`, action: 'create' }
+        { labelKey: 'item.creation_commande_fournisseur', path: `${APP_BASE}/suppliers/creation/order`, action: 'create' }
       ]}
     ]},
     { id: 'subcontracting', labelKey: 'menu.subcontracting', icon: <SubcontractIcon />, path: `${APP_BASE}/subcontracting/contractors`, sections: [
       { titleKey: 'section.subcontracting_0', items: [
         { labelKey: 'item.external_contractors', path: `${APP_BASE}/subcontracting/contractors` },
-        { labelKey: 'item.subcontract_orders', path: `${APP_BASE}/subcontracting/orders` }
+        { labelKey: 'item.subcontract_orders', path: `${APP_BASE}/subcontracting/orders` },
+        { labelKey: 'item.subcontracting_contracts', path: `${APP_BASE}/subcontracting/contracts` }
+      ]},
+      { titleKey: 'section.subcontracting_creation', items: [
+        { labelKey: 'item.creation_contrat_sous_traitance', path: `${APP_BASE}/subcontracting/contracts?create=1`, action: 'create' }
       ]}
     ]},
     // ——— Budget ———
@@ -295,11 +293,6 @@ function getRawMenus() {
     { id: 'decisionSupport', labelKey: 'menu.decisionSupport', icon: <LightbulbIcon />, path: `${APP_BASE}/decision-support`, sections: [
       { titleKey: 'section.decisionSupport_0', items: [
         { labelKey: 'item.decisionSupport_analysis', path: `${APP_BASE}/decision-support` }
-      ]}
-    ]},
-    { id: 'standards', labelKey: 'menu.standards_library', icon: <MenuBookIcon />, path: `${APP_BASE}/standards`, sections: [
-      { titleKey: 'section.standards_0', items: [
-        { labelKey: 'item.standards_library', path: `${APP_BASE}/standards` }
       ]}
     ]},
     // ——— Données ———
@@ -353,7 +346,7 @@ function getMenuCategories(rawMenus) {
     { id: 'logistics', labelKey: 'menuCategory.logistics', menuIds: ['stock', 'suppliers', 'subcontracting'] },
     { id: 'finance', labelKey: 'menuCategory.finance', menuIds: ['budget'] },
     { id: 'hr', labelKey: 'menuCategory.hr', menuIds: ['effectif'] },
-    { id: 'analysis', labelKey: 'menuCategory.analysis', menuIds: ['reports', 'decisionSupport', 'standards'] },
+    { id: 'analysis', labelKey: 'menuCategory.analysis', menuIds: ['reports', 'decisionSupport'] },
     { id: 'data', labelKey: 'menuCategory.data', menuIds: ['exploitation'] },
     { id: 'settings', labelKey: 'menuCategory.settings', menuIds: ['settings'] },
     { id: 'maintxAdmin', labelKey: 'menuCategory.maintxAdmin', menuIds: ['maintxAdmin'] }
@@ -613,6 +606,7 @@ export default function Layout() {
 
   const handleMenuClick = (menuId) => {
     setSelectedMenuId(menuId);
+    if (document.activeElement?.blur) document.activeElement.blur();
     setDetailPanelOpen(true);
     const menu = menuStructure.find(m => m.id === menuId);
     if (menu) {
@@ -1203,7 +1197,7 @@ export default function Layout() {
           </Box>
         </Paper>
 
-        {/* Modal des sous-menus du menu sélectionné */}
+        {/* Modal des sous-menus du menu sélectionné — focus déplacé dans le dialog pour éviter l’avertissement aria-hidden. */}
         <Dialog
           open={!!(selectedMenu && detailPanelOpen)}
           onClose={() => setDetailPanelOpen(false)}
@@ -1217,9 +1211,12 @@ export default function Layout() {
           }}
           TransitionProps={{
             onEntered: () => {
-              const dialog = document.querySelector('[role="dialog"]');
-              const focusable = dialog?.querySelector('input:not([disabled]), a[href], button:not([disabled])');
-              if (focusable) focusable.focus();
+              requestAnimationFrame(() => {
+                const dialog = document.querySelector('[role="dialog"]');
+                if (!dialog) return;
+                const focusable = dialog.querySelector('input:not([disabled]), [href], button:not([disabled])');
+                if (focusable) focusable.focus({ preventScroll: true });
+              });
             }
           }}
         >

@@ -21,8 +21,10 @@ function validateIdParam(req, res) {
   return false;
 }
 
+/** Hiérarchie affichage/création : Site → Département → Ligne → Équipement → Section → Composant → Sous-composant */
 function formatEquipment(row) {
   if (!row) return null;
+  const siteId = row.site_id != null ? row.site_id : (row.ligne_site_id != null ? row.ligne_site_id : null);
   return {
     id: row.id,
     code: row.code,
@@ -30,10 +32,13 @@ function formatEquipment(row) {
     description: row.description,
     categoryId: row.category_id,
     categoryName: row.category_name,
+    siteId: siteId != null ? siteId : null,
+    siteName: row.site_name || null,
+    departmentId: row.department_id != null ? row.department_id : null,
+    departmentName: row.department_name || null,
     ligneId: row.ligne_id,
     ligneName: row.ligne_name,
     parentId: row.parent_id,
-    departmentId: row.department_id != null ? row.department_id : null,
     equipmentType: row.equipment_type || 'machine',
     serialNumber: row.serial_number,
     manufacturer: row.manufacturer,
@@ -60,32 +65,57 @@ function formatEquipment(row) {
  */
 router.get('/', requirePermission('equipment', 'view'), (req, res) => {
   const db = req.db;
-  const { categoryId, ligneId, status, search, page, limit } = req.query;
+  const { categoryId, ligneId, siteId, departmentId, status, search, page, limit } = req.query;
   const usePagination = page !== undefined && page !== '';
   const limitNum = usePagination ? Math.min(parseInt(limit, 10) || 20, 100) : 1e6;
   const offset = usePagination ? ((parseInt(page, 10) || 1) - 1) * limitNum : 0;
   let where = ' WHERE 1=1';
   const params = [];
   if (categoryId) { where += ' AND e.category_id = ?'; params.push(categoryId); }
+  if (siteId) { where += ' AND l.site_id = ?'; params.push(siteId); }
+  if (departmentId) { where += ' AND e.department_id = ?'; params.push(departmentId); }
   if (ligneId) { where += ' AND e.ligne_id = ?'; params.push(ligneId); }
   if (status) { where += ' AND e.status = ?'; params.push(status); }
   if (search) { where += ' AND (e.code LIKE ? OR e.name LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
   let total = 0;
   if (usePagination) {
-    const countRow = db.prepare(`SELECT COUNT(*) as total FROM equipment e ${where}`).get(...params);
-    total = countRow?.total ?? 0;
+    const countSql = `SELECT COUNT(*) as total FROM equipment e LEFT JOIN lignes l ON e.ligne_id = l.id ${where}`;
+    try {
+      const countRow = db.prepare(countSql).get(...params);
+      total = countRow?.total ?? 0;
+    } catch (e) {
+      if (e.message && (e.message.includes('no such table') || e.message.includes('no such column'))) { total = 0; } else throw e;
+    }
   }
   const sortBy = req.query.sortBy === 'name' ? 'e.name' : 'e.code';
   const order = req.query.order === 'asc' ? 'ASC' : 'DESC';
-  const sql = `
-    SELECT e.*, c.name as category_name, l.name as ligne_name
+  let sql = `
+    SELECT e.*, c.name as category_name, l.name as ligne_name, l.site_id as ligne_site_id,
+           s.name as site_name, d.name as department_name
+    FROM equipment e
+    LEFT JOIN equipment_categories c ON e.category_id = c.id
+    LEFT JOIN lignes l ON e.ligne_id = l.id
+    LEFT JOIN sites s ON l.site_id = s.id
+    LEFT JOIN departements d ON e.department_id = d.id
+    ${where}
+    ORDER BY ${sortBy} ${order} LIMIT ? OFFSET ?
+  `;
+  let rows;
+  try {
+    rows = db.prepare(sql).all(...params, limitNum, offset);
+  } catch (e) {
+    if (e.message && (e.message.includes('no such table') || e.message.includes('no such column'))) {
+      sql = `
+    SELECT e.*, c.name as category_name, l.name as ligne_name, l.site_id as ligne_site_id
     FROM equipment e
     LEFT JOIN equipment_categories c ON e.category_id = c.id
     LEFT JOIN lignes l ON e.ligne_id = l.id
     ${where}
     ORDER BY ${sortBy} ${order} LIMIT ? OFFSET ?
-  `;
-  const rows = db.prepare(sql).all(...params, limitNum, offset);
+      `;
+      rows = db.prepare(sql).all(...params, limitNum, offset);
+    } else throw e;
+  }
   const byId = new Map();
   rows.forEach((r) => { if (!byId.has(r.id)) byId.set(r.id, r); });
   const data = [...byId.values()].map(formatEquipment);
@@ -95,8 +125,7 @@ router.get('/', requirePermission('equipment', 'view'), (req, res) => {
 
 /**
  * GET /api/equipment/hierarchy-map
- * Hiérarchie : Site → Département → Machine → Section → Composants → Sous-composants
- * (Si pas de table departements : Site → Lignes → Équipements)
+ * Hiérarchie : Site → Département → Ligne → Équipement (machine) → Section → Composant → Sous-composant
  */
 router.get('/hierarchy-map', requirePermission('equipment', 'view'), (req, res) => {
   const db = req.db;
@@ -872,13 +901,29 @@ router.delete('/:id/bom/:sparePartId', authorize(ROLES.ADMIN, ROLES.RESPONSABLE)
 router.get('/:id', param('id').isInt(), (req, res) => {
   if (validateIdParam(req, res)) return;
   const db = req.db;
-  const row = db.prepare(`
-    SELECT e.*, c.name as category_name, l.name as ligne_name
-    FROM equipment e
-    LEFT JOIN equipment_categories c ON e.category_id = c.id
-    LEFT JOIN lignes l ON e.ligne_id = l.id
-    WHERE e.id = ?
-  `).get(req.params.id);
+  let row;
+  try {
+    row = db.prepare(`
+      SELECT e.*, c.name as category_name, l.name as ligne_name, l.site_id as ligne_site_id,
+             s.name as site_name, d.name as department_name
+      FROM equipment e
+      LEFT JOIN equipment_categories c ON e.category_id = c.id
+      LEFT JOIN lignes l ON e.ligne_id = l.id
+      LEFT JOIN sites s ON l.site_id = s.id
+      LEFT JOIN departements d ON e.department_id = d.id
+      WHERE e.id = ?
+    `).get(req.params.id);
+  } catch (e) {
+    if (e.message && (e.message.includes('no such table') || e.message.includes('no such column'))) {
+      row = db.prepare(`
+        SELECT e.*, c.name as category_name, l.name as ligne_name, l.site_id as ligne_site_id
+        FROM equipment e
+        LEFT JOIN equipment_categories c ON e.category_id = c.id
+        LEFT JOIN lignes l ON e.ligne_id = l.id
+        WHERE e.id = ?
+      `).get(req.params.id);
+    } else throw e;
+  }
   if (!row) return res.status(404).json({ error: 'Equipement non trouve' });
   res.json(formatEquipment(row));
 });
@@ -889,25 +934,43 @@ router.post('/', requirePermission('equipment', 'create'), [
   const db = req.db;
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-  const { code: codeProvided, name, description, categoryId, parentId, serialNumber, manufacturer, model, installationDate, location, technicalSpecs, status } = req.body;
+  const { code: codeProvided, name, description, categoryId, parentId, serialNumber, manufacturer, model, installationDate, location, technicalSpecs, status, latitude, longitude, location_address } = req.body;
   const code = codification.generateCodeIfNeeded(db, 'machine', codeProvided);
   if (!code || !code.trim()) return res.status(400).json({ error: 'Code requis ou configurer la codification dans Paramétrage' });
   const departmentId = req.body.departmentId != null ? req.body.departmentId : null;
   const equipmentType = req.body.equipmentType || 'machine';
   try {
-    const result = db.prepare(`
-      INSERT INTO equipment (code, name, description, category_id, ligne_id, parent_id, serial_number, manufacturer, model, installation_date, location, technical_specs, criticite, status, department_id, equipment_type)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      code.trim(), name, description || null, categoryId || null, req.body.ligneId || null, parentId || null,
-      serialNumber || null, manufacturer || null, model || null,
-      installationDate || null, location || null,
-      technicalSpecs ? JSON.stringify(technicalSpecs) : null,
-      req.body.criticite || 'B',
-      status || 'operational',
-      departmentId,
-      equipmentType
-    );
+    const hasGeo = (() => { try { db.prepare('SELECT latitude FROM equipment LIMIT 1').get(); return true; } catch (_) { return false; } })();
+    const result = hasGeo
+      ? db.prepare(`
+          INSERT INTO equipment (code, name, description, category_id, ligne_id, parent_id, serial_number, manufacturer, model, installation_date, location, technical_specs, criticite, status, department_id, equipment_type, latitude, longitude, location_address)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          code.trim(), name, description || null, categoryId || null, req.body.ligneId || null, parentId || null,
+          serialNumber || null, manufacturer || null, model || null,
+          installationDate || null, location || null,
+          technicalSpecs ? JSON.stringify(technicalSpecs) : null,
+          req.body.criticite || 'B',
+          status || 'operational',
+          departmentId,
+          equipmentType,
+          latitude != null ? parseFloat(latitude) : null,
+          longitude != null ? parseFloat(longitude) : null,
+          location_address || null
+        )
+      : db.prepare(`
+          INSERT INTO equipment (code, name, description, category_id, ligne_id, parent_id, serial_number, manufacturer, model, installation_date, location, technical_specs, criticite, status, department_id, equipment_type)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          code.trim(), name, description || null, categoryId || null, req.body.ligneId || null, parentId || null,
+          serialNumber || null, manufacturer || null, model || null,
+          installationDate || null, location || null,
+          technicalSpecs ? JSON.stringify(technicalSpecs) : null,
+          req.body.criticite || 'B',
+          status || 'operational',
+          departmentId,
+          equipmentType
+        );
     const newRow = db.prepare('SELECT e.*, c.name as category_name, l.name as ligne_name FROM equipment e LEFT JOIN equipment_categories c ON e.category_id = c.id LEFT JOIN lignes l ON e.ligne_id = l.id WHERE e.id = ?').get(result.lastInsertRowid);
     auditService.log(db, 'equipment', result.lastInsertRowid, 'created', { userId: req.user?.id, userEmail: req.user?.email, summary: newRow?.code || newRow?.name });
     res.status(201).json(formatEquipment(newRow));
@@ -922,16 +985,21 @@ router.put('/:id', requirePermission('equipment', 'update'), param('id').isInt()
   const id = req.params.id;
   const existing = db.prepare('SELECT id FROM equipment WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Equipement non trouve' });
-  const fields = ['code', 'name', 'description', 'category_id', 'ligne_id', 'parent_id', 'serial_number', 'manufacturer', 'model', 'installation_date', 'location', 'criticite', 'status', 'acquisition_value', 'depreciation_years', 'residual_value', 'depreciation_start_date', 'target_cost_per_operating_hour'];
-  const mapping = { categoryId: 'category_id', ligneId: 'ligne_id', parentId: 'parent_id', serialNumber: 'serial_number', installationDate: 'installation_date', acquisitionValue: 'acquisition_value', depreciationYears: 'depreciation_years', residualValue: 'residual_value', depreciationStartDate: 'depreciation_start_date', targetCostPerOperatingHour: 'target_cost_per_operating_hour' };
+  const fields = ['code', 'name', 'description', 'category_id', 'ligne_id', 'department_id', 'parent_id', 'serial_number', 'manufacturer', 'model', 'installation_date', 'location', 'criticite', 'status', 'acquisition_value', 'depreciation_years', 'residual_value', 'depreciation_start_date', 'target_cost_per_operating_hour', 'latitude', 'longitude', 'location_address'];
+  const mapping = { categoryId: 'category_id', ligneId: 'ligne_id', departmentId: 'department_id', parentId: 'parent_id', serialNumber: 'serial_number', installationDate: 'installation_date', acquisitionValue: 'acquisition_value', depreciationYears: 'depreciation_years', residualValue: 'residual_value', depreciationStartDate: 'depreciation_start_date', targetCostPerOperatingHour: 'target_cost_per_operating_hour', locationAddress: 'location_address' };
   const updates = [];
   const values = [];
+  const hasGeo = (() => { try { db.prepare('SELECT latitude FROM equipment LIMIT 1').get(); return true; } catch (_) { return false; } })();
   for (const [key, val] of Object.entries(req.body)) {
     const col = mapping[key] || key;
+    if (!hasGeo && (col === 'latitude' || col === 'longitude' || col === 'location_address')) continue;
     if (fields.includes(col) && val !== undefined) {
       if (col === 'technical_specs') {
         updates.push('technical_specs = ?');
         values.push(typeof val === 'object' ? JSON.stringify(val) : val);
+      } else if (col === 'latitude' || col === 'longitude') {
+        updates.push(col + ' = ?');
+        values.push(val == null ? null : parseFloat(val));
       } else {
         updates.push(col + ' = ?');
         values.push(val);
